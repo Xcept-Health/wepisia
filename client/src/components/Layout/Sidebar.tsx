@@ -10,9 +10,9 @@ import {
   AlignHorizontalSpaceAround, TestTubes, Shrink,
   ChartBarStacked, UnfoldHorizontal, Shuffle, Dices,
   MapPinHouse, Biohazard, HeartHandshake, Moon, Sun,
-  ChevronRight, Building, UsersRound, ChevronsLeft
+  ChevronRight, Code, UsersRound, ChevronsLeft
 } from 'lucide-react';
-import { Code } from 'lucide-react';
+
 
 interface SidebarProps {
   isOpen: boolean;
@@ -129,7 +129,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
     {
       id: 'workspace',
       items: [
-        { id: 'Atelier code', label: 'Code Editor', icon: Biohazard, href: '/workspace' },
+        { id: 'Atelier code', label: 'Code Editor', icon: Code, href: '/workspace' },
       ]
     },
     {
