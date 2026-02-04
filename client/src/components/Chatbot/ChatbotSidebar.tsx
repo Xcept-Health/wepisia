@@ -43,7 +43,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -198,34 +198,234 @@ export function ChatbotSidebar({
 
   const handleSend = useCallback(async () => {
     if (!input.trim()) return;
-
+  
     const userMessage: Message = {
       id: Date.now().toString(),
       content: input.trim(),
       sender: 'user',
       timestamp: new Date()
     };
-
+  
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsTyping(true);
-
+  
     // Simulation de réponse IA avec raisonnement
     setTimeout(() => {
+      const userQuery = input.trim().toLowerCase();
+      let codeExample = '';
+      let language = 'r'; // Par défaut R pour épidémiologie
+      let reasoning = "L'utilisateur a posé une question sur l'analyse épidémiologique. Je fournis une réponse détaillée avec un exemple de code pour illustrer le calcul.";
+      
+      // Détection du langage demandé
+      if (userQuery.includes('python') || userQuery.includes('pandas') || userQuery.includes('numpy')) {
+        language = 'python';
+      } else if (userQuery.includes('javascript') || userQuery.includes('js') || userQuery.includes('node')) {
+        language = 'javascript';
+      } else if (userQuery.includes(' r ') || userQuery.startsWith('r ') || userQuery.includes('langage r')) {
+        language = 'r';
+      }
+  
+      // Génération de code spécifique selon la requête
+      if (userQuery.includes('risque relatif') || userQuery.includes('rr')) {
+        if (language === 'python') {
+          codeExample = `# Calcul du risque relatif en Python
+  import numpy as np
+  
+  def calculate_rr(a, b, c, d):
+      """
+      Calcule le Risque Relatif (RR)
+      a: exposés malades
+      b: exposés non malades
+      c: non-exposés malades
+      d: non-exposés non malades
+      """
+      risk_exposed = a / (a + b)
+      risk_unexposed = c / (c + d)
+      rr = risk_exposed / risk_unexposed
+      return rr
+  
+  # Exemple tabagisme/cancer poumon
+  rr_value = calculate_rr(70, 30, 30, 70)
+  print(f"Risque relatif: {rr_value:.2f}")
+  print(f"Interprétation: Les fumeurs ont {rr_value:.2f} fois plus de risque")`;
+        } else if (language === 'r') {
+          codeExample = `# Calcul du risque relatif en R
+  calculate_rr <- function(a, b, c, d) {
+    #' Calcule le Risque Relatif (RR)
+    #' a: exposés malades
+    #' b: exposés non malades  
+    #' c: non-exposés malades
+    #' d: non-exposés non malades
+    
+    risk_exposed <- a / (a + b)
+    risk_unexposed <- c / (c + d)
+    rr <- risk_exposed / risk_unexposed
+    return(rr)
+  }
+  
+  # Exemple tabagisme/cancer poumon
+  rr <- calculate_rr(70, 30, 30, 70)
+  cat("Risque relatif:", round(rr, 2), "\\n")
+  cat("Interprétation: Les fumeurs ont", round(rr, 2), "fois plus de risque\\n")`;
+        } else {
+          codeExample = `// Calcul du risque relatif en JavaScript
+  function calculateRR(a, b, c, d) {
+    /**
+     * Calcule le Risque Relatif (RR)
+     * a: exposés malades
+     * b: exposés non malades
+     * c: non-exposés malades  
+     * d: non-exposés non malades
+     */
+    const riskExposed = a / (a + b);
+    const riskUnexposed = c / (c + d);
+    const rr = riskExposed / riskUnexposed;
+    return rr;
+  }
+  
+  // Exemple tabagisme/cancer poumon
+  const rr = calculateRR(70, 30, 30, 70);
+  console.log(\`Risque relatif: \${rr.toFixed(2)}\`);
+  console.log(\`Interprétation: Les fumeurs ont \${rr.toFixed(2)} fois plus de risque\`);`;
+        }
+      } else if (userQuery.includes('odds ratio') || userQuery.includes('or')) {
+        // Code pour Odds Ratio
+        if (language === 'python') {
+          codeExample = `# Calcul de l'Odds Ratio (OR) en Python
+  def calculate_or(a, b, c, d):
+      odds_exposed = a / b
+      odds_unexposed = c / d
+      or_value = odds_exposed / odds_unexposed
+      return or_value
+  
+  # Exemple étude cas-témoins
+  or_value = calculate_or(50, 50, 30, 70)
+  print(f"Odds Ratio: {or_value:.2f}")
+  print(f"IC 95%: [{or_value * 0.8:.2f}, {or_value * 1.2:.2f}]")`;
+        } else if (language === 'r') {
+          codeExample = `# Calcul de l'Odds Ratio (OR) en R
+  calculate_or <- function(a, b, c, d) {
+    odds_exposed <- a / b
+    odds_unexposed <- c / d
+    or_value <- odds_exposed / odds_unexposed
+    return(or_value)
+  }
+  
+  # Exemple étude cas-témoins
+  or_value <- calculate_or(50, 50, 30, 70)
+  cat("Odds Ratio:", round(or_value, 2), "\\n")
+  cat("IC 95%: [", round(or_value * 0.8, 2), ",", round(or_value * 1.2, 2), "]\\n")`;
+        }
+      } else if (userQuery.includes('tableau') || userQuery.includes('2x2') || userQuery.includes('deux par deux')) {
+        // Code pour tableaux 2x2
+        if (language === 'r') {
+          codeExample = `# Analyse d'un tableau 2x2 en R
+  # Création d'un tableau de contingence
+  tableau <- matrix(c(70, 30, 30, 70), nrow = 2, byrow = TRUE)
+  rownames(tableau) <- c("Exposé", "Non-exposé")
+  colnames(tableau) <- c("Malade", "Non malade")
+  
+  # Affichage du tableau
+  print("Tableau 2x2:")
+  print(tableau)
+  
+  # Calcul des indicateurs
+  library(epitools)
+  
+  # Risque relatif
+  rr <- riskratio(tableau)
+  print("Risque relatif:")
+  print(rr$measure)
+  
+  # Odds ratio  
+  or <- oddsratio(tableau)
+  print("Odds ratio:")
+  print(or$measure)`;
+        } else if (language === 'python') {
+          codeExample = `# Analyse d'un tableau 2x2 en Python
+  import numpy as np
+  import pandas as pd
+  
+  # Création du tableau
+  data = {
+      'Malade': [70, 30],
+      'Non malade': [30, 70]
+  }
+  df = pd.DataFrame(data, index=['Exposé', 'Non-exposé'])
+  
+  print("Tableau 2x2:")
+  print(df)
+  
+  # Calcul manuel des indicateurs
+  a, b, c, d = 70, 30, 30, 70
+  rr = (a/(a+b)) / (c/(c+d))
+  or_value = (a/b) / (c/d)
+  
+  print(f"\\nRisque relatif (RR): {rr:.2f}")
+  print(f"Odds ratio (OR): {or_value:.2f}")`;
+        }
+      } else {
+        // Réponse générique avec exemple de code
+        const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+        if (language === 'r') {
+          codeExample = `# Exemple d'analyse épidémiologique en R
+  # Chargement des données (simulées)
+  set.seed(123)
+  n <- 100
+  groupe <- rep(c("Traitement", "Contrôle"), each = n/2)
+  succes <- rbinom(n, 1, c(0.7, 0.3))
+  
+  # Tableau de contingence
+  table(groupe, succes)
+  
+  # Test du Chi²
+  resultat_chi2 <- chisq.test(table(groupe, succes))
+  print(resultat_chi2)
+  
+  # Risque relatif approximatif
+  prop.table(table(groupe, succes), margin = 1)`;
+        } else if (language === 'python') {
+          codeExample = `# Exemple d'analyse épidémiologique en Python
+  import numpy as np
+  import pandas as pd
+  from scipy import stats
+  
+  # Données simulées
+  np.random.seed(123)
+  n = 100
+  groupe = ['Traitement'] * 50 + ['Contrôle'] * 50
+  succes = np.random.binomial(1, [0.7, 0.3], n)
+  
+  # Création DataFrame
+  df = pd.DataFrame({'Groupe': groupe, 'Succès': succes})
+  
+  # Tableau de contingence
+  table = pd.crosstab(df['Groupe'], df['Succès'])
+  print("Tableau de contingence:")
+  print(table)
+  
+  # Test du Chi²
+  chi2, p, dof, expected = stats.chi2_contingency(table)
+  print(f"\\nChi² = {chi2:.2f}, p = {p:.4f}")`;
+        }
+      }
+  
       const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+      const languageName = language === 'r' ? 'R' : language === 'python' ? 'Python' : 'JavaScript';
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: randomResponse + "\n\n**Exemple pratique :**\n\n```javascript\n// Calcul du risque relatif\nconst calculateRR = (a, b, c, d) => {\n  const riskExposed = a / (a + b);\n  const riskUnexposed = c / (c + d);\n  return riskExposed / riskUnexposed;\n};\n\n// Exemple d'utilisation\nconst rr = calculateRR(70, 30, 30, 70); // RR = 2.33\nconsole.log(`Risque relatif: ${rr.toFixed(2)}`);\n```",
+        content: `${randomResponse}\n\n**Exemple en ${languageName} :**\n\n\`\`\`${language}\n${codeExample}\n\`\`\`\n\n*Vous pouvez exécuter ce code directement dans l'atelier d'analyse ou le copier pour l'utiliser localement.*`,
         sender: 'assistant',
         timestamp: new Date(),
-        reasoning: "L'utilisateur a posé une question sur l'analyse épidémiologique. Je fournis une réponse détaillée avec un exemple de code pour illustrer le calcul.",
+        reasoning: reasoning,
         sources: [
-          { title: "Guide OpenEPI - Analyses", url: "/docs/analyses" },
+          { title: `Guide OpenEPI - ${languageName}`, url: `/docs/${language}/guide` },
           { title: "Référence statistique", url: "/docs/statistics" }
         ]
       };
-
+  
       setMessages(prev => [...prev, assistantMessage]);
       setIsTyping(false);
     }, 2000);
@@ -254,12 +454,7 @@ export function ChatbotSidebar({
     ]);
   };
 
-  const handleSuggestionClick = (suggestion: string) => {
-    setInput(suggestion);
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  };
+
 
   const handleCopy = (content: string) => {
     navigator.clipboard.writeText(content);
@@ -597,6 +792,23 @@ export function ChatbotSidebar({
                   <Button variant="outline" className="h-auto p-3 flex flex-col items-center justify-center text-center">
                     <FileCode className="w-5 h-5 mb-2 text-orange-500" />
                     <span className="text-xs font-medium">Code R/Python</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-auto p-3 flex flex-col items-center justify-center text-center"
+                    onClick={() => {
+                        // Sauvegarder le contexte actuel et ouvrir le workspace
+                        const workspaceData = {
+                        code: `# Code généré depuis le chatbot\n# Vous pouvez continuer votre analyse ici\n\n${messages[messages.length - 1]?.content.includes('```') ? messages[messages.length - 1].content : '# Ajoutez votre code ici'}`,
+                        language: 'r',
+                        timestamp: new Date().toISOString()
+                        };
+                        localStorage.setItem('chatbot_to_workspace', JSON.stringify(workspaceData));
+                        window.open('/workspace', '_blank');
+                    }}
+                    >
+                    <ExternalLink className="w-5 h-5 mb-2 text-purple-500" />
+                    <span className="text-xs font-medium">Ouvrir l'atelier</span>
                   </Button>
                 </div>
               </div>

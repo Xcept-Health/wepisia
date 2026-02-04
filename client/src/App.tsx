@@ -35,6 +35,8 @@ import RandomNumberGenerator from "./pages/biostatistics/random_numbers";
 // Importez les composants du chatbot
 import { ChatbotSidebar } from "./components/Chatbot/ChatbotSidebar";
 import { ChatbotToggle } from "./components/Chatbot/ChatbotToggle";
+// Importez la page Workspace
+import Workspace from "./pages/Workspace";
 
 function Router() {
   return (
@@ -72,6 +74,8 @@ function Router() {
       <Route path="/biostatistics/mean_difference_power" component={MeanDifferencePower} />
       <Route path="/biostatistics/matched_case_power" component={PowerCaseControl} />
       <Route path="/biostatistics/random_numbers" component={RandomNumberGenerator} />
+      {/* Workspace Route */}
+      <Route path="/workspace" component={Workspace} />
       {/* Fallback route */}
       <Route component={NotFound} />
     </Switch>
