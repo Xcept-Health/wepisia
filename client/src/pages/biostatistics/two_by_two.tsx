@@ -11,11 +11,7 @@ import {
   Home,
   Edit,
   Grid3x3,
-  AlertTriangle,
   Info,
-  BookOpen,
-  ExternalLink,
-  FileText,
   TrendingUp,
   AlertCircle
 } from 'lucide-react';

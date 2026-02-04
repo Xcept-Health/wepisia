@@ -25,18 +25,26 @@ import TTestCalculator from "./pages/biostatistics/t_test";
 import ANOVA from "./pages/biostatistics/anova";
 import ProportionsSample from "./pages/biostatistics/proportions_sample";
 import CohortRCT from "./pages/biostatistics/cohort_rct";
+import MatchedCaseControl from "./pages/biostatistics/matched_case";
+import MeanDifference from "./pages/biostatistics/mean_difference_sample";
 
 
 function Router() {
   return (
     <Switch>
+      {/* Home Route */}  
       <Route path={"/"} component={Home} />
+      {/* Tools Route */}
       <Route path={"/tools"} component={Tools} />
+      {/* About Route */}
       <Route path={"/about"} component={About} />
+      {/* Docs Route */}
       <Route path={"/docs"} component={Docs} />
-      <Route path={"/404"} component={NotFound} />
-      <Route path="/biostatistics/std-mortality-ratio" component={standardized_mortality_ratio} />
+      {/* Settings Route */}
       <Route path="/settings" component={Settings} />
+      <Route path={"/404"} component={NotFound} />
+      {/* Bisostatistics Route */}
+      <Route path="/biostatistics/std-mortality-ratio" component={standardized_mortality_ratio} />
       <Route path="/biostatistics/proportions" component={Proportions} />
       <Route path="/biostatistics/r_by_c" component={RxCTable} />
       <Route path="/biostatistics/screening" component={ScreeningTest} />
@@ -50,6 +58,8 @@ function Router() {
       <Route path="/biostatistics/anova" component={ANOVA} />
       <Route path="/biostatistics/proportions_sample" component={ProportionsSample} />
       <Route path="/biostatistics/cohort_rct" component={CohortRCT} />
+      <Route path="/biostatistics/matched_case" component={MatchedCaseControl} />
+      <Route path="/biostatistics/mean_difference_sample" component={MeanDifference} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
