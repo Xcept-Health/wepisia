@@ -69,8 +69,8 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       id: 'personnes_temps',
       title: 'Personnes temps',
       items: [
-        { id: 'one_rate', label: 'Taux 1', icon: CirclePercent, href: '/biostatistics/one-rate' },
-        { id: 'compare_two_rates', label: 'Taux 2', icon: SquarePercent, href: '/biostatistics/compare-two-rates' },
+        { id: 'one_rate', label: 'Taux 1', icon: CirclePercent, href: '/biostatistics/one_rate' },
+        { id: 'compare_two_rates', label: 'Taux 2', icon: SquarePercent, href: '/biostatistics/compare_two_rates' },
       ]
     },
     {
@@ -87,21 +87,21 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       id: 'taille_echantillon',
       title: "Taille d'échantillon",
       items: [
-        { id: 'proportions_sample', label: 'Proportions', icon: ChartPie, href: '/sample-size/proportions' },
-        { id: 'cohort_rct', label: 'Cohort RCT', icon: UsersRound, href: '/sample-size/cohort-rct' },
-        { id: 'matched_case', label: 'Matched Case', icon: LinkIcon, href: '/sample-size/matched-case' },
-        { id: 'mean_difference_sample', label: 'Mean difference', icon: AlignHorizontalSpaceAround, href: '/sample-size/mean-difference' },
+        { id: 'proportions_sample', label: 'Proportions', icon: ChartPie, href: '/biostatistics/proportions_sample' },
+        { id: 'cohort_rct', label: 'Cohort RCT', icon: UsersRound, href: '/biostatistics/cohort_rct' },
+        { id: 'matched_case', label: 'Matched Case', icon: LinkIcon, href: '/biostatistics/matched_case' },
+        { id: 'mean_difference_sample', label: 'Mean difference', icon: AlignHorizontalSpaceAround, href: '/biostatistics/mean_difference_sample' },
       ]
     },
     {
       id: 'puissance',
       title: 'Puissance',
       items: [
-        { id: 'cohort_rct_power', label: 'Cohorte RCT', icon: Users, href: '/power/cohort-rct' },
-        { id: 'clinical_trial', label: 'Essai Cliniques', icon: TestTubes, href: '/power/clinical-trial' },
-        { id: 'case_control', label: 'Coupe X', icon: Shrink, href: '/power/case-control' },
-        { id: 'mean_difference_power', label: 'Différence Moyenne', icon: ChartBarStacked, href: '/power/mean-difference' },
-        { id: 'matched_case_control', label: 'Cas-Témoins Appariés', icon: UnfoldHorizontal, href: '/power/matched-case-control' },
+        { id: 'cohort_rct_power', label: 'Cohorte RCT', icon: Users, href: '/biostatistics/cohort_rct_power' },
+        { id: 'clinical_trial', label: 'Essai Cliniques', icon: TestTubes, href: '/biostatistics/clinical_trial' },
+        { id: 'case_control', label: 'Coupe X', icon: Shrink, href: '/biostatistics/case-control' },
+        { id: 'mean_difference_power', label: 'Différence Moyenne', icon: ChartBarStacked, href: '/biostatistics/mean_difference_power' },
+        { id: 'matched_case_control', label: 'Cas-Témoins Appariés', icon: UnfoldHorizontal, href: '/biostatistics/matched_case_control' },
       ]
     },
     {
@@ -130,12 +130,12 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       title: 'Support',
       items: [
         { id: 'help', label: 'Aide', icon: HeartHandshake, href: '/help' },
+        { id: 'docs', label: 'Documentation', icon: BookOpen, href: '/docs' },
       ]
     }
   ];
 
   const footerItems = [
-    { id: 'docs', label: 'Documentation', icon: BookOpen, href: '/docs' },
     { id: 'settings', label: 'Paramètres', icon: Settings, href: '/settings' },
   ];
 
@@ -272,7 +272,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
         </nav>
 
         {/* Footer */}
-        <div className="px-3 py-4 space-y-1">
+        <div className="px-3 py-2 space-y-1">
           {footerItems.map((item) => {
             const Icon = item.icon;
             return (

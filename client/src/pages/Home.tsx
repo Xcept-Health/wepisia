@@ -98,21 +98,15 @@ export default function Home() {
       </div>
 
       {/* --- HEADER --- */}
-      <nav className="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-center">
-            <div className="w-5 h-5 bg-gradient-to-tr from-blue-600 to-blue-400 rounded-md" />
-          </div>
-        </div>
-        <div className="hidden md:flex items-center gap-2 bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-slate-200 dark:border-slate-700 p-1 rounded-full shadow-sm">
+      <nav className="relative z-10 flex items-center justify-center px-8 py-6 max-w-7xl mx-auto">
+
+        <div className="hidden md:flex items-center gap-4 bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-slate-200 dark:border-slate-700 p-1 rounded-full shadow-sm">
+          
           {['Outils', 'Docs', 'Méthodes'].map((item) => (
             <button key={item} className="px-5 py-2 text-sm font-medium hover:bg-white dark:hover:bg-slate-700 rounded-full transition-all">{item}</button>
           ))}
         </div>
-        <button className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 dark:bg-slate-700 text-white rounded-full text-sm font-semibold hover:bg-slate-800 dark:hover:bg-slate-600 transition-all shadow-md">
-          <Zap className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-          Démarrer
-        </button>
+      
       </nav>
 
       {/* --- HERO SECTION --- */}
