@@ -18,6 +18,7 @@ import ScreeningTest from "./pages/biostatistics/screening";
 import DoseResponse from "./pages/biostatistics/dose-response";
 import TwoByTwo from "./pages/biostatistics/two_by_two";
 import OneRate from "./pages/biostatistics/one_rate";
+import TwoRatesComparison from "./pages/biostatistics/compare_two_rates";
 
 
 function Router() {
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/biostatistics/dose-response" component={DoseResponse} />
       <Route path="/biostatistics/two_by_two" component={TwoByTwo} />
       <Route path="/biostatistics/one_rate" component={OneRate} />
+      <Route path="/biostatistics/compare_two_rates" component={TwoRatesComparison} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
