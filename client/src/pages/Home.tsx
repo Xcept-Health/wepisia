@@ -127,7 +127,7 @@ export default function Home() {
             OpenEPi reedited est une nouvelle version de l'outil Open Source Statistiques Épidémiologiques OpenEpi pour la Santé Publique.
           </p>
 
-          {/* BARRE DE RECHERCHE FONCTIONNELLE (trigger pour Command Dialog) */}
+          {/* BARRE DE RECHERCHE(trigger pour Command Dialog) */}
           <div 
             className="max-w-lg mx-auto relative group cursor-pointer"
             onClick={() => setOpen(true)}

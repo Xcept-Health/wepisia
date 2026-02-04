@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
@@ -24,10 +24,17 @@ import MedianPercentileCI from "./pages/biostatistics/median_percentile_ci";
 import TTestCalculator from "./pages/biostatistics/t_test";
 import ANOVA from "./pages/biostatistics/anova";
 import ProportionsSample from "./pages/biostatistics/proportions_sample";
-import CohortRCT from "./pages/biostatistics/cohort_rct";
+import CohortRCT from "./pages/biostatistics/cohort_rct_power";
 import MatchedCaseControl from "./pages/biostatistics/matched_case";
 import MeanDifference from "./pages/biostatistics/mean_difference_sample";
-
+import ClinicalTrial from "./pages/biostatistics/clinical_trial";
+import CaseControlStudy from "./pages/biostatistics/case_control";
+import MeanDifferencePower from "./pages/biostatistics/mean_difference_power";
+import PowerCaseControl from "./pages/biostatistics/matched_case_power";
+import RandomNumberGenerator from "./pages/biostatistics/random_numbers";
+// Importez les composants du chatbot
+import { ChatbotSidebar } from "./components/Chatbot/ChatbotSidebar";
+import { ChatbotToggle } from "./components/Chatbot/ChatbotToggle";
 
 function Router() {
   return (
@@ -43,7 +50,7 @@ function Router() {
       {/* Settings Route */}
       <Route path="/settings" component={Settings} />
       <Route path={"/404"} component={NotFound} />
-      {/* Bisostatistics Route */}
+      {/* Biostatistics Routes */}
       <Route path="/biostatistics/std-mortality-ratio" component={standardized_mortality_ratio} />
       <Route path="/biostatistics/proportions" component={Proportions} />
       <Route path="/biostatistics/r_by_c" component={RxCTable} />
@@ -57,10 +64,15 @@ function Router() {
       <Route path="/biostatistics/t_test" component={TTestCalculator} />
       <Route path="/biostatistics/anova" component={ANOVA} />
       <Route path="/biostatistics/proportions_sample" component={ProportionsSample} />
-      <Route path="/biostatistics/cohort_rct" component={CohortRCT} />
+      <Route path="/biostatistics/cohort_rct_power" component={CohortRCT} />
       <Route path="/biostatistics/matched_case" component={MatchedCaseControl} />
       <Route path="/biostatistics/mean_difference_sample" component={MeanDifference} />
-      {/* Final fallback route */}
+      <Route path="/biostatistics/clinical_trial" component={ClinicalTrial} />
+      <Route path="/biostatistics/case_control" component={CaseControlStudy} />
+      <Route path="/biostatistics/mean_difference_power" component={MeanDifferencePower} />
+      <Route path="/biostatistics/matched_case_power" component={PowerCaseControl} />
+      <Route path="/biostatistics/random_numbers" component={RandomNumberGenerator} />
+      {/* Fallback route */}
       <Route component={NotFound} />
     </Switch>
   );
@@ -68,7 +80,40 @@ function Router() {
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // Réduite par défaut sur desktop
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  // États pour le chatbot
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
+  const [chatbotWidth, setChatbotWidth] = useState(420);
+  const [chatbotNotificationCount, setChatbotNotificationCount] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Détecter si on est en mobile
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+      if (window.innerWidth < 1024) {
+        setSidebarCollapsed(false);
+        setChatbotWidth(Math.min(window.innerWidth * 0.9, 420));
+      }
+    };
+    
+    checkIfMobile();
+    window.addEventListener('resize', checkIfMobile);
+    
+    return () => window.removeEventListener('resize', checkIfMobile);
+  }, []);
+
+  // Simulation de notifications
+  useEffect(() => {
+    if (!isChatbotOpen) {
+      const timer = setTimeout(() => {
+        setChatbotNotificationCount(prev => Math.min(prev + 1, 99));
+      }, 120000); // Une notification toutes les 2 minutes
+      return () => clearTimeout(timer);
+    } else {
+      setChatbotNotificationCount(0);
+    }
+  }, [isChatbotOpen]);
 
   return (
     <ErrorBoundary>
@@ -85,13 +130,31 @@ function App() {
               setIsCollapsed={setSidebarCollapsed}
             />
 
-            {/* Contenu principal – décalé sur desktop pour éviter le chevauchement */}
-            <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
+            {/* Contenu principal – ajusté selon l'état des sidebars */}
+            <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
+              sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
+            } ${isChatbotOpen && !isMobile ? 'lg:mr-[420px]' : ''}`}>
               {/* Page content */}
               <main className="flex-1 overflow-auto">
                 <Router />
               </main>
             </div>
+
+            {/* Chatbot Toggle Button */}
+            <ChatbotToggle
+              onClick={() => setIsChatbotOpen(!isChatbotOpen)}
+              isActive={isChatbotOpen}
+              notificationCount={chatbotNotificationCount}
+            />
+
+            {/* Chatbot Sidebar avec design textuel Vercel AI SDK */}
+            <ChatbotSidebar
+              isOpen={isChatbotOpen}
+              onClose={() => setIsChatbotOpen(false)}
+              width={chatbotWidth}
+              onWidthChange={setChatbotWidth}
+              position="right"
+            />
           </div>
         </TooltipProvider>
       </ThemeProvider>

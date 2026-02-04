@@ -312,7 +312,6 @@ VPN : ${vpn.toFixed(1)}% → Probabilité d'être sain si test négatif.`;
             <ol className="flex items-center space-x-2 text-sm">
               <li>
                 <a href="/" className="flex items-center text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  <Home className="w-4 h-4 mr-1" />
                   Accueil
                 </a>
               </li>
@@ -666,68 +665,7 @@ VPN : ${vpn.toFixed(1)}% → Probabilité d'être sain si test négatif.`;
               </div>
             </div>
 
-            {/* Cartes d'information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <Shield className="w-5 h-5 mr-2 text-blue-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    Sensibilité
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Capacité du test à identifier correctement les personnes malades.
-                </p>
-                <div className="mt-3 text-xs text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
-                  <code>Se = TP / (TP + FN)</code>
-                </div>
-              </div>
 
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <AlertCircle className="w-5 h-5 mr-2 text-purple-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    Spécificité
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Capacité du test à identifier correctement les personnes non malades.
-                </p>
-                <div className="mt-3 text-xs text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
-                  <code>Sp = TN / (TN + FP)</code>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <TrendingUp className="w-5 h-5 mr-2 text-emerald-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    VPP
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Probabilité qu'une personne avec un test positif soit réellement malade.
-                </p>
-                <div className="mt-3 text-xs text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
-                  <code>VPP = TP / (TP + FP)</code>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <CheckCircle className="w-5 h-5 mr-2 text-cyan-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    VPN
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Probabilité qu'une personne avec un test négatif soit réellement non malade.
-                </p>
-                <div className="mt-3 text-xs text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
-                  <code>VPN = TN / (TN + FN)</code>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

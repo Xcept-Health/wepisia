@@ -381,7 +381,6 @@ export default function TwoByTwo() {
             <ol className="flex items-center space-x-2 text-sm">
               <li>
                 <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  <Home className="w-4 h-4 inline mr-1" />
                   Accueil
                 </Link>
               </li>
@@ -649,42 +648,7 @@ export default function TwoByTwo() {
                 </div>
               </div>
 
-              {/* Information Cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-xl p-6 shadow-md">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                      <span className="text-white font-bold text-sm">OR</span>
-                    </div>
-                    <h5 className="text-lg font-semibold">Odds Ratio</h5>
-                  </div>
-                  <p className="text-sm leading-relaxed">
-                    Mesure l'association (a×d)/(b×c). OR &gt; 1 = risque accru, OR &lt; 1 = effet protecteur.
-                  </p>
-                </div>
-                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 rounded-xl p-6 shadow-md">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center mr-3">
-                      <span className="text-white font-bold text-sm">RR</span>
-                    </div>
-                    <h5 className="text-lg font-semibold">Risque Relatif</h5>
-                  </div>
-                  <p className="text-sm leading-relaxed">
-                    Compare le risque entre exposés et non-exposés : [a/(a+b)] / [c/(c+d)].
-                  </p>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 rounded-xl p-6 shadow-md">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center mr-3">
-                      <span className="text-white font-bold text-sm">χ²</span>
-                    </div>
-                    <h5 className="text-lg font-semibold">Test du Chi-carré</h5>
-                  </div>
-                  <p className="text-sm leading-relaxed">
-                    Teste l'indépendance entre exposition et maladie.
-                  </p>
-                </div>
-              </div>
+
             </div>
           </div>
         </div>

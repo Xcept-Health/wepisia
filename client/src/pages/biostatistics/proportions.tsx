@@ -375,7 +375,6 @@ export default function Proportion() {
             <ol className="flex items-center space-x-2 text-sm">
               <li>
                 <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  <Home className="w-4 h-4 inline mr-1" />
                   Accueil
                 </Link>
               </li>

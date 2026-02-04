@@ -99,23 +99,23 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       items: [
         { id: 'cohort_rct_power', label: 'Cohorte RCT', icon: Users, href: '/biostatistics/cohort_rct_power' },
         { id: 'clinical_trial', label: 'Essai Cliniques', icon: TestTubes, href: '/biostatistics/clinical_trial' },
-        { id: 'case_control', label: 'Coupe X', icon: Shrink, href: '/biostatistics/case-control' },
+        { id: 'case_control', label: 'Coupe X', icon: Shrink, href: '/biostatistics/case_control' },
         { id: 'mean_difference_power', label: 'Différence Moyenne', icon: ChartBarStacked, href: '/biostatistics/mean_difference_power' },
-        { id: 'matched_case_control', label: 'Cas-Témoins Appariés', icon: UnfoldHorizontal, href: '/biostatistics/matched_case_control' },
+        { id: 'matched_case_power', label: 'Cas-Témoins Appariés', icon: UnfoldHorizontal, href: '/biostatistics/matched_case_power' },
       ]
     },
     {
       id: 'autres',
       title: 'Autres',
       items: [
-        { id: 'random_numbers', label: 'Nombres Aléatoires', icon: Dices, href: '/random-numbers' },
+        { id: 'random_numbers', label: 'Nombres Aléatoires', icon: Dices, href: '/biostatistics/random_numbers' },
       ]
     },
     {
       id: 'geospatial',
       title: 'GeoSpatial',
       items: [
-        { id: 'geospatial_module', label: 'GeoSpatial', icon: MapPinHouse, href: '/geospatial' },
+        { id: 'geospatial_module', label: 'GeoSpatial', icon: MapPinHouse, href: '/geospatial/map' },
       ]
     },
     {
