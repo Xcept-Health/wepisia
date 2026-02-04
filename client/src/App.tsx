@@ -17,6 +17,8 @@ import RxCTable from "./pages/biostatistics/r_by_c";
 import ScreeningTest from "./pages/biostatistics/screening";
 import DoseResponse from "./pages/biostatistics/dose-response";
 import TwoByTwo from "./pages/biostatistics/two_by_two";
+import OneRate from "./pages/biostatistics/one_rate";
+
 
 function Router() {
   return (
@@ -33,6 +35,7 @@ function Router() {
       <Route path="/biostatistics/screening" component={ScreeningTest} />
       <Route path="/biostatistics/dose-response" component={DoseResponse} />
       <Route path="/biostatistics/two_by_two" component={TwoByTwo} />
+      <Route path="/biostatistics/one_rate" component={OneRate} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>

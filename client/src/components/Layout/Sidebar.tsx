@@ -69,8 +69,8 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       id: 'personnes_temps',
       title: 'Personnes temps',
       items: [
-        { id: 'one_rate', label: 'Taux 1', icon: CirclePercent, href: '/one-rate' },
-        { id: 'compare_two_rates', label: 'Taux 2', icon: SquarePercent, href: '/compare-two-rates' },
+        { id: 'one_rate', label: 'Taux 1', icon: CirclePercent, href: '/biostatistics/one_rate' },
+        { id: 'compare_two_rates', label: 'Taux 2', icon: SquarePercent, href: '/biostatistics/compare_two_rates' },
       ]
     },
     {
