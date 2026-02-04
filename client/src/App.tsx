@@ -16,9 +16,13 @@ import Proportions from "./pages/biostatistics/proportions";
 import RxCTable from "./pages/biostatistics/r_by_c";
 import ScreeningTest from "./pages/biostatistics/screening";
 import DoseResponse from "./pages/biostatistics/dose-response";
-import TwoByTwo from "./pages/biostatistics/two_by_two";
+import TwoByTwoTable from "./pages/biostatistics/two_by_two";
 import OneRate from "./pages/biostatistics/one_rate";
 import TwoRatesComparison from "./pages/biostatistics/compare_two_rates";
+import MeanConfidenceInterval from "./pages/biostatistics/mean_confidence_interval";
+import MedianPercentileCI from "./pages/biostatistics/median_percentile_ci";
+import TTestCalculator from "./pages/biostatistics/t_test";
+import ANOVA from "./pages/biostatistics/anova";
 
 
 function Router() {
@@ -35,9 +39,13 @@ function Router() {
       <Route path="/biostatistics/r_by_c" component={RxCTable} />
       <Route path="/biostatistics/screening" component={ScreeningTest} />
       <Route path="/biostatistics/dose-response" component={DoseResponse} />
-      <Route path="/biostatistics/two_by_two" component={TwoByTwo} />
+      <Route path="/biostatistics/two_by_two" component={TwoByTwoTable} />
       <Route path="/biostatistics/one_rate" component={OneRate} />
       <Route path="/biostatistics/compare_two_rates" component={TwoRatesComparison} />
+      <Route path="/biostatistics/mean_confidence_interval" component={MeanConfidenceInterval} />
+      <Route path="/biostatistics/median_percentile_ci" component={MedianPercentileCI} /> 
+      <Route path="/biostatistics/t_test" component={TTestCalculator} />
+      <Route path="/biostatistics/anova" component={ANOVA} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
