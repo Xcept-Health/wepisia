@@ -23,6 +23,8 @@ import MeanConfidenceInterval from "./pages/biostatistics/mean_confidence_interv
 import MedianPercentileCI from "./pages/biostatistics/median_percentile_ci";
 import TTestCalculator from "./pages/biostatistics/t_test";
 import ANOVA from "./pages/biostatistics/anova";
+import ProportionsSample from "./pages/biostatistics/proportions_sample";
+import CohortRCT from "./pages/biostatistics/cohort_rct";
 
 
 function Router() {
@@ -46,6 +48,8 @@ function Router() {
       <Route path="/biostatistics/median_percentile_ci" component={MedianPercentileCI} /> 
       <Route path="/biostatistics/t_test" component={TTestCalculator} />
       <Route path="/biostatistics/anova" component={ANOVA} />
+      <Route path="/biostatistics/proportions_sample" component={ProportionsSample} />
+      <Route path="/biostatistics/cohort_rct" component={CohortRCT} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
