@@ -12,6 +12,11 @@ import Docs from "./pages/Docs";
 import { Sidebar } from "./components/Layout/Sidebar";
 import standardized_mortality_ratio from "./pages/biostatistics/standardized_mortality_ratio";
 import Settings from "./pages/settings";
+import Proportions from "./pages/biostatistics/proportions";
+import RxCTable from "./pages/biostatistics/r_by_c";
+import ScreeningTest from "./pages/biostatistics/screening";
+import DoseResponse from "./pages/biostatistics/dose-response";
+import TwoByTwo from "./pages/biostatistics/two_by_two";
 
 function Router() {
   return (
@@ -23,6 +28,11 @@ function Router() {
       <Route path={"/404"} component={NotFound} />
       <Route path="/biostatistics/std-mortality-ratio" component={standardized_mortality_ratio} />
       <Route path="/settings" component={Settings} />
+      <Route path="/biostatistics/proportions" component={Proportions} />
+      <Route path="/biostatistics/r_by_c" component={RxCTable} />
+      <Route path="/biostatistics/screening" component={ScreeningTest} />
+      <Route path="/biostatistics/dose-response" component={DoseResponse} />
+      <Route path="/biostatistics/two_by_two" component={TwoByTwo} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>

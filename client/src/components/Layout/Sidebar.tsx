@@ -59,10 +59,10 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       items: [
         { id: 'std_mortality_ratio', label: 'Rapport Std.Mort', icon: Blocks, href: '/biostatistics/std-mortality-ratio' },
         { id: 'proportions', label: 'Proportions', icon: ProportionsIcon, href: '/biostatistics/proportions' },
-        { id: 'two_by_two', label: 'Tableaux 2×2', icon: Grid2x2, href: '/two-by-two' },
-        { id: 'dose_response', label: 'Dose-Réponse', icon: ChartNoAxesCombined, href: '/dose-response' },
-        { id: 'r_by_c', label: 'Tableaux R×C', icon: TableCellsSplit, href: '/r-by-c' },
-        { id: 'screening', label: 'Dépistage', icon: ScanEye, href: '/screening' },
+        { id: 'two_by_two', label: 'Tableaux 2×2', icon: Grid2x2, href: '/biostatistics/two_by_two' },
+        { id: 'dose_response', label: 'Dose-Réponse', icon: ChartNoAxesCombined, href: '/biostatistics/dose-response' },
+        { id: 'r_by_c', label: 'Tableaux R×C', icon: TableCellsSplit, href: '/biostatistics/r_by_c' },
+        { id: 'screening', label: 'Dépistage', icon: ScanEye, href: '/biostatistics/screening' },
       ]
     },
     {
