@@ -58,7 +58,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       title: 'Numérotations',
       items: [
         { id: 'std_mortality_ratio', label: 'Rapport Std.Mort', icon: Blocks, href: '/biostatistics/std-mortality-ratio' },
-        { id: 'proportions', label: 'Proportions', icon: ProportionsIcon, href: '/proportions' },
+        { id: 'proportions', label: 'Proportions', icon: ProportionsIcon, href: '/biostatistics/proportions' },
         { id: 'two_by_two', label: 'Tableaux 2×2', icon: Grid2x2, href: '/two-by-two' },
         { id: 'dose_response', label: 'Dose-Réponse', icon: ChartNoAxesCombined, href: '/dose-response' },
         { id: 'r_by_c', label: 'Tableaux R×C', icon: TableCellsSplit, href: '/r-by-c' },
@@ -216,10 +216,10 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
                   <a
                     onMouseEnter={() => setHoveredItem(item.id)}
                     onMouseLeave={() => setHoveredItem(null)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-blue-100 dark:hover:from-blue-900/20 dark:hover:to-blue-800/20 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 group ${!showLabels ? 'justify-center' : ''}`}
+                    className={`flex items-center gap-3 px-3 py-4 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-blue-100 dark:hover:from-blue-900/20 dark:hover:to-blue-800/20 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 group ${!showLabels ? 'justify-center' : ''}`}
                     onClick={handleLinkClick}
                   >
-                    <Icon className="w-6 h-6 flex-shrink-0" strokeWidth={1.5} />
+                    <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} />
                     {showLabels && (
                       <>
                         <span className="text-sm">{item.label}</span>
@@ -252,10 +252,10 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
                       <a
                         onMouseEnter={() => setHoveredItem(item.id)}
                         onMouseLeave={() => setHoveredItem(null)}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-blue-100 dark:hover:from-blue-900/20 dark:hover:to-blue-800/20 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 group ${!showLabels ? 'justify-center' : ''}`}
+                        className={`flex items-center gap-3 px-3 py-4 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-blue-100 dark:hover:from-blue-900/20 dark:hover:to-blue-800/20 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 group ${!showLabels ? 'justify-center' : ''}`}
                         onClick={handleLinkClick}
                       >
-                        <Icon className="w-6 h-6 flex-shrink-0" strokeWidth={1.5} />
+                        <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} />
                         {showLabels && (
                           <>
                             <span className="text-sm">{item.label}</span>
@@ -278,10 +278,10 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
             return (
               <Link key={item.id} href={item.href}>
                 <a
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-gray-200 transition-all duration-200 ${!showLabels ? 'justify-center' : ''}`}
+                  className={`flex items-center gap-3 px-3 py-4 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-gray-200 transition-all duration-200 ${!showLabels ? 'justify-center' : ''}`}
                   onClick={handleLinkClick}
                 >
-                  <Icon className="w-6 h-6 flex-shrink-0" strokeWidth={1.5} />
+                  <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} />
                   {showLabels && (
                     <span className="text-sm">{item.label}</span>
                   )}
@@ -330,7 +330,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
           className="fixed top-4 left-4 z-50 p-3 bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-gray-200 dark:border-slate-800 transition-all hover:shadow-xl"
           aria-label="Ouvrir le menu"
         >
-          <Menu className="w-6 h-6 text-gray-700 dark:text-gray-300" strokeWidth={1.5} />
+          <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" strokeWidth={1.5} />
         </button>
       )}
 

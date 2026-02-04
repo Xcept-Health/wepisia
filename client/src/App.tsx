@@ -11,6 +11,7 @@ import About from "./pages/About";
 import Docs from "./pages/Docs";
 import { Sidebar } from "./components/Layout/Sidebar";
 import standardized_mortality_ratio from "./pages/biostatistics/standardized_mortality_ratio";
+import Settings from "./pages/settings";
 
 function Router() {
   return (
@@ -21,6 +22,7 @@ function Router() {
       <Route path={"/docs"} component={Docs} />
       <Route path={"/404"} component={NotFound} />
       <Route path="/biostatistics/std-mortality-ratio" component={standardized_mortality_ratio} />
+      <Route path="/settings" component={Settings} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
