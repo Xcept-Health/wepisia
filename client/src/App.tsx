@@ -38,6 +38,10 @@ import { ChatbotToggle } from "./components/Chatbot/ChatbotToggle";
 // Importez la page Workspace
 import Workspace from "./pages/Workspace";
 
+import Geospatial from "./pages/geospatial/map";
+
+
+
 function Router() {
   return (
     <Switch>
@@ -76,6 +80,8 @@ function Router() {
       <Route path="/biostatistics/random_numbers" component={RandomNumberGenerator} />
       {/* Workspace Route */}
       <Route path="/workspace" component={Workspace} />
+      {/* Geospatial Route */}
+      <Route path="/geospatial/map" component={Geospatial} />
       {/* Fallback route */}
       <Route component={NotFound} />
     </Switch>

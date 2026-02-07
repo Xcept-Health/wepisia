@@ -42,11 +42,15 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
           {showTooltip && !isActive && (
             <div className="absolute bottom-full right-0 mb-3 w-72 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 animate-fade-in">
               <div className="flex items-start space-x-2">
-                
+                <div className="p-1.5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
+                  <Bot className="w-4 h-4 text-white" />
+                </div>
                 <div>
-                 
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Assistant OpenEPI IA
+                  </p>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    Assistant IA spécialisé en épidémiologie. Posez vos questions sur les analyses statistiques, calculs épidémiologiques et interprétation de données.
+                    Posez vos questions sur l'épidémiologie, les analyses statistiques et les calculs de santé publique.
                   </p>
                 </div>
               </div>
@@ -60,7 +64,7 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
               <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
                 <div className="flex items-center">
                   <Sparkles className="w-3 h-3 mr-2 animate-pulse" />
-                  <span>Assistant IA disponible !</span>
+                  <span>Besoin d'aide ? Je suis là !</span>
                 </div>
                 <div className="absolute -bottom-1.5 right-4 w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-600 transform rotate-45" />
               </div>
@@ -73,7 +77,7 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
             className={`
-              h-14 w-14 rounded-full shadow-xl transition-all duration-300
+              h-16 w-16 rounded-full shadow-xl transition-all duration-300
               ${isActive 
                 ? 'bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700' 
                 : 'bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-700 hover:from-blue-600 hover:via-indigo-700 hover:to-purple-800'
@@ -87,10 +91,10 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
             
             {isActive ? (
-              <X className="w-6 h-6 text-white relative z-10" />
+              <X className="w-7 h-7 text-white relative z-10" />
             ) : (
               <>
-                <MessageCircle className="w-6 h-6 text-white relative z-10" />
+                <MessageCircle className="w-7 h-7 text-white relative z-10" />
                 {notificationCount > 0 && (
                   <Badge className="absolute -top-1 -right-1 h-6 w-6 p-0 flex items-center justify-center bg-red-500 text-white text-xs font-bold shadow-lg border-2 border-white dark:border-gray-900">
                     {notificationCount}
@@ -101,6 +105,16 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
           </Button>
         </div>
       </div>
+
+      {/* Indicateur de badge pour mobile */}
+      {notificationCount > 0 && !isActive && (
+        <div className="fixed bottom-24 right-24 z-40 lg:hidden">
+          <div className="relative">
+            <div className="absolute animate-ping h-5 w-5 bg-red-500 rounded-full opacity-75" />
+            <div className="relative h-4 w-4 bg-red-500 rounded-full border-2 border-white dark:border-gray-900" />
+          </div>
+        </div>
+      )}
     </>
   );
 }

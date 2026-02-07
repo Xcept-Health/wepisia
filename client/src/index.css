@@ -219,9 +219,7 @@
   }
 }
 
-/* ────────────────────────────────────────────────
-   Composants et utilitaires
-───────────────────────────────────────────────── */
+
 @layer components {
   .container {
     @apply mx-auto w-full px-4 sm:px-6 lg:px-8;
@@ -282,9 +280,7 @@
   }
 }
 
-/* ────────────────────────────────────────────────
-   Animations (conservées)
-───────────────────────────────────────────────── */
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -389,3 +385,397 @@
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 300ms;
 }
+
+
+
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Scrollbar personnalisé */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.7);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.5);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(75, 85, 99, 0.7);
+}
+
+/* Effet glassmorphism */
+.glass {
+  backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.8);
+}
+
+/* Animations */
+@keyframes slideIn {
+  0% { transform: translateX(-100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  0% { transform: scale(0.95); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes bounceGentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes legendPulse {
+  0%, 100% { background: rgba(255, 255, 255, 0.9); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+  50% { background: rgba(255, 255, 255, 1); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); }
+}
+
+@keyframes sidebarSlide {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+.animate-bounce-gentle {
+  animation: bounceGentle 2s infinite;
+}
+
+.animate-legend-pulse {
+  animation: legendPulse 3s ease-in-out infinite;
+}
+
+.animate-sidebar-slide {
+  animation: sidebarSlide 0.3s ease-out;
+}
+
+/* Styles pour les tooltips personnalisés */
+.custom-tooltip {
+  background: rgba(255, 255, 255, 0.95);
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.dark .custom-tooltip {
+  background: rgba(30, 41, 59, 0.95);
+  color: white;
+}
+
+/* Styles pour les légendes */
+.legend {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dark .legend {
+  background: rgba(30, 41, 59, 0.9);
+  color: white;
+}
+
+/* Boutons de contrôle */
+.control-button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.control-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Zone de drag and drop */
+.drop-zone {
+  border: 2px dashed #d1d5db;
+  transition: all 0.3s ease;
+}
+
+.drop-zone.dragover {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.dark .drop-zone {
+  border-color: #4b5563;
+}
+
+.dark .drop-zone.dragover {
+  border-color: #60a5fa;
+  background-color: rgba(96, 165, 250, 0.05);
+}
+
+/* Barre latérale géospatiale */
+.geo-sidebar {
+  width: 320px;
+  overflow-y: auto;
+  transform: translateX(0);
+  transition: transform 0.3s ease-out, top 0.3s ease-out, bottom 0.3s ease-out;
+  z-index: 1000;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  position: fixed;
+  right: 0;
+  top: 0;
+  height: 100vh;
+  cursor: default;
+}
+
+.geo-sidebar.hidden {
+  transform: translateX(100%);
+}
+
+.geo-sidebar.position-top {
+  top: 0;
+  bottom: auto;
+  height: 50vh;
+}
+
+.geo-sidebar.position-bottom {
+  top: auto;
+  bottom: 0;
+  height: 50vh;
+}
+
+.geo-sidebar.position-right {
+  top: 0;
+  bottom: auto;
+  height: 100vh;
+}
+
+.geo-sidebar-header {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.75rem 1rem;
+  cursor: move;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.dark .geo-sidebar-header {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border-bottom-color: #334155;
+}
+
+.geo-sidebar-header:hover {
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+}
+
+.dark .geo-sidebar-header:hover {
+  background: linear-gradient(135deg, #334155 0%, #475569 100%);
+}
+
+.geo-sidebar-header.dragging {
+  cursor: grabbing;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+}
+
+.geo-sidebar-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dark .geo-sidebar-title {
+  color: #f1f5f9;
+}
+
+.geo-sidebar-header.dragging .geo-sidebar-title {
+  color: white;
+}
+
+.geo-sidebar-controls {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.geo-sidebar-control-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background: rgba(0, 0, 0, 0.1);
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.geo-sidebar-control-btn:hover {
+  background: rgba(0, 0, 0, 0.2);
+  color: #374151;
+  transform: scale(1.1);
+}
+
+.dark .geo-sidebar-control-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #9ca3af;
+}
+
+.dark .geo-sidebar-control-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #f1f5f9;
+}
+
+.geo-sidebar-header.dragging .geo-sidebar-control-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* Bouton toggle sidebar */
+.geo-sidebar-toggle {
+  position: fixed;
+  top: 100px;
+  right: 10px;
+  z-index: 60;
+  background: #3b82f6;
+  color: white;
+  padding: 12px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.geo-sidebar-toggle.sidebar-open {
+  right: 330px;
+}
+
+.geo-sidebar-toggle:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 8px -1px rgba(0, 0, 0, 0.15);
+}
+
+/* Container de la carte */
+.map-container {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+/* Styles pour les onglets */
+.tab-button {
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.tab-button.active {
+  background: white;
+  color: #1f2937;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.dark .tab-button.active {
+  background: #334155;
+  color: #f1f5f9;
+}
+
+/* Loading IA */
+.ai-loading {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 1023px) {
+  .geo-sidebar {
+    width: 100vw;
+    max-width: 90vw;
+  }
+  
+  .geo-sidebar-toggle {
+    top: 80px;
+  }
+  
+  .geo-sidebar-toggle.sidebar-open {
+    right: 10px;
+    opacity: 0.7;
+  }
+  
+  #map {
+    height: 400px;
+  }
+}
+
+@media (max-width: 640px) {
+  .geo-sidebar {
+    width: 100vw;
+    max-width: 95vw;
+  }
+  
+  #map {
+    height: 300px;
+    border-radius: 8px;
+  }
+}
+

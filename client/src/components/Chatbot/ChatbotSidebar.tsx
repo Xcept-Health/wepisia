@@ -483,7 +483,7 @@ export function ChatbotSidebar({
         style={{ width: isExpanded ? expandedWidth : width }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between px-4 py-2">
           <div className="flex items-center space-x-3">
      
           </div>
@@ -521,15 +521,15 @@ export function ChatbotSidebar({
           <TabsList className="grid grid-cols-3 mx-4 mt-4">
             <TabsTrigger value="chat" className="text-xs">
               <MessageSquare className="w-3 h-3 mr-2" />
-              Chat
+       
             </TabsTrigger>
             <TabsTrigger value="models" className="text-xs">
               <Brain className="w-3 h-3 mr-2" />
-              Outils
+ 
             </TabsTrigger>
             <TabsTrigger value="settings" className="text-xs">
               <Settings className="w-3 h-3 mr-2" />
-              Paramètres
+    
             </TabsTrigger>
           </TabsList>
 
@@ -813,35 +813,7 @@ export function ChatbotSidebar({
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                  Modèles disponibles
-                </h4>
-                <div className="space-y-2">
-                  {[
-                    { name: "GPT-4", description: "Analyse avancée", icon: Brain },
-                    { name: "Claude 3", description: "Raisonnement complexe", icon: Sparkles },
-                    { name: "OpenEPI Expert", description: "Spécialisé épidémiologie", icon: BookOpen },
-                  ].map((model, idx) => {
-                    const Icon = model.icon;
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
-                      >
-                        <Icon className="w-4 h-4 mr-3 text-blue-500" />
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{model.name}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {model.description}
-                          </div>
-                        </div>
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+
             </div>
           </TabsContent>
 
