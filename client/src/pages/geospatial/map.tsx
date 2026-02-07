@@ -1,42 +1,74 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, CircleMarker, useMap, useMapEvents, LayersControl, LayerGroup, Tooltip } from 'react-leaflet';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, CircleMarker, LayersControl, LayerGroup, Tooltip, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Papa from 'papaparse';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
+import axios from 'axios';
+import { ExternalLink, BookOpen, Calendar,Database, BrainCircuit, Settings2 } from 'lucide-react';
+// Additional imports for clustering and heatmap
+import MarkerClusterGroup from 'react-leaflet-markercluster';
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
+import 'leaflet.heat';
 
 // Types et interfaces
 interface DataRow {
   [key: string]: string | number;
 }
-
-interface GeoSidebarPosition {
-  top?: number;
-  bottom?: number;
-  right?: number;
-  left?: number;
+interface Dataset {
+  id: string;
+  name: string;
+  color: string;
+  data: DataRow[];
+  visible: boolean;
 }
-
-interface AITypes {
-  outbreak: boolean;
-  prediction: boolean;
-  spatial: boolean;
-  risk: boolean;
-  trends: boolean;
+interface DiseaseExample {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  source: {
+    organization: string;
+    year: number;
+    study: string;
+    url: string; // Lien vers la source
+    dataType: 'surveillance' | 'report' | 'study' | 'model';
+    credibility: 'high' | 'medium' | 'low';
+    lastUpdated: string;
+  };
+  countries: {
+    name: string;
+    lat: number;
+    lng: number;
+    cases: number;
+    incidenceRate: number;
+    population: number;
+    region: string;
+    sourceDetail: string; // Source spécifique pour ce pays
+  }[];
 }
-
 interface AIResults {
   summary: string;
   insights: string[];
   recommendations: string[];
   alerts: string[];
+  riskLevel: 'low' | 'medium' | 'high';
 }
-
-// Composant principal
+// Composant principal avec toutes les fonctionnalités
 const GeospatialVisualization: React.FC = () => {
-  // États
-  const [currentData, setCurrentData] = useState<DataRow[]>([]);
+  // États principaux
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'basic' | 'excel-ai' | 'advanced'>('basic');
   const [selectedColumns, setSelectedColumns] = useState({
@@ -51,7 +83,7 @@ const GeospatialVisualization: React.FC = () => {
   });
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [aiResults, setAiResults] = useState<AIResults | null>(null);
-  const [aiTypes, setAiTypes] = useState<AITypes>({
+  const [aiTypes, setAiTypes] = useState({
     outbreak: true,
     prediction: true,
     spatial: true,
@@ -60,64 +92,425 @@ const GeospatialVisualization: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [sidebarPosition, setSidebarPosition] = useState<'top' | 'bottom' | 'right'>('right');
-  const [isPipMode, setIsPipMode] = useState<boolean>(false);
   const [mapView, setMapView] = useState<'street' | 'satellite'>('street');
-  
+  // États pour le modal d'exemples
+  const [isExampleModalOpen, setIsExampleModalOpen] = useState<boolean>(false);
+  const [selectedDiseases, setSelectedDiseases] = useState<string[]>([]);
+  const [exampleProgress, setExampleProgress] = useState<number>(0);
   // Références
   const mapRef = useRef<L.Map>(null);
-  const sidebarRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pipContainerRef = useRef<HTMLDivElement>(null);
-  const markersLayerRef = useRef<L.LayerGroup>(null);
+  // Nouveaux états pour les paramètres de visualisation
+  const [markerSize, setMarkerSize] = useState<number>(15); // Taille des marqueurs (5-30)
+  const [colorScheme, setColorScheme] = useState<string>('sequential'); // Schéma de couleurs
+  const [clustering, setClustering] = useState<boolean>(true); // Clustering automatique
+  const [heatmap, setHeatmap] = useState<boolean>(false); // Superposer heatmap
+  const [animation, setAnimation] = useState<boolean>(false); // Animation temporelle (stub pour l'instant)
+  const [tooltips, setTooltips] = useState<boolean>(true); // Info-bulles au survol
+  const [displayLimit, setDisplayLimit] = useState<number | 'unlimited'>(1000); // Limite d'affichage
+  const [tileCache, setTileCache] = useState<boolean>(true); // Mise en cache des tuiles (pas directement implémentable, mais on garde l'état)
+  const [currentTimeFrame, setCurrentTimeFrame] = useState<number>(0); // Pour animation temporelle
 
-  // Données d'exemple
-  const sampleData: DataRow[] = [
-    { ville: 'Paris', latitude: 48.8566, longitude: 2.3522, cas: 150, population: 2161000, taux_incidence: 6.9 },
-    { ville: 'Lyon', latitude: 45.7640, longitude: 4.8357, cas: 89, population: 515695, taux_incidence: 17.3 },
-    { ville: 'Marseille', latitude: 43.2965, longitude: 5.3698, cas: 120, population: 861635, taux_incidence: 13.9 },
-    { ville: 'Toulouse', latitude: 43.6047, longitude: 1.4442, cas: 67, population: 471941, taux_incidence: 14.2 },
-    { ville: 'Nice', latitude: 43.7102, longitude: 7.2620, cas: 45, population: 342522, taux_incidence: 13.1 }
+  // Données d'exemple de maladies avec sources pour crédibilité
+  const diseaseExamples: DiseaseExample[] = [
+    {
+      id: 'ebola-2014-2016',
+      name: 'Épidémie Ebola 2014-2016',
+      description: 'Crise sanitaire majeure en Afrique de l\'Ouest avec transmission interhumaine prolongée',
+      icon: '🦠',
+      color: 'bg-red-500',
+      source: {
+        organization: 'Organisation Mondiale de la Santé (OMS)',
+        year: 2016,
+        study: 'Rapport final sur la flambée de maladie à virus Ebola en Afrique de l\'Ouest',
+        url: 'https://www.who.int/publications/i/item/ebola-situation-report-30-march-2016',
+        dataType: 'surveillance',
+        credibility: 'high',
+        lastUpdated: '2016-03-30'
+      },
+      countries: [
+        {
+          name: 'Guinée',
+          lat: 9.9456,
+          lng: -9.6966,
+          cases: 3814,
+          incidenceRate: 28.2,
+          population: 12414000,
+          region: 'Afrique de l\'Ouest',
+          sourceDetail: 'OMS - Rapport de situation Guinée, Mars 2016'
+        },
+        {
+          name: 'Sierra Leone',
+          lat: 8.4606,
+          lng: -11.7799,
+          cases: 14124,
+          incidenceRate: 195.3,
+          population: 7791000,
+          region: 'Afrique de l\'Ouest',
+          sourceDetail: 'OMS - Rapport de situation Sierra Leone, Mars 2016'
+        },
+        {
+          name: 'Liberia',
+          lat: 6.4281,
+          lng: -9.4295,
+          cases: 10675,
+          incidenceRate: 232.7,
+          population: 4854000,
+          region: 'Afrique de l\'Ouest',
+          sourceDetail: 'OMS - Rapport de situation Liberia, Mars 2016'
+        }
+      ]
+    },
+    {
+      id: 'covid-global',
+      name: 'COVID-19 Distribution Globale',
+      description: 'Données agrégées de la pandémie COVID-19 par pays - Phase de suivi post-pandémique',
+      icon: '🦠',
+      color: 'bg-blue-500',
+      source: {
+        organization: 'Johns Hopkins University Center for Systems Science and Engineering',
+        year: 2023,
+        study: 'COVID-19 Data Repository',
+        url: 'https://github.com/CSSEGISandData/COVID-19',
+        dataType: 'surveillance',
+        credibility: 'high',
+        lastUpdated: '2023-12-01'
+      },
+      countries: [
+        {
+          name: 'États-Unis',
+          lat: 37.0902,
+          lng: -95.7129,
+          cases: 103436829,
+          incidenceRate: 31156.8,
+          population: 331900000,
+          region: 'Amérique du Nord',
+          sourceDetail: 'CDC COVID Data Tracker, 2023'
+        },
+        {
+          name: 'Inde',
+          lat: 20.5937,
+          lng: 78.9629,
+          cases: 44994454,
+          incidenceRate: 3260.2,
+          population: 1380000000,
+          region: 'Asie du Sud',
+          sourceDetail: 'Ministry of Health India, 2023'
+        },
+        {
+          name: 'Brésil',
+          lat: -14.2350,
+          lng: -51.9253,
+          cases: 37711693,
+          incidenceRate: 17693.6,
+          population: 213000000,
+          region: 'Amérique du Sud',
+          sourceDetail: 'Ministério da Saúde Brasil, 2023'
+        },
+        {
+          name: 'France',
+          lat: 46.603354,
+          lng: 1.888334,
+          cases: 40125670,
+          incidenceRate: 59889.1,
+          population: 67750000,
+          region: 'Europe',
+          sourceDetail: 'Santé Publique France, 2023'
+        },
+        {
+          name: 'Afrique du Sud',
+          lat: -30.5595,
+          lng: 22.9375,
+          cases: 4076463,
+          incidenceRate: 6871.9,
+          population: 59310000,
+          region: 'Afrique',
+          sourceDetail: 'National Institute for Communicable Diseases, 2023'
+        }
+      ]
+    },
+    {
+      id: 'paludisme-2023',
+      name: 'Paludisme 2023',
+      description: 'Données sur le fardeau du paludisme dans les pays endémiques',
+      icon: '🦟',
+      color: 'bg-green-500',
+      source: {
+        organization: 'World Health Organization - Global Malaria Programme',
+        year: 2023,
+        study: 'World Malaria Report 2023',
+        url: 'https://www.who.int/teams/global-malaria-programme/reports/world-malaria-report-2023',
+        dataType: 'report',
+        credibility: 'high',
+        lastUpdated: '2023-11-30'
+      },
+      countries: [
+        {
+          name: 'Nigeria',
+          lat: 9.0820,
+          lng: 8.6753,
+          cases: 67500000,
+          incidenceRate: 327.5,
+          population: 206140000,
+          region: 'Afrique de l\'Ouest',
+          sourceDetail: 'OMS Rapport Mondial Paludisme 2023 - Nigeria'
+        },
+        {
+          name: 'RD Congo',
+          lat: -4.0383,
+          lng: 21.7587,
+          cases: 26300000,
+          incidenceRate: 295.5,
+          population: 89000000,
+          region: 'Afrique Centrale',
+          sourceDetail: 'OMS Rapport Mondial Paludisme 2023 - RDC'
+        },
+        {
+          name: 'Ouganda',
+          lat: 1.3733,
+          lng: 32.2903,
+          cases: 12800000,
+          incidenceRate: 279.0,
+          population: 45900000,
+          region: 'Afrique de l\'Est',
+          sourceDetail: 'OMS Rapport Mondial Paludisme 2023 - Ouganda'
+        },
+        {
+          name: 'Mozambique',
+          lat: -18.6657,
+          lng: 35.5296,
+          cases: 9810000,
+          incidenceRate: 314.4,
+          population: 31200000,
+          region: 'Afrique Australe',
+          sourceDetail: 'OMS Rapport Mondial Paludisme 2023 - Mozambique'
+        },
+        {
+          name: 'Burkina Faso',
+          lat: 12.2383,
+          lng: -1.5616,
+          cases: 12400000,
+          incidenceRate: 593.3,
+          population: 20900000,
+          region: 'Afrique de l\'Ouest',
+          sourceDetail: 'OMS Rapport Mondial Paludisme 2023 - Burkina Faso'
+        }
+      ]
+    },
+    {
+      id: 'cholera-yemen',
+      name: 'Choléra Yémen 2016-2023',
+      description: 'La plus grande épidémie de choléra jamais enregistrée dans l\'histoire',
+      icon: '💧',
+      color: 'bg-teal-500',
+      source: {
+        organization: 'UNICEF & WHO Cholera Task Force',
+        year: 2023,
+        study: 'Yemen Cholera Outbreak Response Report',
+        url: 'https://www.who.int/emergencies/situations/cholera-yemen-2023',
+        dataType: 'surveillance',
+        credibility: 'high',
+        lastUpdated: '2023-10-15'
+      },
+      countries: [
+        {
+          name: 'Yémen',
+          lat: 15.5527,
+          lng: 48.5164,
+          cases: 2500000,
+          incidenceRate: 838.9,
+          population: 29800000,
+          region: 'Moyen-Orient',
+          sourceDetail: 'OMS/UNICEF - Situation du choléra au Yémen, 2023'
+        },
+        {
+          name: 'Haïti',
+          lat: 18.9712,
+          lng: -72.2852,
+          cases: 820000,
+          incidenceRate: 72.6,
+          population: 11300000,
+          region: 'Caraïbes',
+          sourceDetail: 'Ministère de la Santé Haïti, 2023'
+        },
+        {
+          name: 'Somalie',
+          lat: 5.1521,
+          lng: 46.1996,
+          cases: 18000,
+          incidenceRate: 11.4,
+          population: 15800000,
+          region: 'Afrique de l\'Est',
+          sourceDetail: 'OMS - Rapport situation choléra Somalie, 2023'
+        }
+      ]
+    }
   ];
-
-  // Initialiser la carte
-  useEffect(() => {
-    if (mapRef.current) {
-      mapRef.current.invalidateSize();
-    }
-  }, [isSidebarOpen, sidebarPosition]);
-
-  // Gérer le thème
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
-    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = !isDarkMode;
-    setIsDarkMode(newTheme);
-    document.documentElement.classList.toggle('dark');
-    localStorage.setItem('theme', newTheme ? 'dark' : 'light');
+  // Fonction pour générer des exemples de données par continent
+  const generateContinentalData = () => {
+    const continents = [
+      { name: 'Afrique', countries: [
+        { name: 'Nigeria', lat: 9.0820, lng: 8.6753, cases: 5000, incidenceRate: 24.3, region: 'Ouest' },
+        { name: 'Égypte', lat: 26.8206, lng: 30.8025, cases: 1200, incidenceRate: 12.1, region: 'Nord' },
+        { name: 'Afrique du Sud', lat: -30.5595, lng: 22.9375, cases: 3500, incidenceRate: 59.0, region: 'Sud' },
+        { name: 'Kenya', lat: -1.2864, lng: 36.8172, cases: 1800, incidenceRate: 33.4, region: 'Est' },
+        { name: 'RD Congo', lat: -4.0383, lng: 21.7587, cases: 4200, incidenceRate: 47.2, region: 'Centre' }
+      ]},
+      { name: 'Europe', countries: [
+        { name: 'France', lat: 46.603354, lng: 1.888334, cases: 2800, incidenceRate: 41.8, region: 'Ouest' },
+        { name: 'Russie', lat: 61.5240, lng: 105.3188, cases: 6500, incidenceRate: 44.6, region: 'Est' },
+        { name: 'Allemagne', lat: 51.1657, lng: 10.4515, cases: 3200, incidenceRate: 38.4, region: 'Centre' },
+        { name: 'Suède', lat: 60.1282, lng: 18.6435, cases: 900, incidenceRate: 89.3, region: 'Nord' },
+        { name: 'Italie', lat: 41.8719, lng: 12.5674, cases: 2100, incidenceRate: 34.7, region: 'Sud' }
+      ]},
+      { name: 'Asie', countries: [
+        { name: 'Chine', lat: 35.8617, lng: 104.1954, cases: 15000, incidenceRate: 10.7, region: 'Est' },
+        { name: 'Inde', lat: 20.5937, lng: 78.9629, cases: 25000, incidenceRate: 18.1, region: 'Sud' },
+        { name: 'Japon', lat: 36.2048, lng: 138.2529, cases: 1800, incidenceRate: 14.2, region: 'Est' },
+        { name: 'Turquie', lat: 38.9637, lng: 35.2433, cases: 4200, incidenceRate: 50.1, region: 'Ouest' },
+        { name: 'Kazakhstan', lat: 48.0196, lng: 66.9237, cases: 1100, incidenceRate: 58.9, region: 'Centre' }
+      ]},
+      { name: 'Amérique', countries: [
+        { name: 'États-Unis', lat: 37.0902, lng: -95.7129, cases: 9800, incidenceRate: 29.6, region: 'Nord' },
+        { name: 'Brésil', lat: -14.2350, lng: -51.9253, cases: 7200, incidenceRate: 33.8, region: 'Sud' },
+        { name: 'Canada', lat: 56.1304, lng: -106.3468, cases: 1400, incidenceRate: 37.1, region: 'Nord' },
+        { name: 'Mexique', lat: 23.6345, lng: -102.5528, cases: 3800, incidenceRate: 29.5, region: 'Centre' },
+        { name: 'Argentine', lat: -38.4161, lng: -63.6167, cases: 2100, incidenceRate: 46.7, region: 'Sud' }
+      ]},
+      { name: 'Océanie', countries: [
+        { name: 'Australie', lat: -25.2744, lng: 133.7751, cases: 1200, incidenceRate: 47.2, region: 'Centre' },
+        { name: 'Nouvelle-Zélande', lat: -40.9006, lng: 174.8860, cases: 400, incidenceRate: 8.3, region: 'Est' },
+        { name: 'Papouasie-Nouvelle-Guinée', lat: -6.3150, lng: 143.9555, cases: 1800, incidenceRate: 201.5, region: 'Ouest' },
+        { name: 'Fidji', lat: -17.7134, lng: 178.0650, cases: 300, incidenceRate: 33.4, region: 'Nord' },
+        { name: 'Nouvelle-Calédonie', lat: -20.9043, lng: 165.6180, cases: 150, incidenceRate: 52.6, region: 'Sud' }
+      ]}
+    ];
+    return continents.flatMap(continent =>
+      continent.countries.map(country => ({
+        pays: country.name,
+        continent: continent.name,
+        region: country.region,
+        latitude: country.lat,
+        longitude: country.lng,
+        cas: country.cases,
+        taux_incidence: country.incidenceRate,
+        population: Math.floor(Math.random() * 50000000) + 1000000
+      }))
+    );
   };
-
+  const randomColor = () => '#' + Math.floor(Math.random()*16777215).toString(16);
+  // Charger un exemple de maladie
+  const loadDiseaseExample = async (diseaseId: string) => {
+    setIsLoading(true);
+    setExampleProgress(0);
+  
+    // Simuler le chargement avec une progression
+    const interval = setInterval(() => {
+      setExampleProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(interval);
+          return prev;
+        }
+        return prev + 10;
+      });
+    }, 100);
+    // Attendre un peu pour l'effet de chargement
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const disease = diseaseExamples.find(d => d.id === diseaseId);
+    if (disease) {
+      const data = disease.countries.map(country => ({
+        pays: country.name,
+        maladie: disease.name,
+        latitude: country.lat,
+        longitude: country.lng,
+        cas: country.cases,
+        taux_incidence: country.incidenceRate,
+        population: country.population,
+        region: country.region,
+        statut: country.cases > 1000000 ? 'Critique' :
+                country.cases > 100000 ? 'Élevé' :
+                country.cases > 10000 ? 'Modéré' : 'Faible'
+      }));
+      setDatasets(prev => [...prev, {
+        id: disease.id + '-' + Date.now(),
+        name: disease.name,
+        color: disease.color.replace('bg-', '#'),
+        data,
+        visible: true
+      }]);
+      setSelectedColumns({
+        lat: 'latitude',
+        lng: 'longitude',
+        value: 'cas',
+        time: ''
+      });
+    
+      setExampleProgress(100);
+      setTimeout(() => {
+        clearInterval(interval);
+        setIsLoading(false);
+        showNotification(`Données ${disease.name} chargées avec succès! Source: ${disease.source.organization} (${disease.source.year})`, 'success');
+      }, 500);
+    }
+  };
+  // Charger des données continentales
+  const loadContinentalData = async () => {
+    setIsLoading(true);
+    setExampleProgress(0);
+  
+    const interval = setInterval(() => {
+      setExampleProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(interval);
+          return prev;
+        }
+        return prev + 15;
+      });
+    }, 100);
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const data = generateContinentalData();
+    setDatasets(prev => [...prev, {
+      id: 'continental-' + Date.now(),
+      name: 'Données Continentales',
+      color: randomColor(),
+      data,
+      visible: true
+    }]);
+    setSelectedColumns({
+      lat: 'latitude',
+      lng: 'longitude',
+      value: 'cas',
+      time: ''
+    });
+  
+    setExampleProgress(100);
+    setTimeout(() => {
+      clearInterval(interval);
+      setIsLoading(false);
+      showNotification('Données continentales chargées avec succès! (Données simulées basées sur des tendances générales OMS)', 'success');
+    }, 500);
+  };
+  const loadSelectedExamples = async () => {
+    setIsExampleModalOpen(false);
+    for (const id of selectedDiseases) {
+      await loadDiseaseExample(id);
+    }
+    setSelectedDiseases([]);
+  };
   // Gestion des fichiers
   const handleFileUpload = (file: File) => {
     setIsLoading(true);
-    
+  
     const reader = new FileReader();
     const fileName = file.name.toLowerCase();
-    
+  
     if (fileName.endsWith('.csv')) {
       reader.onload = (e) => {
         Papa.parse(e.target?.result as string, {
           header: true,
           skipEmptyLines: true,
           complete: (results) => {
-            processData(results.data as DataRow[]);
+            processData(results.data as DataRow[], file.name);
           },
           error: (error) => {
             showNotification('Erreur de lecture CSV: ' + error.message, 'error');
@@ -133,9 +526,9 @@ const GeospatialVisualization: React.FC = () => {
           const workbook = XLSX.read(data, { type: 'array' });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           const jsonData = XLSX.utils.sheet_to_json(worksheet) as DataRow[];
-          processData(jsonData);
+          processData(jsonData, file.name);
         } catch (error) {
-          showNotification('Erreur de lecture Excel: ' + error.message, 'error');
+          showNotification('Erreur de lecture Excel: ' + (error as Error).message, 'error');
           setIsLoading(false);
         }
       };
@@ -145,914 +538,1418 @@ const GeospatialVisualization: React.FC = () => {
       setIsLoading(false);
     }
   };
-
-  const processData = (data: DataRow[]) => {
-    const filteredData = data.filter(row => 
-      Object.values(row).some(val => 
+  const processData = (data: DataRow[], fileName: string) => {
+    const filteredData = data.filter(row =>
+      Object.values(row).some(val =>
         val !== null && val !== undefined && val !== '' && String(val).trim() !== ''
       )
     );
-    
-    setCurrentData(filteredData);
-    
-    // Auto-détection des colonnes
+  
     const columns = Object.keys(filteredData[0] || {});
     const detectedCols = autoDetectColumns(columns);
     setSelectedColumns(detectedCols);
-    
+    setDatasets(prev => [...prev, {
+      id: Date.now().toString(),
+      name: fileName || 'Uploaded Data',
+      color: randomColor(),
+      data: filteredData,
+      visible: true
+    }]);
+  
     setIsLoading(false);
     showNotification(`${filteredData.length} lignes chargées`, 'success');
   };
-
   const autoDetectColumns = (columns: string[]) => {
     const newCols = { ...selectedColumns };
-    
+  
     columns.forEach(col => {
       const lowerCol = col.toLowerCase();
       if (['lat', 'latitude', 'y'].some(p => lowerCol.includes(p))) {
         newCols.lat = col;
       } else if (['lng', 'lon', 'longitude', 'x'].some(p => lowerCol.includes(p))) {
         newCols.lng = col;
-      } else if (['value', 'val', 'count', 'cas', 'incidence'].some(p => lowerCol.includes(p))) {
+      } else if (['value', 'val', 'count', 'cas', 'incidence', 'cases'].some(p => lowerCol.includes(p))) {
         newCols.value = col;
-      } else if (['time', 'date', 'timestamp'].some(p => lowerCol.includes(p))) {
+      } else if (['time', 'date', 'timestamp', 'jour'].some(p => lowerCol.includes(p))) {
         newCols.time = col;
       }
     });
-    
+  
     return newCols;
   };
-
-  // Analyse IA
+  // Analyse IA avec Groq API
   const runAIAnalysis = async () => {
-    if (currentData.length === 0) {
+    const flatData = datasets.filter(d => d.visible).flatMap(d => d.data);
+    if (flatData.length === 0) {
       showNotification('Veuillez charger des données d\'abord', 'warning');
       return;
     }
-
     setIsLoading(true);
-    
-    // Simulation d'analyse IA
-    setTimeout(() => {
-      const results: AIResults = {
-        summary: `Analyse IA effectuée sur ${currentData.length} points`,
-        insights: [
-          'Tendance croissante détectée dans le nord',
-          'Cluster principal identifié autour de Paris',
-          'Variabilité modérée entre les régions'
-        ],
-        recommendations: [
-          'Renforcer la surveillance dans les clusters identifiés',
-          'Mettre à jour les données quotidiennement',
-          'Investigation des causes de variabilité'
-        ],
-        alerts: [
-          'Risque élevé détecté dans 2 zones',
-          'Augmentation prévue de 15% dans les 7 jours'
-        ]
-      };
-      
-      setAiResults(results);
+    try {
+      // Résumer les données pour l'API (pour éviter d'envoyer trop de données)
+      const dataSummary = JSON.stringify({
+        totalPoints: flatData.length,
+        stats: calculateStats(),
+        sample: flatData.slice(0, 5), // Envoyer un échantillon
+        types: aiTypes
+      });
+      const response = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions', // Endpoint Groq (adapté à Groq, qui proxy OpenAI-like)
+        {
+          model: 'mixtral-8x7b-32768', // Exemple de modèle Groq
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an epidemiological AI analyst. Analyze the provided data and return in JSON format: {summary: string, insights: array<string>, recommendations: array<string>, alerts: array<string>, riskLevel: "low"|"medium"|"high"}'
+            },
+            {
+              role: 'user',
+              content: `Analyze this epidemiological data: ${dataSummary}`
+            }
+          ]
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      const aiResponse = JSON.parse(response.data.choices[0].message.content) as AIResults;
+      setAiResults(aiResponse);
+      showNotification('Analyse IA terminée avec succès!', 'success');
+    } catch (error) {
+      showNotification('Erreur lors de l\'analyse IA: ' + (error as Error).message, 'error');
+    } finally {
       setIsLoading(false);
-      showNotification('Analyse IA terminée', 'success');
-    }, 2000);
+    }
   };
-
   // Export
   const exportMap = async () => {
     const mapElement = document.querySelector('.leaflet-container');
     if (!mapElement) return;
-
     try {
       const canvas = await html2canvas(mapElement as HTMLElement, {
         useCORS: true,
-        backgroundColor: null
+        backgroundColor: null,
+        scale: 2
       });
-      
+    
       const link = document.createElement('a');
-      link.download = 'carte_epidemiologique.png';
+      link.download = `carte_epidemiologique_${new Date().toISOString().split('T')[0]}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-      
-      showNotification('Carte exportée avec succès', 'success');
+    
+      showNotification('Carte exportée avec succès!', 'success');
     } catch (error) {
       showNotification('Erreur d\'exportation', 'error');
     }
   };
-
   // Notifications
   const showNotification = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
-    // Implémentation simple de notification
-    const colors = {
-      success: 'bg-green-500',
-      error: 'bg-red-500',
-      warning: 'bg-yellow-500',
-      info: 'bg-blue-500'
-    };
-
     const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in`;
+    notification.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-slide-in ${
+      type === 'success' ? 'bg-green-500' :
+      type === 'error' ? 'bg-red-500' :
+      type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'
+    } text-white`;
     notification.textContent = message;
     notification.setAttribute('role', 'alert');
-
     document.body.appendChild(notification);
-
     setTimeout(() => {
       notification.remove();
     }, 3000);
   };
+  // Calculer les statistiques
+  const calculateStats = () => {
+    const flatData = datasets.filter(d => d.visible).flatMap(d => d.data);
+    if (flatData.length === 0) return { total: 0, avg: 0, max: 0, min: 0 };
+  
+    const values = flatData
+      .map(row => parseFloat(row[selectedColumns.value] as string) || 0)
+      .filter(val => !isNaN(val));
+  
+    const total = values.reduce((a, b) => a + b, 0);
+    const avg = values.length > 0 ? total / values.length : 0;
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+  
+    return { total, avg, max, min };
+  };
+  const stats = calculateStats();
+  const updateDataset = (id: string, updates: Partial<Dataset>) => {
+    setDatasets(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+  };
+  const removeDataset = (id: string) => {
+    setDatasets(prev => prev.filter(d => d.id !== id));
+  };
+  const toggleDiseaseSelection = (id: string) => {
+    setSelectedDiseases(prev =>
+      prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
+    );
+  };
 
-  // Composants de style inline (répliqués de l'original)
-  const styles = {
-    mapContainer: {
-      height: '600px',
-      borderRadius: '12px',
-      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-      transition: 'width 0.3s ease-out'
-    },
-    sidebar: {
-      width: '320px',
-      background: 'white',
-      boxShadow: '-4px 0 6px -1px rgba(0, 0, 0, 0.1)'
-    },
-    darkSidebar: {
-      background: 'rgb(30, 41, 59)'
+  // Fonction pour obtenir la couleur basée sur le schéma sélectionné
+  const getMarkerColor = (value: number) => {
+    switch (colorScheme) {
+      case 'sequential':
+        return value > 1000000 ? '#ef4444' :
+               value > 100000 ? '#f59e0b' :
+               value > 10000 ? '#10b981' : '#3b82f6';
+      case 'diverging':
+        return value > 500000 ? '#b91c1c' :
+               value > 100000 ? '#ea580c' :
+               value > 0 ? '#059669' : '#1d4ed8';
+      case 'categorical':
+        return '#' + Math.floor(Math.random() * 16777215).toString(16); // Couleur aléatoire par catégorie
+      case 'red-green':
+        return value > 1000000 ? '#ff0000' :
+               value > 100000 ? '#ff9900' :
+               value > 10000 ? '#00ff00' : '#009900';
+      case 'blue-red':
+        return value > 1000000 ? '#ff0000' :
+               value > 100000 ? '#ff6666' :
+               value > 10000 ? '#6666ff' : '#0000ff';
+      case 'viridis':
+        return value > 1000000 ? '#440154' :
+               value > 100000 ? '#3b528b' :
+               value > 10000 ? '#21918c' : '#5ec962';
+      case 'plasma':
+        return value > 1000000 ? '#0d0887' :
+               value > 100000 ? '#7e03a8' :
+               value > 10000 ? '#cc4778' : '#f89540';
+      default:
+        return '#3b82f6';
     }
   };
+
+  // Logique pour l'animation temporelle (simple : cycle à travers les frames si colonne time existe)
+  useEffect(() => {
+    if (animation && selectedColumns.time) {
+      const interval = setInterval(() => {
+        setCurrentTimeFrame(prev => (prev + 1) % 10); // Exemple : 10 frames
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [animation, selectedColumns.time]);
+
+  // Ajouter la heatmap layer si activée
+  useEffect(() => {
+    if (mapRef.current && heatmap) {
+      const flatData = datasets.filter(d => d.visible).flatMap(d => d.data);
+      const heatPoints = flatData.map(row => {
+        const lat = parseFloat(row[selectedColumns.lat] as string);
+        const lng = parseFloat(row[selectedColumns.lng] as string);
+        const value = parseFloat(row[selectedColumns.value] as string) || 0;
+        return [lat, lng, value / 1000000]; // Intensité normalisée
+      }).filter(([lat, lng]) => !isNaN(lat) && !isNaN(lng));
+
+      const heatLayer = (L as any).heatLayer(heatPoints, {
+        radius: 25,
+        blur: 15,
+        maxZoom: 17,
+      });
+      heatLayer.addTo(mapRef.current);
+
+      return () => {
+        mapRef.current?.removeLayer(heatLayer);
+      };
+    }
+  }, [heatmap, datasets, selectedColumns]);
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
       <div className="min-h-full flex relative">
         {/* Overlay mobile */}
-        <div 
+        <div
           className={`geo-sidebar-overlay ${isSidebarOpen ? 'show' : ''}`}
           onClick={() => setIsSidebarOpen(false)}
         />
-        
+      
         {/* Contenu principal */}
-        <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8">
+        <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8 relative"> {/* Added relative for sidebar overlay */}
           {/* En-tête */}
           <div className="mb-8">
-            <nav className="flex mb-4" aria-label="Breadcrumb">
-              <ol className="flex items-center space-x-2 text-sm">
-                <li>
-                  <a href="/" className="text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 transition-colors duration-200">
-                    Accueil
-                  </a>
-                </li>
-                <li>
-                  <svg className="w-4 h-4 text-gray-300 dark:text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                </li>
-                <li>
-                  <span className="text-gray-900 dark:text-gray-100 font-medium">
-                    Simulation épidemiologique
-                  </span>
-                </li>
-              </ol>
-            </nav>
-            
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                  Visualisation géospatiale
-                </h1>
-                <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm">
-                  Visualisation interactive sur carte
-                </p>
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                    Visualisation Géospatiale Épidémiologique
+                  </h1>
+                  <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm">
+                    Analyse interactive des données de santé mondiale
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-
           {/* Section carte */}
           <div className="mb-8">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={() => setMapView(mapView === 'street' ? 'satellite' : 'street')}
-                    className="control-button px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
-                  >
-                    {mapView === 'street' ? 'Vue Satellite' : 'Vue Rue'}
-                  </button>
-                  <button 
-                    onClick={() => mapRef.current?.setView([46.2276, 2.2137], 6)}
-                    className="control-button px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
-                  >
-                    Réinitialiser
-                  </button>
-                </div>
-              </div>
-              
-              {/* Carte Leaflet */}
-              <div className="map-container">
-                <MapContainer
-                  center={[46.2276, 2.2137]}
-                  zoom={6}
-                  style={styles.mapContainer}
-                  ref={mapRef}
-                >
-                  <LayersControl position="topright">
-                    {mapView === 'street' ? (
-                      <LayersControl.BaseLayer checked name="OpenStreetMap">
-                        <TileLayer
-                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-                      </LayersControl.BaseLayer>
-                    ) : (
-                      <LayersControl.BaseLayer checked name="Satellite">
-                        <TileLayer
-                          attribution='&copy; Esri'
-                          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        />
-                      </LayersControl.BaseLayer>
-                    )}
-                    
-                    {/* Marqueurs */}
-                    <LayerGroup>
-                      {currentData.map((row, index) => {
-                        const lat = parseFloat(row[selectedColumns.lat] as string);
-                        const lng = parseFloat(row[selectedColumns.lng] as string);
-                        const value = parseFloat(row[selectedColumns.value] as string) || 0;
-                        
-                        if (isNaN(lat) || isNaN(lng)) return null;
-                        
-                        return (
-                          <CircleMarker
-                            key={index}
-                            center={[lat, lng]}
-                            radius={10 + value / 10}
-                            pathOptions={{
-                              fillColor: value > 100 ? '#ef4444' : value > 50 ? '#f59e0b' : '#10b981',
-                              color: '#fff',
-                              weight: 2,
-                              opacity: 1,
-                              fillOpacity: 0.7
-                            }}
-                          >
-                            <Tooltip>
-                              <div className="custom-tooltip">
-                                <strong>{row['ville'] || 'Point'}</strong><br />
-                                Latitude: {lat}<br />
-                                Longitude: {lng}<br />
-                                Cas: {value}
-                              </div>
-                            </Tooltip>
-                          </CircleMarker>
-                        );
-                      })}
-                    </LayerGroup>
-                  </LayersControl>
-                </MapContainer>
-              </div>
-              
-              {/* Légende */}
-              <div className="legend mt-4 p-4 rounded-lg bg-white dark:bg-slate-800 shadow">
-                <h4 className="font-medium mb-2">Légende</h4>
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                    <span className="text-sm">Faible incidence</span>
+            <Card>
+              <CardHeader>
+                <CardTitle>Carte Interactive des Données Épidémiologiques</CardTitle>
+                <CardDescription>
+                  Visualisez la distribution spatiale des cas et identifiez les zones à risque
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex space-x-2">
+                      <Button
+                        onClick={() => setMapView(mapView === 'street' ? 'satellite' : 'street')}
+                        variant="outline"
+                        size="sm"
+                      >
+                        {mapView === 'street' ? 'Vue Satellite' : 'Vue Standard'}
+                      </Button>
+                      <Button
+                        onClick={() => mapRef.current?.setView([20, 0], 2)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Vue Monde
+                      </Button>
+                    </div>
+                    <Badge variant={datasets.reduce((sum, d) => sum + (d.visible ? d.data.length : 0), 0) > 0 ? "default" : "secondary"}>
+                      {datasets.reduce((sum, d) => sum + (d.visible ? d.data.length : 0), 0)} points
+                    </Badge>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
-                    <span className="text-sm">Incidence modérée</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded-full bg-red-500"></div>
-                    <span className="text-sm">Forte incidence</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+                
+                  {/* Carte Leaflet */}
+                  <div className="map-container">
+                    <MapContainer
+                      center={[20, 0]}
+                      zoom={2}
+                      style={{ height: '500px', borderRadius: '8px' }}
+                      ref={mapRef}
+                    >
+                      <LayersControl position="topright">
+                        {mapView === 'street' ? (
+                          <LayersControl.BaseLayer checked name="Standard">
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                          </LayersControl.BaseLayer>
+                        ) : (
+                          <LayersControl.BaseLayer checked name="Satellite">
+                            <TileLayer
+                              attribution='&copy; Esri'
+                              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            />
+                          </LayersControl.BaseLayer>
+                        )}
+                      
+                        {/* Marqueurs */}
+                        {datasets.map((dataset) => dataset.visible && (
+  <LayerGroup key={dataset.id}>
+    {clustering ? (
+      <MarkerClusterGroup>
+        {dataset.data
+          .slice(0, displayLimit !== 'unlimited' ? displayLimit : undefined)
+          .map((row, index) => {
+            const lat = parseFloat(row[selectedColumns.lat] as string);
+            const lng = parseFloat(row[selectedColumns.lng] as string);
+            const value = parseFloat(row[selectedColumns.value] as string) || 0;
+            const name = row['pays'] || row['country'] || 'Point';
+            const incidence = row['taux_incidence'] || row['incidenceRate'] || 0;
+          
+            if (isNaN(lat) || isNaN(lng)) return null;
+          
+            // Calculer la taille basée sur la valeur et le paramètre markerSize
+            const radius = Math.max(5, Math.min(30, (Math.sqrt(value) / 10) * (markerSize / 15)));
+          
+            // Filtrer par time si animation active (exemple simple : assume time est un nombre)
+            if (animation && selectedColumns.time) {
+              const timeValue = parseFloat(row[selectedColumns.time] as string) % 10;
+              if (timeValue !== currentTimeFrame) return null;
+            }
 
+            return (
+              <CircleMarker
+                key={index}
+                center={[lat, lng]}
+                radius={radius}
+                pathOptions={{
+                  fillColor: getMarkerColor(value),
+                  color: dataset.color,
+                  weight: 2,
+                  opacity: 1,
+                  fillOpacity: 0.7
+                }}
+              >
+                {tooltips && (
+                  <Tooltip>
+                    <div className="p-2">
+                      <h4 className="font-bold">{name}</h4>
+                      <p>Groupe: {dataset.name}</p>
+                      <p>Cas: {value.toLocaleString()}</p>
+                      <p>Taux d'incidence: {incidence}</p>
+                      {row['maladie'] && <p>Maladie: {row['maladie']}</p>}
+                    </div>
+                  </Tooltip>
+                )}
+                <Popup>
+                  <div className="p-2">
+                    <h3 className="font-bold text-lg">{name}</h3>
+                    <div className="space-y-1 mt-2">
+                      {Object.entries(row)
+                        .filter(([key]) => !['latitude', 'longitude'].includes(key))
+                        .map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                            <span className="font-medium">{key}:</span>
+                            <span>{value}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
+      </MarkerClusterGroup>
+    ) : (
+      <>
+        {dataset.data
+          .slice(0, displayLimit !== 'unlimited' ? displayLimit : undefined)
+          .map((row, index) => {
+            const lat = parseFloat(row[selectedColumns.lat] as string);
+            const lng = parseFloat(row[selectedColumns.lng] as string);
+            const value = parseFloat(row[selectedColumns.value] as string) || 0;
+            const name = row['pays'] || row['country'] || 'Point';
+            const incidence = row['taux_incidence'] || row['incidenceRate'] || 0;
+          
+            if (isNaN(lat) || isNaN(lng)) return null;
+          
+            // Calculer la taille basée sur la valeur et le paramètre markerSize
+            const radius = Math.max(5, Math.min(30, (Math.sqrt(value) / 10) * (markerSize / 15)));
+          
+            // Filtrer par time si animation active (exemple simple : assume time est un nombre)
+            if (animation && selectedColumns.time) {
+              const timeValue = parseFloat(row[selectedColumns.time] as string) % 10;
+              if (timeValue !== currentTimeFrame) return null;
+            }
+
+            return (
+              <CircleMarker
+                key={index}
+                center={[lat, lng]}
+                radius={radius}
+                pathOptions={{
+                  fillColor: getMarkerColor(value),
+                  color: dataset.color,
+                  weight: 2,
+                  opacity: 1,
+                  fillOpacity: 0.7
+                }}
+              >
+                {tooltips && (
+                  <Tooltip>
+                    <div className="p-2">
+                      <h4 className="font-bold">{name}</h4>
+                      <p>Groupe: {dataset.name}</p>
+                      <p>Cas: {value.toLocaleString()}</p>
+                      <p>Taux d'incidence: {incidence}</p>
+                      {row['maladie'] && <p>Maladie: {row['maladie']}</p>}
+                    </div>
+                  </Tooltip>
+                )}
+                <Popup>
+                  <div className="p-2">
+                    <h3 className="font-bold text-lg">{name}</h3>
+                    <div className="space-y-1 mt-2">
+                      {Object.entries(row)
+                        .filter(([key]) => !['latitude', 'longitude'].includes(key))
+                        .map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                            <span className="font-medium">{key}:</span>
+                            <span>{value}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
+      </>
+    )}
+  </LayerGroup>
+))}
+                      </LayersControl>
+                    </MapContainer>
+                  </div>
+                  
+                
+                  {/* Légende */}
+                  <Card className="mt-4">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium">Légende</h4>
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 rounded-full bg-blue-500"></div>
+                            <span className="text-sm">Faible</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                            <span className="text-sm">Modéré</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
+                            <span className="text-sm">Élevé</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 rounded-full bg-red-500"></div>
+                            <span className="text-sm">Critique</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
           {/* Statistiques */}
-          <div className="mb-8">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Statistiques Géospatiales
-              </h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-primary-600">
-                    {currentData.length}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">Points totaux</div>
-                </div>
-                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-secondary-600">
-                    {currentData.length > 0 
-                      ? (currentData.reduce((sum, row) => sum + (parseFloat(row[selectedColumns.value] as string) || 0), 0) / currentData.length).toFixed(2)
-                      : '0'
-                    }
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">Valeur moyenne</div>
-                </div>
-                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-accent-600">
-                    {currentData.length > 0
-                      ? Math.max(...currentData.map(row => parseFloat(row[selectedColumns.value] as string) || 0))
-                      : '0'
-                    }
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">Valeur maximale</div>
-                </div>
-                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-red-600">
-                    {currentData.length > 0
-                      ? Math.min(...currentData.map(row => parseFloat(row[selectedColumns.value] as string) || 0))
-                      : '0'
-                    }
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">Valeur minimale</div>
-                </div>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-500">Points de Données</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{datasets.reduce((sum, d) => sum + (d.visible ? d.data.length : 0), 0)}</div>
+                <p className="text-xs text-gray-500">Total des enregistrements</p>
+              </CardContent>
+            </Card>
+          
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-500">Cas Moyens</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.avg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <p className="text-xs text-gray-500">Par localisation</p>
+              </CardContent>
+            </Card>
+          
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-500">Maximum</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.max.toLocaleString()}</div>
+                <p className="text-xs text-gray-500">Zone la plus touchée</p>
+              </CardContent>
+            </Card>
+          
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-500">Minimum</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.min.toLocaleString()}</div>
+                <p className="text-xs text-gray-500">Zone la moins touchée</p>
+              </CardContent>
+            </Card>
           </div>
-
           {/* Aperçu des données */}
-          {currentData.length > 0 && (
-            <div className="mb-8">
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  Aperçu des Données
-                </h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-600">
-                    <thead className="bg-gray-50 dark:bg-slate-700">
-                      <tr>
-                        {Object.keys(currentData[0]).map((key) => (
-                          <th key={key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+          {datasets.length > 0 && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Aperçu des Données</CardTitle>
+                <CardDescription>
+                  {datasets.reduce((sum, d) => sum + (d.visible ? d.data.length : 0), 0)} enregistrements chargés
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[300px]">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2 font-medium">Groupe</th>
+                        {datasets.length > 0 && datasets[0].data.length > 0 && Object.keys(datasets[0].data[0]).slice(0, 5).map((key) => (
+                          <th key={key} className="text-left p-2 font-medium">
                             {key}
                           </th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-600">
-                      {currentData.slice(0, 5).map((row, index) => (
-                        <tr key={index}>
-                          {Object.values(row).map((value, idx) => (
-                            <td key={idx} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                              {value}
+                    <tbody>
+                      {datasets.filter(d => d.visible).flatMap(d => d.data.slice(0, 5).map(row => ({...row, _group: d.name}))).map((row, index) => (
+                        <tr key={index} className="border-b hover:bg-gray-50 dark:hover:bg-slate-800">
+                          <td className="p-2">{row._group as string}</td>
+                          {Object.values(row).slice(0, 5).map((value, idx) => (
+                            <td key={idx} className="p-2">
+                              {typeof value === 'number' ? value.toLocaleString() : String(value)}
                             </td>
                           ))}
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-              </div>
-            </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
+          {/* Résultats IA */}
+          {aiResults && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  Résultats de l'Analyse
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Alert className={`mb-4 ${
+                  aiResults.riskLevel === 'high' ? 'bg-red-50 border-red-200' :
+                  aiResults.riskLevel === 'medium' ? 'bg-yellow-50 border-yellow-200' :
+                  'bg-green-50 border-green-200'
+                }`}>
+                  <AlertTitle>
+                    Niveau de risque:
+                    <Badge className="ml-2" variant={
+                      aiResults.riskLevel === 'high' ? 'destructive' :
+                      aiResults.riskLevel === 'medium' ? 'secondary' : 'outline'
+                    }>
+                      {aiResults.riskLevel === 'high' ? 'ÉLEVÉ' :
+                       aiResults.riskLevel === 'medium' ? 'MODÉRÉ' : 'FAIBLE'}
+                    </Badge>
+                  </AlertTitle>
+                  <AlertDescription>{aiResults.summary}</AlertDescription>
+                </Alert>
+              
+                <Tabs defaultValue="insights" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="insights">Insights</TabsTrigger>
+                    <TabsTrigger value="recommendations">Recommandations</TabsTrigger>
+                    <TabsTrigger value="alerts">Alertes</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="insights" className="space-y-2">
+                    {aiResults.insights.map((insight, idx) => (
+                      <div key={idx} className="flex items-start gap-2 p-2 bg-blue-50 rounded">
+                        <span>{insight}</span>
+                      </div>
+                    ))}
+                  </TabsContent>
+                  <TabsContent value="recommendations" className="space-y-2">
+                    {aiResults.recommendations.map((rec, idx) => (
+                      <div key={idx} className="flex items-start gap-2 p-2 bg-green-50 rounded">
+                        <span>{rec}</span>
+                      </div>
+                    ))}
+                  </TabsContent>
+                  <TabsContent value="alerts" className="space-y-2">
+                    {aiResults.alerts.map((alert, idx) => (
+                      <div key={idx} className="flex items-start gap-2 p-2 bg-red-50 rounded">
+                        <span>{alert}</span>
+                      </div>
+                    ))}
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
           )}
         </main>
-
         {/* Bouton toggle sidebar */}
-        <button
-          id="geo-sidebar-toggle"
-          className="geo-sidebar-toggle"
+        <Button
+          className="geo-sidebar-toggle absolute top-4 right-4 z-40" // Positioned over the map
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          aria-label="Ouvrir ou fermer la barre latérale"
+          size="icon"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isSidebarOpen ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"} />
           </svg>
-        </button>
-
-        {/* Sidebar géospatiale */}
-        <aside
-          id="geo-sidebar"
-          ref={sidebarRef}
-          className={`geo-sidebar ${isDarkMode ? 'dark:bg-slate-800' : 'bg-white'} shadow-sm border-l border-gray-200 dark:border-slate-700 position-${sidebarPosition} ${isSidebarOpen ? '' : 'hidden'}`}
-          style={isDarkMode ? { ...styles.sidebar, ...styles.darkSidebar } : styles.sidebar}
-        >
-          {/* Header */}
-          <div className="geo-sidebar-header">
-            <div className="geo-sidebar-title">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19l-7-7 7-7m5.5 14l7-7-7-7" />
-              </svg>
-              <span>Configuration Géospatiale</span>
-            </div>
-            <div className="geo-sidebar-controls">
-              <button 
-                onClick={() => setSidebarPosition('top')}
-                className="geo-sidebar-control-btn"
-                title="Position haute"
-              >
-                ↑
-              </button>
-              <button 
-                onClick={() => setSidebarPosition('bottom')}
-                className="geo-sidebar-control-btn"
-                title="Position basse"
-              >
-                ↓
-              </button>
-              <button 
-                onClick={() => setSidebarPosition('right')}
-                className="geo-sidebar-control-btn"
-                title="Position droite"
-              >
-                →
-              </button>
-              <button 
+        </Button>
+        {/* Sidebar géospatiale - Opens over the map */}
+        {isSidebarOpen && (
+          <aside
+            className={`geo-sidebar absolute top-0 right-0 h-full w-80 ${isDarkMode ? 'dark:bg-slate-800' : 'bg-white'} shadow-sm border-l border-gray-200 dark:border-slate-700 z-30 overflow-y-auto`} // Over map, fixed width
+          >
+            {/* Header */}
+            <div className="geo-sidebar-header p-4 flex justify-between items-center">
+              <div className="geo-sidebar-title flex items-center space-x-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19l-7-7 7-7m5.5 14l7-7-7-7" />
+                </svg>
+                <span>Configuration</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
                 onClick={() => setIsSidebarOpen(false)}
-                className="geo-sidebar-control-btn"
-                title="Fermer"
               >
                 ×
-              </button>
+              </Button>
             </div>
-          </div>
           
-          <div className="geo-sidebar-content p-6">
-            {/* Configuration de visualisation */}
-            <div className="mb-8">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Configuration de la Visualisation
-              </h2>
+            <ScrollArea className="p-6">
+              <Tabs defaultValue="data" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 mb-4">
+                  <TabsTrigger value="data"> <Database></Database> </TabsTrigger>
+                  <TabsTrigger value="analysis"> <BrainCircuit></BrainCircuit> </TabsTrigger>
+                  <TabsTrigger value="settings"> <Settings2></Settings2> </TabsTrigger>
+                </TabsList>
               
-              {/* Onglets */}
-              <div className="mb-4">
-                <div className="flex space-x-1 bg-gray-100 dark:bg-slate-900 rounded-lg p-1 text-center">
-                  <button
-                    onClick={() => setActiveTab('basic')}
-                    className={`tab-button flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors text-center ${activeTab === 'basic' ? 'active' : ''}`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="m13.11 7.664 1.78 2.672" />
-                      <path d="m14.162 12.788-3.324 1.424" />
-                      <path d="m20 4-6.06 1.515" />
-                      <path d="M3 3v16a2 2 0 0 0 2 2h16" />
-                      <circle cx="12" cy="6" r="2" />
-                      <circle cx="16" cy="12" r="2" />
-                      <circle cx="9" cy="15" r="2" />
-                    </svg>
-                  </button>
-                  
-                  <button
-                    onClick={() => setActiveTab('excel-ai')}
-                    className={`tab-button flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors text-center ${activeTab === 'excel-ai' ? 'active' : ''}`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-                      <path d="M9 13a4.5 4.5 0 0 0 3-4" />
-                      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
-                      <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
-                      <path d="M6 18a4 4 0 0 1-1.967-.516" />
-                      <path d="M12 13h4" />
-                      <path d="M12 18h6a2 2 0 0 1 2 2v1" />
-                      <path d="M12 8h8" />
-                      <path d="M16 8V5a2 2 0 0 1 2-2" />
-                      <circle cx="16" cy="13" r=".5" />
-                      <circle cx="18" cy="3" r=".5" />
-                      <circle cx="20" cy="21" r=".5" />
-                      <circle cx="20" cy="8" r=".5" />
-                    </svg>
-                  </button>
-                  
-                  <button
-                    onClick={() => setActiveTab('advanced')}
-                    className={`tab-button flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors text-center ${activeTab === 'advanced' ? 'active' : ''}`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 17H5" />
-                      <path d="M19 7h-9" />
-                      <circle cx="17" cy="17" r="3" />
-                      <circle cx="7" cy="7" r="3" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              
-              {/* Contenu onglet Basique */}
-              {activeTab === 'basic' && (
-                <div id="content-basic" className="tab-content">
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <label htmlFor="lat-column" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Colonne Latitude
-                      </label>
-                      <select
-                        id="lat-column"
-                        value={selectedColumns.lat}
-                        onChange={(e) => setSelectedColumns({...selectedColumns, lat: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
+                <TabsContent value="data" className="space-y-6">
+                  {/* Section exemples */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Exemples de Données</CardTitle>
+                      <CardDescription>
+                        Chargez des données épidémiologiques pré-définies
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Button
+                        className="w-full"
+                        onClick={() => setIsExampleModalOpen(true)}
                       >
-                        <option value="">Sélectionner...</option>
-                        {currentData.length > 0 && Object.keys(currentData[0]).map((col) => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="lng-column" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Colonne Longitude
-                      </label>
-                      <select
-                        id="lng-column"
-                        value={selectedColumns.lng}
-                        onChange={(e) => setSelectedColumns({...selectedColumns, lng: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
-                      >
-                        <option value="">Sélectionner...</option>
-                        {currentData.length > 0 && Object.keys(currentData[0]).map((col) => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="value-column" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Colonne Valeur
-                      </label>
-                      <select
-                        id="value-column"
-                        value={selectedColumns.value}
-                        onChange={(e) => setSelectedColumns({...selectedColumns, value: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
-                      >
-                        <option value="">Sélectionner...</option>
-                        {currentData.length > 0 && Object.keys(currentData[0]).map((col) => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  
-                  {/* Filtres */}
-                  <div className="mt-6">
-                    <h3 className="text-md font-medium text-gray-900 dark:text-white mb-3">Filtres</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label htmlFor="value-min" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Valeur minimale
-                        </label>
-                        <input
-                          type="number"
-                          id="value-min"
-                          placeholder="Min"
-                          value={filters.min === -Infinity ? '' : filters.min}
-                          onChange={(e) => setFilters({...filters, min: e.target.value ? parseFloat(e.target.value) : -Infinity})}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="value-max" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Valeur maximale
-                        </label>
-                        <input
-                          type="number"
-                          id="value-max"
-                          placeholder="Max"
-                          value={filters.max === Infinity ? '' : filters.max}
-                          onChange={(e) => setFilters({...filters, max: e.target.value ? parseFloat(e.target.value) : Infinity})}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-700 dark:text-white"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Boutons d'action */}
-                  <div className="mt-6 space-y-3">
-                    <button
-                      onClick={() => showNotification('Visualisation mise à jour', 'success')}
-                      disabled={!selectedColumns.lat || !selectedColumns.lng}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Visualiser sur la carte
-                    </button>
-                    <button
-                      onClick={exportMap}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
-                    >
-                      Exporter la carte
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {/* Contenu onglet Excel IA */}
-              {activeTab === 'excel-ai' && (
-                <div id="content-excel-ai" className="tab-content">
-                  <div className="space-y-4">
-                    {/* Analyse IA automatique */}
-                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 p-4 rounded-lg border border-purple-200 dark:border-purple-700">
-                      <h3 className="text-md font-semibold text-purple-800 dark:text-purple-300 mb-2 flex items-center">
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        Analyse IA Épidémiologique
-                      </h3>
-                      <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">
-                        L'IA analyse automatiquement vos données pour détecter des patterns épidémiologiques et générer des insights.
-                      </p>
-                      <button
+                        Charger un exemple
+                      </Button>
+                    
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={loadContinentalData}
+                      >
+                        Données Continentales
+                      </Button>
+                    </CardContent>
+                  </Card>
+                  {/* Section chargement fichiers */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Chargement de Fichiers</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className="drop-zone rounded-lg p-6 text-center mb-4 border-2 border-dashed border-gray-300 hover:border-blue-500 transition-colors"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('dragover');
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove('dragover');
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('dragover');
+                          if (e.dataTransfer.files.length > 0) {
+                            handleFileUpload(e.dataTransfer.files[0]);
+                          }
+                        }}
+                      >
+                        <div className="space-y-4">
+                          <div className="mx-auto w-12 h-12 text-gray-400">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              Glissez-déposez votre fichier ou
+                              <Button
+                                variant="link"
+                                className="ml-1"
+                                onClick={() => fileInputRef.current?.click()}
+                              >
+                                cliquez pour parcourir
+                              </Button>
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              CSV, Excel (.xlsx, .xls)
+                            </p>
+                          </div>
+                        </div>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          className="hidden"
+                          accept=".csv,.xlsx,.xls"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              handleFileUpload(e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </div>
+                    
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={exportMap}
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Exporter
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          className="flex-1"
+                          onClick={() => {
+                            setDatasets([]);
+                            setAiResults(null);
+                            showNotification('Données effacées', 'info');
+                          }}
+                        >
+                          Effacer tout
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  {/* Configuration colonnes */}
+                  {datasets.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Configuration des Colonnes</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Colonne Latitude</label>
+                          <select
+                            value={selectedColumns.lat}
+                            onChange={(e) => setSelectedColumns({...selectedColumns, lat: e.target.value})}
+                            className="w-full px-3 py-2 border rounded-md"
+                          >
+                            <option value="">Sélectionner...</option>
+                            {datasets[0]?.data[0] && Object.keys(datasets[0].data[0]).map((col) => (
+                              <option key={col} value={col}>{col}</option>
+                            ))}
+                          </select>
+                        </div>
+                      
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Colonne Longitude</label>
+                          <select
+                            value={selectedColumns.lng}
+                            onChange={(e) => setSelectedColumns({...selectedColumns, lng: e.target.value})}
+                            className="w-full px-3 py-2 border rounded-md"
+                          >
+                            <option value="">Sélectionner...</option>
+                            {datasets[0]?.data[0] && Object.keys(datasets[0].data[0]).map((col) => (
+                              <option key={col} value={col}>{col}</option>
+                            ))}
+                          </select>
+                        </div>
+                      
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Colonne Valeur</label>
+                          <select
+                            value={selectedColumns.value}
+                            onChange={(e) => setSelectedColumns({...selectedColumns, value: e.target.value})}
+                            className="w-full px-3 py-2 border rounded-md"
+                          >
+                            <option value="">Sélectionner...</option>
+                            {datasets[0]?.data[0] && Object.keys(datasets[0].data[0]).map((col) => (
+                              <option key={col} value={col}>{col}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+              
+                <TabsContent value="analysis" className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Analyse Épidémiologique</CardTitle>
+                      <CardDescription>
+                        Détection automatique de patterns et risques via IA (Groq)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Button
+                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600"
                         onClick={runAIAnalysis}
-                        disabled={isLoading}
-                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium py-2 px-4 rounded-md transition-all transform hover:scale-105"
+                        disabled={isLoading || datasets.reduce((sum, d) => sum + (d.visible ? d.data.length : 0), 0) === 0}
                       >
                         {isLoading ? (
-                          <div className="flex items-center justify-center">
+                          <div className="flex items-center">
                             <div className="ai-loading mr-2"></div>
                             Analyse en cours...
                           </div>
                         ) : (
                           <>
-                            <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
                             Lancer l'Analyse IA
                           </>
                         )}
-                      </button>
-                    </div>
+                      </Button>
                     
-                    {/* Types d'analyses */}
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Types d'analyses disponibles :</h4>
-                      <div className="grid grid-cols-1 gap-2">
-                        {Object.entries(aiTypes).map(([key, value]) => (
-                          <label key={key} className="flex items-center space-x-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={value}
-                              onChange={(e) => setAiTypes({...aiTypes, [key]: e.target.checked})}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-gray-700 dark:text-gray-300">
-                              {key === 'outbreak' && 'Détection d\'épidémies'}
-                              {key === 'prediction' && 'Modélisation prédictive'}
-                              {key === 'spatial' && 'Analyse spatiale'}
-                              {key === 'risk' && 'Évaluation des risques'}
-                              {key === 'trends' && 'Analyse des tendances'}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    {/* Résultats IA */}
-                    {aiResults && (
-                      <div id="ai-results" className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-700">
-                        <h4 className="text-md font-semibold text-green-800 dark:text-green-300 mb-2 flex items-center">
-                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          Résultats de l'Analyse IA
-                        </h4>
-                        <div id="ai-results-content" className="text-sm text-green-700 dark:text-green-300">
-                          <div className="space-y-3">
-                            <div className="font-medium">{aiResults.summary}</div>
-                            
-                            {aiResults.alerts.length > 0 && (
-                              <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded border border-red-200 dark:border-red-700">
-                                <h5 className="font-semibold text-red-800 dark:text-red-300 mb-2">🚨 Alertes</h5>
-                                <ul className="space-y-1">
-                                  {aiResults.alerts.map((alert, idx) => (
-                                    <li key={idx} className="text-red-700 dark:text-red-300 text-sm">• {alert}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            
-                            {aiResults.insights.length > 0 && (
-                              <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-700">
-                                <h5 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">💡 Insights</h5>
-                                <ul className="space-y-1">
-                                  {aiResults.insights.map((insight, idx) => (
-                                    <li key={idx} className="text-blue-700 dark:text-blue-300 text-sm">• {insight}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            
-                            {aiResults.recommendations.length > 0 && (
-                              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded border border-yellow-200 dark:border-yellow-700">
-                                <h5 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-2">📋 Recommandations</h5>
-                                <ul className="space-y-1">
-                                  {aiResults.recommendations.map((rec, idx) => (
-                                    <li key={idx} className="text-yellow-700 dark:text-yellow-300 text-sm">• {rec}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-3 flex space-x-2">
-                          <button className="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded transition-colors">
-                            Exporter PDF
-                          </button>
-                          <button className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded transition-colors">
-                            Visualiser
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              {/* Contenu onglet Avancé */}
-              {activeTab === 'advanced' && (
-                <div id="content-advanced" className="tab-content">
-                  <div className="space-y-4">
-                    {/* Paramètres de visualisation */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                        Paramètres de visualisation
-                      </h4>
                       <div className="space-y-3">
+                        <h4 className="text-sm font-medium">Types d'analyses :</h4>
+                        <div className="space-y-2">
+                          {Object.entries(aiTypes).map(([key, value]) => (
+                            <div key={key} className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                id={`analysis-${key}`}
+                                checked={value}
+                                onChange={(e) => setAiTypes({...aiTypes, [key]: e.target.checked})}
+                                className="rounded"
+                              />
+                              <label htmlFor={`analysis-${key}`} className="text-sm">
+                                {key === 'outbreak' && 'Détection d\'épidémies'}
+                                {key === 'prediction' && 'Modélisation prédictive'}
+                                {key === 'spatial' && 'Analyse spatiale'}
+                                {key === 'risk' && 'Évaluation des risques'}
+                                {key === 'trends' && 'Analyse des tendances'}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              
+                <TabsContent value="settings" className="space-y-6">
+                  {/* Paramètres de visualisation globaux */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Paramètres de Visualisation</CardTitle>
+                      <CardDescription>
+                        Configurez l'apparence générale de la carte et des données
+                      </CardDescription>
+                    </CardHeader>
+                   
+                    <CardContent className="space-y-6">
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-medium">Apparence des marqueurs</h4>
                         <div>
-                          <label htmlFor="marker-size" className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          <label className="block text-sm font-medium mb-2">
                             Taille des marqueurs
+                            <span className="ml-2 text-xs text-gray-500">(5-30px)</span>
                           </label>
                           <input
                             type="range"
-                            id="marker-size"
                             min="5"
                             max="30"
-                            defaultValue="15"
+                            value={markerSize}
                             className="w-full"
+                            onChange={(e) => setMarkerSize(parseInt(e.target.value))}
                           />
                         </div>
+                       
                         <div>
-                          <label htmlFor="opacity" className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-                            Opacité
-                          </label>
-                          <input
-                            type="range"
-                            id="opacity"
-                            min="0.1"
-                            max="1"
-                            step="0.1"
-                            defaultValue="0.7"
-                            className="w-full"
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="color-scheme" className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-                            Schéma de couleurs
-                          </label>
-                          <select
-                            id="color-scheme"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded dark:bg-slate-700 dark:text-white"
+                          <label className="block text-sm font-medium mb-2">Schéma de couleurs</label>
+                          <select 
+                            value={colorScheme}
+                            onChange={(e) => setColorScheme(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-md"
                           >
-                            <option value="red-green">Rouge-Vert</option>
+                            <option value="sequential">Séquentiel (faible à élevé)</option>
+                            <option value="diverging">Divergent (centre extrêmes)</option>
+                            <option value="categorical">Catégoriel (par maladie)</option>
+                            <option value="red-green">Rouge-Vert (daltonien friendly)</option>
                             <option value="blue-red">Bleu-Rouge</option>
                             <option value="viridis">Viridis</option>
                             <option value="plasma">Plasma</option>
                           </select>
                         </div>
                       </div>
+                     
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-medium">Fonctions avancées</h4>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <input 
+                                type="checkbox" 
+                                id="clustering" 
+                                checked={clustering}
+                                onChange={(e) => setClustering(e.target.checked)}
+                                className="rounded" 
+                              />
+                              <label htmlFor="clustering" className="text-sm">
+                                Clustering automatique
+                                <span className="block text-xs text-gray-500">
+                                  Regroupe les points proches pour une meilleure lisibilité
+                                </span>
+                              </label>
+                            </div>
+                            <Badge variant="outline" size="sm">Recommandé</Badge>
+                          </div>
+                         
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <input 
+                                type="checkbox" 
+                                id="heatmap" 
+                                checked={heatmap}
+                                onChange={(e) => setHeatmap(e.target.checked)}
+                                className="rounded" 
+                              />
+                              <label htmlFor="heatmap" className="text-sm">
+                                Superposer la heatmap
+                                <span className="block text-xs text-gray-500">
+                                  Affiche les zones de densité en surimpression
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+                         
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <input 
+                                type="checkbox" 
+                                id="animation" 
+                                checked={animation}
+                                onChange={(e) => setAnimation(e.target.checked)}
+                                className="rounded" 
+                              />
+                              <label htmlFor="animation" className="text-sm">
+                                Animation temporelle
+                                <span className="block text-xs text-gray-500">
+                                  Anime l'évolution dans le temps si disponible
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+                         
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <input 
+                                type="checkbox" 
+                                id="tooltips" 
+                                checked={tooltips}
+                                onChange={(e) => setTooltips(e.target.checked)}
+                                className="rounded" 
+                              />
+                              <label htmlFor="tooltips" className="text-sm">
+                                Info-bulles au survol
+                                <span className="block text-xs text-gray-500">
+                                  Affiche les détails au survol de la souris
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                     
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-medium">Performance</h4>
+                        <div>
+                          <label className="block text-sm font-medium mb-2">
+                            Limite d'affichage
+                            <span className="ml-2 text-xs text-gray-500">(points max simultanés)</span>
+                          </label>
+                          <select 
+                            value={displayLimit.toString()}
+                            onChange={(e) => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
+                            className="w-full px-3 py-2 border rounded-md"
+                          >
+                            <option value="1000">1000 points (Rapide)</option>
+                            <option value="5000">5000 points (Équilibré)</option>
+                            <option value="10000">10000 points (Détaillé)</option>
+                            <option value="unlimited">Illimité (Expert)</option>
+                          </select>
+                        </div>
+                       
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="checkbox" 
+                            id="cache" 
+                            checked={tileCache}
+                            onChange={(e) => setTileCache(e.target.checked)}
+                            className="rounded" 
+                          />
+                          <label htmlFor="cache" className="text-sm">
+                            Mise en cache des tuiles
+                            <span className="block text-xs text-gray-500">
+                              Améliore les performances de navigation
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    </CardContent>
+                   
+                    <CardFooter>
+                      <Button variant="outline" className="w-full" onClick={() => {
+                        setMarkerSize(15);
+                        setColorScheme('sequential');
+                        setClustering(true);
+                        setHeatmap(false);
+                        setAnimation(false);
+                        setTooltips(true);
+                        setDisplayLimit(1000);
+                        setTileCache(true);
+                        showNotification('Paramètres réinitialisés', 'info');
+                      }}>
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Réinitialiser les paramètres
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                 
+                  {/* Datasets chargés - Configuration individuelle */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Datasets chargés</h3>
+                      <Badge variant={datasets.length > 0 ? "default" : "secondary"}>
+                        {datasets.length} dataset{datasets.length !== 1 ? 's' : ''}
+                      </Badge>
                     </div>
-                    
-                    {/* Clustering */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Clustering</h4>
-                      <label className="flex items-center space-x-2 text-sm">
-                        <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                        <span className="text-gray-700 dark:text-gray-300">Activer le clustering automatique</span>
-                      </label>
-                    </div>
-                    
-                    {/* Heatmap */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Carte de chaleur</h4>
-                      <label className="flex items-center space-x-2 text-sm">
-                        <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                        <span className="text-gray-700 dark:text-gray-300">Afficher la heatmap</span>
-                      </label>
-                    </div>
-                    
-                    {/* Animation temporelle */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Animation temporelle</h4>
-                      <div className="space-y-2">
-                        <label htmlFor="time-column" className="block text-xs text-gray-600 dark:text-gray-400">
-                          Colonne temporelle
-                        </label>
-                        <select
-                          id="time-column"
-                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded dark:bg-slate-700 dark:text-white"
-                        >
-                          <option value="">Aucune</option>
-                          {currentData.length > 0 && Object.keys(currentData[0]).map((col) => (
-                            <option key={col} value={col}>{col}</option>
+                   
+                    {datasets.length === 0 ? (
+                      <Card>
+                        <CardContent className="py-8 text-center">
+                          <div className="mx-auto w-12 h-12 text-gray-400 mb-4">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                          <p className="text-gray-500">Aucun dataset chargé</p>
+                          <p className="text-sm text-gray-400 mt-1">
+                            Chargez un fichier ou un exemple pour commencer
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <ScrollArea className="h-[400px] pr-4">
+                        <div className="space-y-4">
+                          {datasets.map((ds) => (
+                            <Card key={ds.id}>
+                              <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-3">
+                                    <div
+                                      className="w-3 h-3 rounded-full"
+                                      style={{ backgroundColor: ds.color }}
+                                    />
+                                    <input
+                                      value={ds.name}
+                                      onChange={e => updateDataset(ds.id, { name: e.target.value })}
+                                      className="text-lg font-bold bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none"
+                                      placeholder="Nom du dataset"
+                                    />
+                                  </div>
+                                  <Badge variant={ds.visible ? "default" : "outline"}>
+                                    {ds.visible ? "Visible" : "Caché"}
+                                  </Badge>
+                                </div>
+                              </CardHeader>
+                             
+                              <CardContent className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="block text-sm font-medium mb-2">Couleur du dataset</label>
+                                    <div className="flex items-center space-x-3">
+                                      <input
+                                        type="color"
+                                        value={ds.color}
+                                        onChange={e => updateDataset(ds.id, { color: e.target.value })}
+                                        className="w-10 h-10 cursor-pointer rounded border"
+                                      />
+                                      <code className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded">
+                                        {ds.color}
+                                      </code>
+                                    </div>
+                                  </div>
+                                 
+                                  <div>
+                                    <label className="block text-sm font-medium mb-2">Statistiques</label>
+                                    <div className="text-sm space-y-1">
+                                      <div className="flex justify-between">
+                                        <span className="text-gray-500">Points:</span>
+                                        <span className="font-medium">{ds.data.length}</span>
+                                      </div>
+                                      {selectedColumns.value && (
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Moyenne:</span>
+                                          <span className="font-medium">
+                                            {(() => {
+                                              const values = ds.data.map(row =>
+                                                parseFloat(row[selectedColumns.value] as string) || 0
+                                              ).filter(v => !isNaN(v));
+                                              const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                                              return avg.toLocaleString(undefined, { maximumFractionDigits: 1 });
+                                            })()}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                               
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
+                                    <div className="flex items-center space-x-2">
+                                      <input
+                                        type="checkbox"
+                                        id={`visible-${ds.id}`}
+                                        checked={ds.visible}
+                                        onChange={e => updateDataset(ds.id, { visible: e.target.checked })}
+                                        className="rounded"
+                                      />
+                                      <label htmlFor={`visible-${ds.id}`} className="text-sm">
+                                        Afficher sur la carte
+                                      </label>
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {ds.visible ? "✅ Actif" : "❌ Masqué"}
+                                    </div>
+                                  </div>
+                                 
+                                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
+                                    <div className="text-sm">
+                                      <div className="font-medium">Transparence</div>
+                                      <div className="text-xs text-gray-500">Opacité des marqueurs</div>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="10"
+                                      max="100"
+                                      defaultValue="70"
+                                      className="w-24"
+                                      onChange={(e) => {
+                                        // Implémenter la logique de transparence si nécessaire
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </CardContent>
+                             
+                              <CardFooter className="flex justify-between border-t pt-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(JSON.stringify(ds.data.slice(0, 10)));
+                                    showNotification('10 premières lignes copiées', 'success');
+                                  }}
+                                >
+                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                  Copier échantillon
+                                </Button>
+                               
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (window.confirm(`Supprimer le dataset "${ds.name}" ?`)) {
+                                      removeDataset(ds.id);
+                                      showNotification(`Dataset "${ds.name}" supprimé`, 'info');
+                                    }
+                                  }}
+                                >
+                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                  Supprimer
+                                </Button>
+                              </CardFooter>
+                            </Card>
                           ))}
-                        </select>
-                        <button className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium py-1 px-3 rounded transition-colors">
-                          ▶ Lancer l'animation
-                        </button>
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </ScrollArea>
+          </aside>
+        )}
+      </div>
+      {/* Modal de sélection des exemples - Improved design: Larger, better spacing, cards with shadows */}
+      <Dialog open={isExampleModalOpen} onOpenChange={setIsExampleModalOpen}>
+        <DialogContent className="sm:max-w-[825px] max-h-[80vh] overflow-hidden">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-2xl">Choisir un exemple de données épidémiologiques</DialogTitle>
+            <DialogDescription className="text-gray-500">
+              Sélectionnez une maladie ou un scénario pour charger des données de simulation. Sources incluses pour crédibilité.
+            </DialogDescription>
+          </DialogHeader>
+        
+          {isLoading ? (
+            <div className="py-12 text-center">
+              <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
+              <p className="text-xl font-semibold mb-4">Chargement des données...</p>
+              <Progress value={exampleProgress} className="w-full h-2" />
+              <p className="text-sm text-gray-500 mt-4">{exampleProgress}% complété</p>
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[60vh] pr-4 -mx-6 px-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Exemples par maladie */}
+                {diseaseExamples.map((disease) => (
+              
+                  <Card
+                    key={disease.id}
+                    className={`cursor-pointer ${
+                      selectedDiseases.includes(disease.id) ? 'ring-0' : ''
+                    }`}
+                    onClick={() => toggleDiseaseSelection(disease.id)}
+                  >
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          {/* Titre cliquable qui ouvre la source */}
+                          <a
+                            href={disease.source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group"
+                            onClick={(e) => e.stopPropagation()} // Empêche la sélection de la carte
+                          >
+                            <CardTitle className="text-lg group-hover:text-primary transition-colors flex items-center gap-2">
+                              {disease.name}
+                              <ExternalLink className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </CardTitle>
+                          </a>
+                        
+                          <CardDescription className="text-sm mt-2">
+                            {disease.description}
+                          </CardDescription>
+                        </div>
+                      
+                        <Badge variant="outline" className="ml-2">
+                          {disease.countries.length} pays
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                  
+                    <CardContent>
+                      <div className="space-y-3">
+                        {/* Section source avec lien */}
+                        <div className="flex items-start gap-2 text-sm">
+                          <BookOpen className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <div className="font-medium mb-1">Source principale:</div>
+                            <a
+                              href={disease.source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline flex items-center gap-1"
+                            >
+                              {disease.source.organization}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                            <div className="text-xs text-gray-600 mt-1">
+                              {disease.source.study} ({disease.source.year})
+                            </div>
+                          </div>
+                        </div>
+                      
+                        {/* Indicateur de crédibilité */}
+                        <div className="flex items-center gap-2 text-sm">
+                          <div className={`w-3 h-3 rounded-full ${
+                            disease.source.credibility === 'high' ? 'bg-green-500' :
+                            disease.source.credibility === 'medium' ? 'bg-yellow-500' : 'bg-red-500'
+                          }`} />
+                          <span className="font-medium">Fiabilité:</span>
+                          <span className="capitalize">{disease.source.credibility}</span>
+                          <Badge variant="outline" size="sm">
+                            {disease.source.dataType}
+                          </Badge>
+                        </div>
+                      
+                        {/* Dernière mise à jour */}
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Calendar className="w-4 h-4" />
+                          <span>Dernière mise à jour: {disease.source.lastUpdated}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  
+                    <CardFooter className="flex justify-between border-t pt-4">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          loadDiseaseExample(disease.id);
+                        }}
+                      >
+                        Charger
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                ))}
+              
+                {/* Exemple continental */}
+                <Card
+                  className="cursor-pointer hover:shadow-xl transition-shadow duration-200 border-2 border-dashed border-gray-300 "
+                  onClick={loadContinentalData}
+                >
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Données Continentales Complètes</CardTitle>
+                    <CardDescription className="mt-1 text-sm">
+                      25 pays répartis sur 5 continents (5 pays par continent)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Continents:</span>
+                        <span className="font-medium">Afrique, Europe, Asie, Amérique, Océanie</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Points de données:</span>
+                        <span className="font-medium">25</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Régions:</span>
+                        <span className="font-medium">Centre, Est, Ouest, Nord, Sud</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Source:</span>
+                        <span className="font-medium text-blue-600 hover:underline">
+                          Données simulées basées sur tendances OMS
+                        </span>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Chargement des données */}
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Chargement des Données
-              </h2>
-              
-              {/* Zone drag and drop */}
-              <div
-                id="drop-zone"
-                className="drop-zone rounded-lg p-6 text-center mb-4"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.classList.add('dragover');
-                }}
-                onDragLeave={(e) => {
-                  e.currentTarget.classList.remove('dragover');
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.classList.remove('dragover');
-                  if (e.dataTransfer.files.length > 0) {
-                    handleFileUpload(e.dataTransfer.files[0]);
-                  }
-                }}
-              >
-                <div className="space-y-4">
-                  <div className="mx-auto w-12 h-12 text-gray-400">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Glissez-déposez votre fichier CSV/Excel ici ou
-                      <label
-                        htmlFor="file-input"
-                        className="text-primary-600 hover:text-primary-500 cursor-pointer font-medium ml-1"
-                      >
-                        cliquez pour parcourir
-                      </label>
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Formats supportés: CSV, Excel (.xlsx, .xls)
-                    </p>
-                  </div>
-                </div>
-                <input
-                  type="file"
-                  id="file-input"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      handleFileUpload(e.target.files[0]);
-                    }
-                  }}
-                />
+                  </CardContent>
+                  <CardFooter>
+                    <Button
+                      className="w-full"
+                      variant="outline"
+                      onClick={loadContinentalData}
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Charger les données continentales
+                    </Button>
+                  </CardFooter>
+                </Card>
               </div>
-              
-              {/* Boutons d'exemple */}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => {
-                    setCurrentData(sampleData);
-                    setSelectedColumns({
-                      lat: 'latitude',
-                      lng: 'longitude',
-                      value: 'cas',
-                      time: ''
-                    });
-                    showNotification('Données d\'exemple chargées', 'success');
-                  }}
-                  className="control-button px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium"
-                >
-                  Charger des données d'exemple
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentData([]);
-                    setAiResults(null);
-                    showNotification('Données effacées', 'info');
-                  }}
-                  className="control-button px-4 py-2 bg-gray-600 text-white rounded-lg text-sm font-medium"
-                >
-                  Effacer les données
-                </button>
-              </div>
-            </div>
-          </div>
-        </aside>
-      </div>
+            </ScrollArea>
+          )}
+        
+          <DialogFooter className="pt-4 border-t mt-4">
+            <Button variant="outline" onClick={() => setIsExampleModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={loadSelectedExamples}
+              disabled={selectedDiseases.length === 0 || isLoading}
+            >
+              Charger {selectedDiseases.length} sélectionnés
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

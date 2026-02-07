@@ -779,3 +779,38 @@
   }
 }
 
+/* Styles spécifiques pour la carte Leaflet */
+.leaflet-container {
+  z-index: 1 !important; /* Forcer un z-index bas */
+  position: relative !important;
+}
+
+/* Container de la carte avec isolation */
+.map-container {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 12px;
+  isolation: isolate; /* Crée un nouveau contexte d'empilement */
+}
+
+/* Ajuster les contrôles de la carte */
+.leaflet-top.leaflet-left {
+  z-index: 1000 !important;
+}
+
+.leaflet-control-container {
+  z-index: 1000 !important;
+}
+
+/* S'assurer que la sidebar est au-dessus */
+.geo-sidebar {
+  z-index: 100 !important;
+}
+
+/* Le bouton toggle doit être au-dessus de tout */
+.geo-sidebar-toggle {
+  z-index: 1000 !important;
+}
+
+

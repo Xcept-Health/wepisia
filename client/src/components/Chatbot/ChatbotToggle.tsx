@@ -106,15 +106,7 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
         </div>
       </div>
 
-      {/* Indicateur de badge pour mobile */}
-      {notificationCount > 0 && !isActive && (
-        <div className="fixed bottom-24 right-24 z-40 lg:hidden">
-          <div className="relative">
-            <div className="absolute animate-ping h-5 w-5 bg-red-500 rounded-full opacity-75" />
-            <div className="relative h-4 w-4 bg-red-500 rounded-full border-2 border-white dark:border-gray-900" />
-          </div>
-        </div>
-      )}
+   
     </>
   );
 }
