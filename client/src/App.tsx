@@ -40,6 +40,8 @@ import Workspace from "./pages/Workspace";
 
 import Geospatial from "./pages/geospatial/map";
 
+import EpidemiologicalSimulation from "./pages/simulation/dashboard";
+
 
 
 function Router() {
@@ -82,6 +84,8 @@ function Router() {
       <Route path="/workspace" component={Workspace} />
       {/* Geospatial Route */}
       <Route path="/geospatial/map" component={Geospatial} />
+      {/* Epidemiological Simulation Route */}
+      <Route path="/simulation/dashboard" component={EpidemiologicalSimulation} />
       {/* Fallback route */}
       <Route component={NotFound} />
     </Switch>

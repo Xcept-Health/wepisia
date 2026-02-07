@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import { 
-  Menu, X, Home, BarChart3, Calculator, Zap, Users, 
+  Menu, X, Home,  Users, 
   BookOpen, Settings, Blocks, Proportions as ProportionsIcon,
   Grid2x2, ChartNoAxesCombined, TableCellsSplit, ScanEye,
   CirclePercent, SquarePercent, BetweenHorizontalStart, 
@@ -123,7 +123,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       id: 'simulation',
       title: 'Simulation',
       items: [
-        { id: 'epidemic_simulation', label: 'Épidémiologique', icon: Biohazard, href: '/simulation/epidemic' },
+        { id: 'epidemic_simulation', label: 'Simulateur', icon: Biohazard, href: '/simulation/dashboard' },
       ]
     },
     {
