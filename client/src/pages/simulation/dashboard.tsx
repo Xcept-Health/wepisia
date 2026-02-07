@@ -13,13 +13,14 @@ import {
   Legend,
   Filler
 } from 'chart.js';
+import annotationPlugin from 'chartjs-plugin-annotation';
 import { Line, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { HexColorPicker } from 'react-colorful';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler, annotationPlugin);
 
 // Types et interfaces
 type ModelType = 'SIR' | 'SEIR' | 'SEIRD' | 'SEIQRD' | 'CUSTOM';
@@ -38,6 +39,7 @@ interface Region {
   longitude: number;
   color: string;
   connections: string[];
+  cluster?: number; // Pour clustering optionnel
 }
 
 interface SimulationParams {
@@ -58,6 +60,20 @@ interface Intervention {
   startDay: number;
 }
 
+interface Scenario {
+  name: string;
+  params: SimulationParams;
+  interventions: Intervention[];
+}
+
+interface NetworkSettings {
+  chargeStrength: number;
+  linkDistance: number;
+  enableClustering: boolean;
+  nodeShape: 'circle' | 'square' | 'triangle';
+  linkStyle: 'solid' | 'dashed';
+}
+
 const initialRegions: Region[] = [
   {
     id: 'idf',
@@ -71,7 +87,8 @@ const initialRegions: Region[] = [
     latitude: 48.8566,
     longitude: 2.3522,
     color: '#3b82f6',
-    connections: ['ara', 'nor', 'ger', 'uk']
+    connections: ['ara', 'nor', 'ger', 'uk'],
+    cluster: 1
   },
   {
     id: 'ara',
@@ -85,7 +102,8 @@ const initialRegions: Region[] = [
     latitude: 45.7640,
     longitude: 4.8357,
     color: '#10b981',
-    connections: ['idf', 'paca', 'occ', 'ita', 'ger']
+    connections: ['idf', 'paca', 'occ', 'ita', 'ger'],
+    cluster: 1
   },
   {
     id: 'paca',
@@ -99,7 +117,8 @@ const initialRegions: Region[] = [
     latitude: 43.9352,
     longitude: 6.0679,
     color: '#f59e0b',
-    connections: ['ara', 'occ', 'ita']
+    connections: ['ara', 'occ', 'ita'],
+    cluster: 1
   },
   {
     id: 'ger',
@@ -113,7 +132,8 @@ const initialRegions: Region[] = [
     latitude: 52.52,
     longitude: 13.405,
     color: '#ef4444',
-    connections: ['idf', 'ara', 'ita', 'spa', 'uk']
+    connections: ['idf', 'ara', 'ita', 'spa', 'uk'],
+    cluster: 2
   },
   {
     id: 'ita',
@@ -127,7 +147,8 @@ const initialRegions: Region[] = [
     latitude: 41.9028,
     longitude: 12.4964,
     color: '#6b7280',
-    connections: ['ara', 'paca', 'ger']
+    connections: ['ara', 'paca', 'ger'],
+    cluster: 2
   },
   {
     id: 'spa',
@@ -141,7 +162,8 @@ const initialRegions: Region[] = [
     latitude: 40.4168,
     longitude: -3.7038,
     color: '#a855f7',
-    connections: ['ger', 'uk', 'paca']
+    connections: ['ger', 'uk', 'paca'],
+    cluster: 3
   },
   {
     id: 'uk',
@@ -155,7 +177,8 @@ const initialRegions: Region[] = [
     latitude: 51.5074,
     longitude: -0.1278,
     color: '#eab308',
-    connections: ['idf', 'ger', 'spa']
+    connections: ['idf', 'ger', 'spa'],
+    cluster: 3
   },
   {
     id: 'nor',
@@ -169,7 +192,8 @@ const initialRegions: Region[] = [
     latitude: 49.1829,
     longitude: -0.3707,
     color: '#22c55e',
-    connections: ['idf', 'uk']
+    connections: ['idf', 'uk'],
+    cluster: 1
   },
   {
     id: 'occ',
@@ -183,9 +207,88 @@ const initialRegions: Region[] = [
     latitude: 43.6047,
     longitude: 1.4442,
     color: '#ec4899',
-    connections: ['ara', 'paca', 'spa']
+    connections: ['ara', 'paca', 'spa'],
+    cluster: 1
   }
 ];
+
+const predefinedScenarios: Scenario[] = [
+  {
+    name: 'Base',
+    params: {
+      model: 'SEIRD',
+      beta: 0.3,
+      sigma: 0.2,
+      gamma: 0.1,
+      mu: 0.01,
+      delta: 0.05,
+      theta: 0.1,
+      R0: 2.5,
+      mobility: 0.1
+    },
+    interventions: []
+  },
+  {
+    name: 'Confinement Strict',
+    params: {
+      model: 'SEIRD',
+      beta: 0.3,
+      sigma: 0.2,
+      gamma: 0.1,
+      mu: 0.01,
+      delta: 0.05,
+      theta: 0.1,
+      R0: 2.5,
+      mobility: 0.05 // Mobilité réduite
+    },
+    interventions: [
+      { type: 'Confinement', effectiveness: 60, startDay: 10 }
+    ]
+  },
+  {
+    name: 'Vaccination Massive',
+    params: {
+      model: 'SEIRD',
+      beta: 0.25,
+      sigma: 0.2,
+      gamma: 0.1,
+      mu: 0.01,
+      delta: 0.05,
+      theta: 0.1,
+      R0: 2.0,
+      mobility: 0.1
+    },
+    interventions: [
+      { type: 'Vaccination', effectiveness: 40, startDay: 30 },
+      { type: 'Distanciation', effectiveness: 20, startDay: 5 }
+    ]
+  },
+  {
+    name: 'Intervention Tardive',
+    params: {
+      model: 'SEIRD',
+      beta: 0.35,
+      sigma: 0.2,
+      gamma: 0.1,
+      mu: 0.015,
+      delta: 0.05,
+      theta: 0.1,
+      R0: 3.0,
+      mobility: 0.15
+    },
+    interventions: [
+      { type: 'Confinement', effectiveness: 50, startDay: 50 }
+    ]
+  }
+];
+
+const initialNetworkSettings: NetworkSettings = {
+  chargeStrength: -200,
+  linkDistance: 100,
+  enableClustering: false,
+  nodeShape: 'circle',
+  linkStyle: 'solid'
+};
 
 const EpidemiologicalSimulation: React.FC = () => {
   // États principaux
@@ -196,20 +299,13 @@ const EpidemiologicalSimulation: React.FC = () => {
   const [speed, setSpeed] = useState(1);
   const [interventions, setInterventions] = useState<Intervention[]>([]);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [selectedScenario, setSelectedScenario] = useState<string>('Base');
+  const [networkSettings, setNetworkSettings] = useState<NetworkSettings>(initialNetworkSettings);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
 
   // Modèles et paramètres
   const [activeModel, setActiveModel] = useState<ModelType>('SEIRD');
-  const [params, setParams] = useState<SimulationParams>({
-    model: 'SEIRD',
-    beta: 0.3,
-    sigma: 0.2,
-    gamma: 0.1,
-    mu: 0.01,
-    delta: 0.05,
-    theta: 0.1,
-    R0: 2.5,
-    mobility: 0.1
-  });
+  const [params, setParams] = useState<SimulationParams>(predefinedScenarios[0].params);
 
   // UI États
   const [activeView, setActiveView] = useState<'map' | 'charts' | 'table' | 'network'>('map');
@@ -321,8 +417,8 @@ const EpidemiologicalSimulation: React.FC = () => {
         const model = models[activeModel];
         const equations = model.equations(region, localParams);
         
-        // Apply mobility (corrected: mobility affects I, not S)
-        const mobilityEffect = regions
+        // Apply mobility (corrected: affect I based on relative infection rates)
+        const mobilityEffect = simRegions
           .filter(r => region.connections.includes(r.id))
           .reduce((sum, r) => sum + (r.I / r.population - region.I / region.population) * localParams.mobility * region.population, 0);
 
@@ -405,12 +501,28 @@ const EpidemiologicalSimulation: React.FC = () => {
       });
     });
 
+    // Ajouter légende
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = () => {
+      const div = L.DomUtil.create('div', 'info legend bg-white p-2 rounded shadow');
+      div.innerHTML = `
+        <h4>Légende</h4>
+        <i style="background: green; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Faible infection<br>
+        <i style="background: orange; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Moyenne infection<br>
+        <i style="background: red; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Haute infection<br>
+        Taille ~ √Population<br>
+        Lignes: Mobilité
+      `;
+      return div;
+    };
+    legend.addTo(map);
+
     return () => {
       map.remove();
     };
   }, [regions, activeView, params.mobility]);
 
-  // Initialisation du réseau avec D3
+  // Initialisation du réseau avec D3 (amélioré avec clustering et styles)
   useEffect(() => {
     if (activeView !== 'network' || !svgRef.current) return;
 
@@ -425,10 +537,24 @@ const EpidemiologicalSimulation: React.FC = () => {
     );
 
     const simulation = d3.forceSimulation<Region>(regions)
-      .force('link', d3.forceLink<Region, { source: string; target: string }>(links).id(d => d.id).strength(0.1))
-      .force('charge', d3.forceManyBody().strength(-200))
+      .force('link', d3.forceLink<Region, { source: string; target: string }>(links).id(d => d.id).distance(networkSettings.linkDistance).strength(0.1))
+      .force('charge', d3.forceManyBody().strength(networkSettings.chargeStrength))
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collide', d3.forceCollide().radius(d => Math.sqrt(d.population) / 300 + 5));
+
+    if (networkSettings.enableClustering && regions.some(r => r.cluster !== undefined)) {
+      simulation.force('cluster', alpha => {
+        regions.forEach(node => {
+          if (node.cluster !== undefined) {
+            const clusterNodes = regions.filter(n => n.cluster === node.cluster);
+            const cx = d3.mean(clusterNodes, d => d.x || 0) || 0;
+            const cy = d3.mean(clusterNodes, d => d.y || 0) || 0;
+            node.vx! -= (node.x! - cx) * 0.05 * alpha;
+            node.vy! -= (node.y! - cy) * 0.05 * alpha;
+          }
+        });
+      });
+    }
 
     // Draw links
     const link = svg.append('g')
@@ -437,22 +563,32 @@ const EpidemiologicalSimulation: React.FC = () => {
       .enter()
       .append('line')
       .attr('stroke', '#94a3b8')
-      .attr('stroke-width', d => params.mobility * 5);
+      .attr('stroke-width', d => params.mobility * 5)
+      .attr('stroke-dasharray', networkSettings.linkStyle === 'dashed' ? '5,5' : 'none');
 
-    // Draw nodes
+    // Draw nodes with different shapes
     const node = svg.append('g')
-      .selectAll('circle')
+      .selectAll('path')
       .data(regions)
       .enter()
-      .append('circle')
-      .attr('r', d => Math.sqrt(d.population) / 300)
+      .append('path')
+      .attr('d', d => {
+        const size = Math.sqrt(d.population) / 300;
+        if (networkSettings.nodeShape === 'square') {
+          return `M ${-size/2} ${-size/2} L ${size/2} ${-size/2} L ${size/2} ${size/2} L ${-size/2} ${size/2} Z`;
+        } else if (networkSettings.nodeShape === 'triangle') {
+          return `M 0 ${-size} L ${size} ${size} L ${-size} ${size} Z`;
+        } else {
+          return d3.symbol(d3.symbolCircle, size * size * Math.PI)(); // Circle by default
+        }
+      })
       .attr('fill', d => {
         const infectionRate = d.I / d.population;
         if (infectionRate > 0.01) return '#ef4444';
         if (infectionRate > 0.001) return '#f59e0b';
         return d.color;
       })
-      .call(d3.drag<SVGCircleElement, Region>()
+      .call(d3.drag<SVGPathElement, Region>()
         .on('start', (event, d) => {
           if (!event.active) simulation.alphaTarget(0.3).restart();
           d.fx = d.x;
@@ -488,14 +624,13 @@ const EpidemiologicalSimulation: React.FC = () => {
         .attr('y2', d => (d.target as any).y);
 
       node
-        .attr('cx', d => d.x || 0)
-        .attr('cy', d => d.y || 0);
+        .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`);
 
       labels
         .attr('x', d => d.x || 0)
         .attr('y', d => d.y || 0);
     });
-  }, [regions, activeView, params.mobility]);
+  }, [regions, activeView, params.mobility, networkSettings]);
 
   // Simulation step
   const simulateStep = () => {
@@ -554,6 +689,20 @@ const EpidemiologicalSimulation: React.FC = () => {
     }]);
   }, [currentDay]);
 
+  // Gestion des scénarios
+  const applyScenario = (scenarioName: string) => {
+    const scenario = predefinedScenarios.find(s => s.name === scenarioName);
+    if (scenario) {
+      setParams(scenario.params);
+      setInterventions(scenario.interventions);
+      // Réinitialiser la simulation pour appliquer le scénario
+      setIsRunning(false);
+      setCurrentDay(0);
+      setHistory([]);
+      setRegions(initialRegions.map(r => ({ ...r })));
+    }
+  };
+
   // Fonction d'export CSV
   const exportData = () => {
     const csvData = history.map(h => ({ day: h.day, ...h.totals }));
@@ -563,6 +712,40 @@ const EpidemiologicalSimulation: React.FC = () => {
     link.href = URL.createObjectURL(blob);
     link.download = 'simulation_history.csv';
     link.click();
+  };
+
+  // Fonction d'export JSON complet
+  const exportFullState = () => {
+    const state = {
+      regions,
+      history,
+      currentDay,
+      params,
+      interventions,
+      activeModel,
+      networkSettings
+    };
+    const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'simulation_state.json';
+    link.click();
+  };
+
+  // Fonction d'import JSON
+  const importFullState = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const state = JSON.parse(e.target?.result as string);
+      setRegions(state.regions);
+      setHistory(state.history);
+      setCurrentDay(state.currentDay);
+      setParams(state.params);
+      setInterventions(state.interventions);
+      setActiveModel(state.activeModel);
+      setNetworkSettings(state.networkSettings || initialNetworkSettings);
+    };
+    reader.readAsText(file);
   };
 
   // Données pour les graphiques
@@ -606,6 +789,21 @@ const EpidemiologicalSimulation: React.FC = () => {
       borderDash,
       backgroundColor: 'rgba(107, 114, 128, 0.1)',
       fill: true
+    },
+    {
+      label: 'Rt' + labelSuffix,
+      data: hist.slice(-100).map(h => {
+        const S = h.totals.S;
+        const N = regions.reduce((sum, r) => sum + r.population, 0);
+        const activeInterventions = interventions.filter(i => h.day >= i.startDay);
+        const reduction = activeInterventions.reduce((sum, i) => sum + i.effectiveness / 100, 0);
+        const beta = params.beta * (1 - reduction);
+        return (beta * (S / N) / params.gamma) || 0;
+      }),
+      borderColor: '#000000',
+      borderDash,
+      backgroundColor: 'rgba(0, 0, 0, 0.1)',
+      fill: true
     }
   ];
 
@@ -615,6 +813,22 @@ const EpidemiologicalSimulation: React.FC = () => {
       ? [...getChartDatasets(history), ...getChartDatasets(comparisonHistory, ' (Comparaison)', [5, 5])] 
       : getChartDatasets(history)
   };
+
+  // Annotations pour interventions
+  const chartAnnotations = interventions.map((int, index) => ({
+    type: 'line',
+    xMin: int.startDay,
+    xMax: int.startDay,
+    borderColor: 'rgba(0, 0, 0, 0.5)',
+    borderWidth: 2,
+    label: {
+      content: `${int.type} (${int.effectiveness}%)`,
+      display: true,
+      position: 'start',
+      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+      color: 'black'
+    }
+  }));
 
   // Calcul des indicateurs
   const indicators = {
@@ -628,6 +842,16 @@ const EpidemiologicalSimulation: React.FC = () => {
   // Changer couleur de région
   const changeRegionColor = (id: string, newColor: string) => {
     setRegions(prev => prev.map(r => r.id === id ? { ...r, color: newColor } : r));
+  };
+
+  // Changer nom de région
+  const changeRegionName = (id: string, newName: string) => {
+    setRegions(prev => prev.map(r => r.id === id ? { ...r, name: newName } : r));
+  };
+
+  // Changer cluster de région
+  const changeRegionCluster = (id: string, newCluster: number) => {
+    setRegions(prev => prev.map(r => r.id === id ? { ...r, cluster: newCluster } : r));
   };
 
   return (
@@ -669,7 +893,13 @@ const EpidemiologicalSimulation: React.FC = () => {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Exporter
+              Exporter CSV
+            </button>
+            <button
+              onClick={exportFullState}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg flex items-center gap-2"
+            >
+              Exporter JSON
             </button>
             <button
               onClick={() => setShowExplanationModal(true)}
@@ -700,6 +930,23 @@ const EpidemiologicalSimulation: React.FC = () => {
             </svg>
             Paramètres
           </button>
+        </div>
+
+        {/* Sélection de scénario */}
+        <div className="flex items-center gap-4 mb-4">
+          <label className="text-sm font-medium">Scénario:</label>
+          <select
+            value={selectedScenario}
+            onChange={(e) => {
+              setSelectedScenario(e.target.value);
+              applyScenario(e.target.value);
+            }}
+            className="p-2 border rounded"
+          >
+            {predefinedScenarios.map(sc => (
+              <option key={sc.name} value={sc.name}>{sc.name}</option>
+            ))}
+          </select>
         </div>
       </header>
 
@@ -824,6 +1071,9 @@ const EpidemiologicalSimulation: React.FC = () => {
                       title: {
                         display: true,
                         text: `Évolution des compartiments (Modèle ${activeModel})` + (isComparing ? ' avec Comparaison' : '')
+                      },
+                      annotation: {
+                        annotations: chartAnnotations
                       }
                     }
                   }}
@@ -887,6 +1137,12 @@ const EpidemiologicalSimulation: React.FC = () => {
           {activeView === 'network' && (
             <div className="h-[500px] relative">
               <svg ref={svgRef} className="w-full h-full" />
+              <button
+                onClick={() => setShowNetworkModal(true)}
+                className="absolute top-4 right-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
+              >
+                Paramètres Réseau
+              </button>
             </div>
           )}
         </div>
@@ -929,12 +1185,17 @@ const EpidemiologicalSimulation: React.FC = () => {
             </div>
 
             <div className="mt-6">
-              <h3 className="font-medium mb-3">Régions et Personnalisation des Couleurs</h3>
+              <h3 className="font-medium mb-3">Régions et Personnalisation</h3>
               <div className="space-y-3 max-h-80 overflow-y-auto">
                 {regions.map(region => (
                   <div key={region.id} className="p-3 border rounded-lg hover:bg-gray-50">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="font-medium">{region.name}</span>
+                      <input
+                        type="text"
+                        value={region.name}
+                        onChange={(e) => changeRegionName(region.id, e.target.value)}
+                        className="font-medium border-b"
+                      />
                       <span className="text-sm px-2 py-1 rounded" style={{ backgroundColor: region.color + '20', color: region.color }}>
                         {(region.I / region.population * 100).toFixed(2)}%
                       </span>
@@ -944,19 +1205,30 @@ const EpidemiologicalSimulation: React.FC = () => {
                       Infectés: {Math.round(region.I)} • 
                       Décès: {Math.round(region.D || 0)}
                     </div>
-                    <div className="mt-2">
-                      <button 
-                        onClick={() => setSelectedRegionId(region.id === selectedRegionId ? null : region.id)}
-                        className="text-sm text-blue-600"
-                      >
-                        {selectedRegionId === region.id ? 'Fermer' : 'Personnaliser Couleur'}
-                      </button>
-                      {selectedRegionId === region.id && (
-                        <HexColorPicker 
-                          color={region.color} 
-                          onChange={(color) => changeRegionColor(region.id, color)} 
+                    <div className="mt-2 flex gap-2">
+                      <div>
+                        <button 
+                          onClick={() => setSelectedRegionId(region.id === selectedRegionId ? null : region.id)}
+                          className="text-sm text-blue-600"
+                        >
+                          {selectedRegionId === region.id ? 'Fermer' : 'Couleur'}
+                        </button>
+                        {selectedRegionId === region.id && (
+                          <HexColorPicker 
+                            color={region.color} 
+                            onChange={(color) => changeRegionColor(region.id, color)} 
+                          />
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-sm">Cluster:</label>
+                        <input
+                          type="number"
+                          value={region.cluster || 0}
+                          onChange={(e) => changeRegionCluster(region.id, Number(e.target.value))}
+                          className="w-16 ml-2 border rounded"
                         />
-                      )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1167,12 +1439,28 @@ const EpidemiologicalSimulation: React.FC = () => {
                               latitude: Number(row.latitude),
                               longitude: Number(row.longitude),
                               color: row.color || '#3b82f6',
-                              connections: row.connections ? row.connections.split(',') : []
+                              connections: row.connections ? row.connections.split(',') : [],
+                              cluster: Number(row.cluster) || 0
                             })) as Region[];
                             setRegions(newRegions);
                             setShowDataModal(false);
                           }
                         });
+                      }
+                    }}
+                    className="w-full p-2 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Fichier JSON (état complet)</label>
+                  <input 
+                    type="file" 
+                    accept=".json"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        importFullState(file);
+                        setShowDataModal(false);
                       }
                     }}
                     className="w-full p-2 border rounded"
@@ -1226,10 +1514,113 @@ const EpidemiologicalSimulation: React.FC = () => {
                   <h3 className="font-bold">Personnalisation des Couleurs</h3>
                   <p>Dans la sidebar, cliquez sur "Personnaliser Couleur" pour une région pour choisir une nouvelle couleur de base. Celle-ci est utilisée quand le taux d'infection est bas.</p>
                 </div>
+                <div>
+                  <h3 className="font-bold">Scénarios Pré-enregistrés</h3>
+                  <p>Choisissez un scénario pour appliquer automatiquement des paramètres et interventions prédéfinis, comme un confinement strict ou une vaccination massive.</p>
+                </div>
+                <div>
+                  <h3 className="font-bold">Réseau Amélioré</h3>
+                  <p>Le vue réseau permet maintenant de personnaliser le style (forme des nœuds, style des liens), activer le clustering (basé sur l'attribut cluster des régions), ajuster la force de répulsion et la distance des liens.</p>
+                </div>
                 <div className="flex justify-end">
                   <button
                     onClick={() => setShowExplanationModal(false)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modale Paramètres Réseau */}
+      <AnimatePresence>
+        {showNetworkModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowNetworkModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6 border-b">
+                <h2 className="text-2xl font-bold">Paramètres du Réseau</h2>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Force de Répulsion</label>
+                  <input 
+                    type="range" 
+                    min="-500"
+                    max="0"
+                    value={networkSettings.chargeStrength}
+                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, chargeStrength: Number(e.target.value) }))}
+                    className="w-full" 
+                  />
+                  <span>{networkSettings.chargeStrength}</span>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Distance des Liens</label>
+                  <input 
+                    type="range" 
+                    min="50"
+                    max="300"
+                    value={networkSettings.linkDistance}
+                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, linkDistance: Number(e.target.value) }))}
+                    className="w-full" 
+                  />
+                  <span>{networkSettings.linkDistance}</span>
+                </div>
+                
+                <div className="flex items-center">
+                  <input 
+                    type="checkbox" 
+                    checked={networkSettings.enableClustering}
+                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, enableClustering: e.target.checked }))}
+                  />
+                  <label className="ml-2">Activer Clustering (basé sur cluster des régions)</label>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Forme des Nœuds</label>
+                  <select 
+                    value={networkSettings.nodeShape}
+                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, nodeShape: e.target.value as 'circle' | 'square' | 'triangle' }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="circle">Cercle</option>
+                    <option value="square">Carré</option>
+                    <option value="triangle">Triangle</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Style des Liens</label>
+                  <select 
+                    value={networkSettings.linkStyle}
+                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, linkStyle: e.target.value as 'solid' | 'dashed' }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="solid">Solide</option>
+                    <option value="dashed">Pointillé</option>
+                  </select>
+                </div>
+                
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowNetworkModal(false)}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                   >
                     Fermer
                   </button>
