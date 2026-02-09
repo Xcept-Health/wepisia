@@ -1,18 +1,13 @@
 "use client";
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useLocation } from 'wouter';
 import {
-  Code, Play, Save, Download, Copy, Terminal, BarChart3,
-  Braces, ChevronRight, X, Maximize2, Minimize2,
-  Share2, FileCode, PanelLeftClose, PanelLeftOpen,
-  Check, Zap, AlertCircle, RefreshCw, Sparkles, Languages,
-  Folder, File, Plus, Trash2, FolderPlus, Archive, FileArchive,
-  Edit2, FileText, FileSpreadsheet, FileJson, FileImage,
+  Play, Download, Terminal, ChevronRight, X, 
+  FileCode, PanelLeftClose, PanelLeftOpen, File, Trash2, FolderPlus,
+  Edit2, FileText, FileSpreadsheet, FileJson, 
   FolderOpen, FolderClosed, ChevronRight as ChevronRightIcon,
-  ChevronDown, Search, MoreVertical, Upload, FileUp,
-  FolderTree, FolderInput, FolderOutput, FilePlus,
-  FileType, Type, Hash, Loader2, Settings,
-  Clock, Users, Activity, Cpu, Database, ChartScatter
+  ChevronDown, Search, MoreVertical, Upload, FolderTree, FilePlus,
+  FileType, Loader2, Cpu, ChartScatter, Trash
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,7 +23,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { Progress } from '@/components/ui/progress';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import JSZip from 'jszip';
 import { Chart } from 'chart.js';
@@ -1372,8 +1366,8 @@ p-value: <0.001
                       onClick={handleClearOutput}
                       className="h-7 text-xs"
                     >
-                      <X className="w-3 h-3 mr-1" />
-                      Effacer
+                      <Trash className="w-3 h-3 mr-1" />
+                    
                     </Button>
                   </div>
                 </div>
