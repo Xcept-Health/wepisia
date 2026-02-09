@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useLocation } from 'wouter';
 import {
   Code, Play, Save, Download, Copy, Terminal, BarChart3,
-  Braces, ChevronRight, X, Maximize2, Minimize2, Bot,
+  Braces, ChevronRight, X, Maximize2, Minimize2,
   Share2, FileCode, PanelLeftClose, PanelLeftOpen,
   Check, Zap, AlertCircle, RefreshCw, Sparkles, Languages,
   Folder, File, Plus, Trash2, FolderPlus, Archive, FileArchive,
@@ -12,10 +12,9 @@ import {
   ChevronDown, Search, MoreVertical, Upload, FileUp,
   FolderTree, FolderInput, FolderOutput, FilePlus,
   FileType, Type, Hash, Loader2, Settings,
-  Clock, Users, Activity, Cpu, Database
+  Clock, Users, Activity, Cpu, Database, ChartScatter
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -32,6 +31,7 @@ import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import JSZip from 'jszip';
+import { Chart } from 'chart.js';
 
 // Charger Monaco Editor dynamiquement avec React.lazy
 const CodeEditor = lazy(() => import('@/components/CodeEditor/CodeEditor'));
@@ -105,11 +105,9 @@ export default function WorkspacePage() {
       },
       'file1': {
         id: 'file1',
-        name: 'analyse_epidemio.r',
+        name: 'untitled.r',
         language: 'r',
-        code: `# Atelier d'analyse épidémiologique OpenEPI
-# Documentation: https://docs.openepi.org
-
+        code: `
 # === ANALYSE DE RISQUE RELATIF ===
 calculate_rr <- function(a, b, c, d) {
   # a: exposés avec maladie
@@ -213,19 +211,17 @@ abline(h = 1, lty = 2, col = "gray")
     activeFileId: 'file1',
     openFiles: ['file1'],
     currentFolderId: 'root',
-    output: 'WorkSpace Initialisé. Prêt à exécuter votre code R !\n\n',
+    output: 'WorkSpace Initialisé. Prêt à exécuter votre code !\n\n',
     variables: {},
     autoRun: false,
     theme: 'light'
   });
 
   const [activeTab, setActiveTab] = useState<string>('terminal');
-  const [isChatbotOpen, setIsChatbotOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showTerminal, setShowTerminal] = useState<boolean>(true);
   const [showSidebar, setShowSidebar] = useState<boolean>(true);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
-  const [codeAnalysis, setCodeAnalysis] = useState<CodeAnalysis | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [webR, setWebR] = useState<any>(null);
   const [webRStatus, setWebRStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -1062,21 +1058,29 @@ p-value: <0.001
           </div>
           
           {activeFile && activeFile.language === 'r' && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleRunCode}
-              disabled={isRunning}
-              className="gap-2 bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900"
-            >
-              {isRunning ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              {isRunning ? 'Exécution...' : 'Exécuter R'}
-            </Button>
-          )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRunCode}
+                disabled={isRunning}
+                className={`
+                  h-7 px-2 flex items-center gap-1.5 rounded-none 
+                  hover:text-[#89d185] 
+                  
+                  ${isRunning ? 'cursor-wait opacity-70' : 'cursor-pointer'}
+                `}
+              >
+                {isRunning ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-[#3794ff]" />
+                ) : (
+                  <Play className="w-4 h-4 text-[#89d185]" />
+                )}
+                <span className=" text-sm tracking-tight">
+                  {isRunning ? 'Exécution...' : 'Exécuter'}
+                </span>
+              </Button>
+            )}
+
           
           <Button
             variant="outline"
@@ -1089,13 +1093,7 @@ p-value: <0.001
             {state.theme === 'light' ? '🌙' : '☀️'}
           </Button>
           
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsChatbotOpen(!isChatbotOpen)}
-          >
-            <Bot className="w-4 h-4" />
-          </Button>
+         
         </div>
       </header>
       
@@ -1349,13 +1347,10 @@ p-value: <0.001
                     <Terminal className="w-4 h-4 mr-2" />
                     Terminal
                   </TabsTrigger>
-                  <TabsTrigger value="analysis" className="flex-1">
-                    <BarChart3 className="w-4 h-4 mr-2" />
-                    Analyse
-                  </TabsTrigger>
-                  <TabsTrigger value="variables" className="flex-1">
-                    <Database className="w-4 h-4 mr-2" />
-                    Variables
+                
+                  <TabsTrigger value="Graph" className="flex-1">
+                    <ChartScatter className="w-4 h-4 mr-2" />
+                    Graph
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -1391,54 +1386,17 @@ p-value: <0.001
                 </ScrollArea>
               </TabsContent>
               
-              <TabsContent value="analysis" className="flex-1 m-0 p-4">
-                <div className="space-y-4">
-                  <Alert>
-                    <BarChart3 className="w-4 h-4" />
-                    <AlertTitle>Analyse de code</AlertTitle>
-                    <AlertDescription>
-                      Cette fonctionnalité analyse votre code R pour détecter des erreurs potentielles.
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Fonctions épidémiologiques disponibles:</h4>
-                    <div className="grid grid-cols-1 gap-2">
-                      {[
-                        { name: 'calculate_rr', desc: 'Risque relatif avec IC 95%' },
-                        { name: 'calculate_or', desc: 'Odds ratio avec IC 95%' },
-                        { name: 'chisq.test', desc: 'Test du Chi2' },
-                        { name: 'glm', desc: 'Régression logistique' },
-                        { name: 'survival::coxph', desc: 'Modèle de Cox' },
-                      ].map((func, i) => (
-                        <div key={i} className="p-3 rounded-lg border bg-card">
-                          <code className="text-sm font-mono text-blue-600 dark:text-blue-400">
-                            {func.name}
-                          </code>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {func.desc}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
+           
               
-              <TabsContent value="variables" className="flex-1 m-0 p-4">
+              <TabsContent value="Graph" className="flex-1 m-0 p-4">
                 <Alert>
-                  <Database className="w-4 h-4" />
-                  <AlertTitle>Variables R</AlertTitle>
+                 
                   <AlertDescription>
-                    Les variables créées pendant l'exécution apparaîtront ici.
+                    Vos Graphes créées pendant l'exécution apparaîtront ici.
                   </AlertDescription>
                 </Alert>
                 
-                <div className="mt-4 space-y-2">
-                  <div className="text-sm text-muted-foreground">
-                    Exécutez du code R pour voir les variables créées.
-                  </div>
-                </div>
+                
               </TabsContent>
             </Tabs>
           </div>
@@ -1466,7 +1424,17 @@ p-value: <0.001
             <div className="flex items-center space-x-4 text-xs text-muted-foreground">
               <span>{activeFile.code.split('\n').length} lignes</span>
               <span>{activeFile.code.length} caractères</span>
-              <span>Modifié: {activeFile.lastModified.toLocaleTimeString()}</span>
+              <span>
+                Dernière modification : {activeFile.lastModified.toLocaleString('fr-FR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                }).replace(' ', ' à ')}
+              </span>
+
             </div>
           )}
         </div>
@@ -1486,7 +1454,7 @@ p-value: <0.001
             onClick={handleDownloadAll}
           >
             <Download className="w-3 h-3 mr-1" />
-            Exporter tout
+            Tout exporter 
           </Button>
         </div>
       </footer>
