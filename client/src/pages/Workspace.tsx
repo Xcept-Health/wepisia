@@ -1257,9 +1257,9 @@ p-value: <0.001
                           className="h-8 w-8 p-0"
                         >
                           {showTerminal ? (
-                            <PanelLeftClose className="w-4 h-4 rotate-90" />
+                            <PanelLeftOpen className="w-4 h-4" />
                           ) : (
-                            <PanelLeftOpen className="w-4 h-4 rotate-90" />
+                            <PanelLeftClose className="w-4 h-4" />
                           )}
                         </Button>
                       </TooltipTrigger>
