@@ -39,24 +39,6 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
       <div className="fixed bottom-6 right-6 z-40">
         <div className="relative">
           {/* Tooltip */}
-          {showTooltip && !isActive && (
-            <div className="absolute bottom-full right-0 mb-3 w-72 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 animate-fade-in">
-              <div className="flex items-start space-x-2">
-                <div className="p-1.5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-                  <Bot className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Assistant OpenEPI IA
-                  </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    Posez vos questions sur l'épidémiologie, les analyses statistiques et les calculs de santé publique.
-                  </p>
-                </div>
-              </div>
-              <div className="absolute -bottom-1.5 right-4 w-3 h-3 bg-white dark:bg-gray-800 transform rotate-45 border-r border-b border-gray-200 dark:border-gray-700" />
-            </div>
-          )}
 
           {/* Message bulle */}
           {showBubble && !isActive && (

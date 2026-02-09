@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useLocation } from 'wouter';
 import {
   Code, Play, Save, Download, Copy, Terminal, BarChart3,
@@ -11,9 +11,8 @@ import {
   FolderOpen, FolderClosed, ChevronRight as ChevronRightIcon,
   ChevronDown, Search, MoreVertical, Upload, FileUp,
   FolderTree, FolderInput, FolderOutput, FilePlus,
-  FileMinus, FileEdit, FileSearch, FileSymlink,
-  FileX, FileCheck, FileWarning, FileDiff,
-  FileType2, FileType, Type, Hash, Loader2, Settings
+  FileType, Type, Hash, Loader2, Settings,
+  Clock, Users, Activity, Cpu, Database
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,23 +21,26 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import CodeEditor from '@/components/CodeEditor/CodeEditor';
-import ChatbotMini from '@/components/Chatbot/ChatbotMini';
+import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import JSZip from 'jszip';
-import * as pyodidePackage from 'pyodide';
-import { loadPyodide } from 'pyodide';
 
+// Charger Monaco Editor dynamiquement avec React.lazy
+const CodeEditor = lazy(() => import('@/components/CodeEditor/CodeEditor'));
+
+// Types
 interface WorkspaceFile {
   id: string;
   name: string;
-  language: 'python' | 'r' | 'javascript' | 'other';
+  language: 'r' | 'other';
   code: string;
   lastModified: Date;
   size: number;
@@ -46,6 +48,7 @@ interface WorkspaceFile {
   path: string;
   parentId: string | null;
   extension: string;
+  isDirty?: boolean;
 }
 
 interface WorkspaceFolder {
@@ -63,17 +66,28 @@ type WorkspaceItem = WorkspaceFile | WorkspaceFolder;
 interface WorkspaceState {
   items: Record<string, WorkspaceItem>;
   activeFileId: string | null;
+  openFiles: string[];
   currentFolderId: string | null;
   output: string;
   variables: Record<string, any>;
   autoRun: boolean;
+  theme: 'light' | 'dark';
 }
 
 interface CodeAnalysis {
   isValid: boolean;
-  detectedLanguage?: 'python' | 'r' | 'javascript';
   suggestions: string[];
   errors: string[];
+  warnings: string[];
+  executionTime?: number;
+  memoryUsage?: number;
+}
+
+interface RFunction {
+  name: string;
+  description: string;
+  category: string;
+  example: string;
 }
 
 export default function WorkspacePage() {
@@ -86,52 +100,138 @@ export default function WorkspacePage() {
         type: 'folder',
         path: '/',
         parentId: null,
-        children: ['file1', 'folder1'],
+        children: ['file1'],
         expanded: true
       },
       'file1': {
         id: 'file1',
-        name: 'analyse_r.r',
+        name: 'analyse_epidemio.r',
         language: 'r',
-        code: '# Bienvenue dans l\'atelier d\'analyse OpenEPI\n# Vous pouvez écrire du code R ou Python ici\n\n# Exemple : Calcul de risque relatif\ncalculate_rr <- function(a, b, c, d) {\n risk_exposed <- a / (a + b)\n risk_unexposed <- c / (c + d)\n return(risk_exposed / risk_unexposed)\n}\n\n# Test avec des données d\'exemple\nrr <- calculate_rr(70, 30, 30, 70)\nprint(paste("Risque relatif:", round(rr, 2)))',
+        code: `# Atelier d'analyse épidémiologique OpenEPI
+# Documentation: https://docs.openepi.org
+
+# === ANALYSE DE RISQUE RELATIF ===
+calculate_rr <- function(a, b, c, d) {
+  # a: exposés avec maladie
+  # b: exposés sans maladie
+  # c: non-exposés avec maladie
+  # d: non-exposés sans maladie
+  
+  risk_exposed <- a / (a + b)
+  risk_unexposed <- c / (c + d)
+  rr <- risk_exposed / risk_unexposed
+  
+  # Intervalle de confiance à 95%
+  se_log_rr <- sqrt(1/a + 1/c - 1/(a+b) - 1/(c+d))
+  ci_lower <- exp(log(rr) - 1.96 * se_log_rr)
+  ci_upper <- exp(log(rr) + 1.96 * se_log_rr)
+  
+  return(list(
+    rr = rr,
+    ci_lower = ci_lower,
+    ci_upper = ci_upper,
+    risk_exposed = risk_exposed,
+    risk_unexposed = risk_unexposed
+  ))
+}
+
+# Données d'exemple: Étude cas-témoins
+# Exposition: Tabagisme
+# Maladie: Cancer du poumon
+data <- list(
+  exposed_cases = 70,      # a
+  exposed_controls = 30,   # b
+  unexposed_cases = 30,    # c
+  unexposed_controls = 70  # d
+)
+
+# Calcul du risque relatif
+result <- calculate_rr(
+  data$exposed_cases,
+  data$exposed_controls,
+  data$unexposed_cases,
+  data$unexposed_controls
+)
+
+# Affichage des résultats
+cat("=== RÉSULTATS DE L'ANALYSE ÉPIDÉMIOLOGIQUE ===\\n")
+cat("Risque chez les exposés:", round(result$risk_exposed * 100, 1), "%\\n")
+cat("Risque chez les non-exposés:", round(result$risk_unexposed * 100, 1), "%\\n")
+cat("\\n")
+cat("Risque relatif (RR):", round(result$rr, 2), "\\n")
+cat("IC 95%: [", round(result$ci_lower, 2), "-", round(result$ci_upper, 2), "]\\n")
+cat("\\n")
+
+# Interprétation
+if (result$rr > 1) {
+  cat("L'exposition est associée à un risque accru de maladie.\\n")
+} else if (result$rr < 1) {
+  cat("L'exposition est associée à un risque réduit de maladie.\\n")
+} else {
+  cat("Aucune association détectée.\\n")
+}
+
+# === ANALYSE STATISTIQUE SUPPLÉMENTAIRE ===
+# Test du Chi2
+matrix_data <- matrix(c(70, 30, 30, 70), nrow = 2)
+chi_test <- chisq.test(matrix_data)
+cat("\\nTest du Chi2:\\n")
+cat("p-value:", format.pval(chi_test$p.value, digits = 3), "\\n")
+
+# === VISUALISATION ===
+# Création d'un graphique simple
+par(mfrow = c(1, 2))
+
+# Barplot des risques
+risks <- c(result$risk_exposed, result$risk_unexposed) * 100
+barplot(risks, 
+        names.arg = c("Exposés", "Non-exposés"),
+        ylab = "Risque (%)",
+        main = "Distribution du risque",
+        col = c("#3b82f6", "#93c5fd"),
+        ylim = c(0, 50))
+
+# Plot du RR avec intervalle de confiance
+plot(1, result$rr, xlim = c(0.5, 1.5), ylim = c(0, max(result$ci_upper) + 1),
+     xaxt = 'n', xlab = '', ylab = "Risque relatif",
+     main = "RR avec IC 95%",
+     pch = 19, cex = 2, col = "#ef4444")
+arrows(1, result$ci_lower, 1, result$ci_upper, 
+       angle = 90, code = 3, length = 0.1, col = "#ef4444")
+abline(h = 1, lty = 2, col = "gray")
+`,
         lastModified: new Date(),
-        size: 1024,
+        size: 3250,
         type: 'file',
-        path: '/analyse_r.r',
+        path: '/analyse_epidemio.r',
         parentId: 'root',
         extension: '.r'
       },
-      'folder1': {
-        id: 'folder1',
-        name: 'Analyses',
-        type: 'folder',
-        path: '/Analyses',
-        parentId: 'root',
-        children: [],
-        expanded: false
-      }
+   
+  
     },
     activeFileId: 'file1',
+    openFiles: ['file1'],
     currentFolderId: 'root',
-    output: '',
+    output: 'WorkSpace Initialisé. Prêt à exécuter votre code R !\n\n',
     variables: {},
-    autoRun: false
+    autoRun: false,
+    theme: 'light'
   });
-  const [activeTab, setActiveTab] = useState('terminal');
-  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(true);
-  const [showSidebar, setShowSidebar] = useState(true);
+
+  const [activeTab, setActiveTab] = useState<string>('terminal');
+  const [isChatbotOpen, setIsChatbotOpen] = useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [showTerminal, setShowTerminal] = useState<boolean>(true);
+  const [showSidebar, setShowSidebar] = useState<boolean>(true);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [codeAnalysis, setCodeAnalysis] = useState<CodeAnalysis | null>(null);
-  const [showConversionAlert, setShowConversionAlert] = useState(false);
-  const [pendingLanguageChange, setPendingLanguageChange] = useState<string | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [isRunning, setIsRunning] = useState(false);
-  const [pyodide, setPyodide] = useState<any>(null);
+  const [isRunning, setIsRunning] = useState<boolean>(false);
   const [webR, setWebR] = useState<any>(null);
+  const [webRStatus, setWebRStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [editorInstance, setEditorInstance] = useState<any>(null);
 
-  // États pour les modals et actions
+  // États pour les modals
   const [showCreateFileModal, setShowCreateFileModal] = useState(false);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -140,693 +240,659 @@ export default function WorkspacePage() {
   const [itemToRename, setItemToRename] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
-  const [renamingItemId, setRenamingItemId] = useState<string | null>(null);
-  const [renamingItemName, setRenamingItemName] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   const terminalRef = useRef<HTMLDivElement>(null);
-  const runTimeoutRef = useRef<NodeJS.Timeout>();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const lastLanguageChangeTime = useRef<number>(Date.now());
+  const outputEndRef = useRef<HTMLDivElement>(null);
+  const autoRunRef = useRef<NodeJS.Timeout>();
 
-  // Récupérer le fichier actif et le dossier courant
+  // Récupérer les éléments
   const activeFile = state.activeFileId ? (state.items[state.activeFileId] as WorkspaceFile) : null;
   const currentFolder = state.currentFolderId ? (state.items[state.currentFolderId] as WorkspaceFolder) : null;
-  const rootFolder = state.items['root'] as WorkspaceFolder;
+  const openFiles = state.openFiles.map(id => state.items[id] as WorkspaceFile).filter(Boolean);
 
-  // Initialiser Pyodide et WebR
+  // Initialiser WebR
   useEffect(() => {
-    async function initRuntimes() {
-      // Pyodide for Python
-      const py = await loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
-      });
-      setPyodide(py);
-
-      // WebR for R
-      const { WebR } = await import('webr');
-      const wr = new WebR();
-      await wr.init();
-      setWebR(wr);
-    }
-    initRuntimes();
-  }, []);
-
-  // Récupérer depuis l'URL ou le localStorage
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const codeFromUrl = params.get('code');
-    const langFromUrl = params.get('lang') as WorkspaceFile['language'];
-
-    if (codeFromUrl) {
-      const newFileId = `imported_${Date.now()}`;
-      const extension = getExtensionFromLanguage(langFromUrl || 'r');
-
-      setState(prev => ({
-        ...prev,
-        items: {
-          ...prev.items,
-          [newFileId]: {
-            id: newFileId,
-            name: `imported${extension}`,
-            language: langFromUrl || 'r',
-            code: decodeURIComponent(codeFromUrl),
-            lastModified: new Date(),
-            size: codeFromUrl.length,
-            type: 'file',
-            path: `/imported${extension}`,
-            parentId: 'root',
-            extension
-          },
-          'root': {
-            ...(prev.items['root'] as WorkspaceFolder),
-            children: [...(prev.items['root'] as WorkspaceFolder).children, newFileId]
-          }
-        },
-        activeFileId: newFileId
-      }));
-    } else {
-      const saved = localStorage.getItem('openepi_workspace_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Convertir les dates strings en objets Date
-        const itemsWithDates = Object.keys(parsed.items).reduce((acc, key) => {
-          const item = parsed.items[key];
-          if (item.type === 'file') {
-            acc[key] = { ...item, lastModified: new Date(item.lastModified) };
-          } else {
-            acc[key] = item;
-          }
-          return acc;
-        }, {} as Record<string, WorkspaceItem>);
-
-        setState({ ...parsed, items: itemsWithDates });
+    const initWebR = async () => {
+      try {
+        setWebRStatus('loading');
+        const { WebR } = await import('webr');
+        const webRInstance = new WebR();
+        await webRInstance.init();
+        
+        // Charger quelques packages de base
+        await webRInstance.evalR('library(stats)');
+        await webRInstance.evalR('library(graphics)');
+        
+        setWebR(webRInstance);
+        setWebRStatus('ready');
+        
+    
+      } catch (error) {
+        console.error('Erreur WebR:', error);
+        setWebRStatus('error');
+        setState(prev => ({
+          ...prev,
+          output: `⚠️ WebR non disponible: ${error instanceof Error ? error.message : 'Erreur inconnue'}\n🔧 Mode simulation activé\n\n${prev.output}`
+        }));
       }
-    }
+    };
+
+    initWebR();
+
+    return () => {
+      if (webR) {
+        webR.destroy();
+      }
+    };
   }, []);
 
-  // Sauvegarder automatiquement
+  // Sauvegarde automatique
   useEffect(() => {
-    const toSave = { ...state };
-    localStorage.setItem('openepi_workspace_state', JSON.stringify(toSave));
+    const saveState = () => {
+      const toSave = {
+        ...state,
+        items: Object.fromEntries(
+          Object.entries(state.items).map(([key, item]) => {
+            if (item.type === 'file') {
+              const file = item as WorkspaceFile;
+              return [key, { ...file, lastModified: file.lastModified.toISOString() }];
+            }
+            return [key, item];
+          })
+        )
+      };
+      localStorage.setItem('openepi_workspace_state', JSON.stringify(toSave));
+    };
+
+    const timer = setTimeout(saveState, 1000);
+    return () => clearTimeout(timer);
   }, [state]);
 
-  // Focus sur l'input de renommage quand il apparaît
+  // Auto-scroll terminal
   useEffect(() => {
-    if (renamingItemId && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (outputEndRef.current && showTerminal && activeTab === 'terminal') {
+      outputEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [renamingItemId]);
+  }, [state.output, showTerminal, activeTab]);
+
+  // Auto-run si activé
+  useEffect(() => {
+    if (state.autoRun && activeFile?.language === 'r' && !isRunning) {
+      if (autoRunRef.current) clearTimeout(autoRunRef.current);
+      autoRunRef.current = setTimeout(() => {
+        handleRunCode();
+      }, 1500);
+    }
+    return () => {
+      if (autoRunRef.current) clearTimeout(autoRunRef.current);
+    };
+  }, [state.autoRun, activeFile?.code]);
 
   // Fonctions utilitaires
-  const getExtensionFromLanguage = (language: WorkspaceFile['language']): string => {
-    switch (language) {
-      case 'python': return '.py';
-      case 'r': return '.r';
-      case 'javascript': return '.js';
-      default: return '.txt';
-    }
-  };
-
-  const getLanguageFromExtension = (extension: string): WorkspaceFile['language'] => {
-    switch (extension.toLowerCase()) {
-      case '.py': return 'python';
-      case '.r': return 'r';
-      case '.js': return 'javascript';
-      default: return 'other';
-    }
-  };
-
-  const isValidExtension = (filename: string): boolean => {
-    const ext = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')).toLowerCase() : '';
-    return ['.r', '.py', '.js', '.txt', '.csv', '.json', '.md'].includes(ext);
-  };
-
   const getFileIcon = (extension: string) => {
     switch (extension.toLowerCase()) {
-      case '.r': return <FileType className="w-4 h-4 text-blue-600" />;
-      case '.py': return <FileType className="w-4 h-4 text-green-600" />;
-      case '.js': return <Type className="w-4 h-4 text-yellow-500" />;
-      case '.txt': return <FileText className="w-4 h-4 text-gray-600" />;
-      case '.csv': return <FileSpreadsheet className="w-4 h-4 text-green-600" />;
-      case '.json': return <FileJson className="w-4 h-4 text-purple-600" />;
-      case '.md': return <FileText className="w-4 h-4 text-blue-500" />;
+      case '.r': return <FileType className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
+      case '.rmd': return <FileCode className="w-4 h-4 text-purple-600 dark:text-purple-400" />;
+      case '.csv': return <FileSpreadsheet className="w-4 h-4 text-green-600 dark:text-green-400" />;
+      case '.json': return <FileJson className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />;
+      case '.txt': return <FileText className="w-4 h-4 text-gray-600 dark:text-gray-400" />;
       default: return <File className="w-4 h-4 text-gray-500" />;
     }
   };
 
-  // Gestion des fichiers et dossiers
-  const handleCreateFile = () => {
-    if (!newItemName.trim() || !isValidExtension(newItemName)) {
-      alert("Nom de fichier invalide. Extension autorisée: .r, .py, .js, .txt, .csv, .json, .md");
-      return;
-    }
-    const extension = newItemName.includes('.')
-      ? newItemName.substring(newItemName.lastIndexOf('.')).toLowerCase()
-      : '.txt';
-
-    const language = getLanguageFromExtension(extension);
-    const newId = `file_${Date.now()}`;
-    const parentId = state.currentFolderId || 'root';
-    setState(prev => {
-      const parent = prev.items[parentId] as WorkspaceFolder;
-
-      return {
-        ...prev,
-        items: {
-          ...prev.items,
-          [newId]: {
-            id: newId,
-            name: newItemName,
-            language,
-            code: `# Nouveau fichier ${extension}\n# Créé le ${new Date().toLocaleDateString()}\n\n# Commencez à écrire votre code ici...`,
-            lastModified: new Date(),
-            size: 0,
-            type: 'file',
-            path: `${parent.path}/${newItemName}`,
-            parentId,
-            extension
-          },
-          [parentId]: {
-            ...parent,
-            children: [...parent.children, newId],
-            expanded: true
-          }
-        },
-        activeFileId: newId
-      };
-    });
-    setShowCreateFileModal(false);
-    setNewItemName('');
+  const getLanguageName = (language: string) => {
+    return language === 'r' ? 'R' : 'Texte';
   };
 
-  const handleCreateFolder = () => {
-    if (!newItemName.trim()) {
-      alert("Nom du dossier requis");
-      return;
-    }
-    const newId = `folder_${Date.now()}`;
-    const parentId = state.currentFolderId || 'root';
-    setState(prev => {
-      const parent = prev.items[parentId] as WorkspaceFolder;
-
-      return {
-        ...prev,
-        items: {
-          ...prev.items,
-          [newId]: {
-            id: newId,
-            name: newItemName,
-            type: 'folder',
-            path: `${parent.path}/${newItemName}`,
-            parentId,
-            children: [],
-            expanded: false
-          },
-          [parentId]: {
-            ...parent,
-            children: [...parent.children, newId],
-            expanded: true
-          }
+  // Fonction pour télécharger tout le workspace
+  const handleDownloadAll = async () => {
+    try {
+      const zip = new JSZip();
+      const root = state.items['root'] as WorkspaceFolder;
+      
+      // Fonction récursive pour ajouter les fichiers au ZIP
+      const addToZip = (itemId: string, currentPath: string) => {
+        const item = state.items[itemId];
+        
+        if (item.type === 'file') {
+          const file = item as WorkspaceFile;
+          zip.file(`${currentPath}/${file.name}`, file.code);
+        } else if (itemId !== 'root') {
+          const folder = item as WorkspaceFolder;
+          const folderPath = `${currentPath}/${folder.name}`;
+          folder.children.forEach(childId => addToZip(childId, folderPath));
+        } else {
+          const folder = item as WorkspaceFolder;
+          folder.children.forEach(childId => addToZip(childId, currentPath));
         }
       };
-    });
-    setShowCreateFolderModal(false);
-    setNewItemName('');
+      
+      // Ajouter tous les fichiers au ZIP
+      addToZip('root', '');
+      
+      // Générer le fichier ZIP
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `openepi_workspace_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      // Ajouter un message dans le terminal
+      setState(prev => ({
+        ...prev,
+        output: `📦 Workspace téléchargé avec succès!\n${prev.output}`
+      }));
+    } catch (error) {
+      console.error('Erreur lors du téléchargement:', error);
+      setState(prev => ({
+        ...prev,
+        output: ` Erreur lors du téléchargement du workspace: ${error}\n${prev.output}`
+      }));
+    }
   };
 
+  // Fonction pour renommer un élément
   const handleRenameItem = () => {
     if (!itemToRename || !newItemName.trim()) return;
+    
     const item = state.items[itemToRename];
-
-    if (item.type === 'file') {
-      const file = item as WorkspaceFile;
-      const oldExtension = file.extension;
-      const newExtension = newItemName.includes('.')
-        ? newItemName.substring(newItemName.lastIndexOf('.')).toLowerCase()
-        : oldExtension;
-
-      if (!isValidExtension(newItemName)) {
-        alert("Extension invalide. Autorisé: .r, .py, .js, .txt, .csv, .json, .md");
-        return;
+    
+    setState(prev => {
+      const newItems = { ...prev.items };
+      
+      if (item.type === 'file') {
+        const file = item as WorkspaceFile;
+        const oldExtension = file.extension;
+        let newExtension = newItemName.includes('.') 
+          ? newItemName.substring(newItemName.lastIndexOf('.')).toLowerCase()
+          : oldExtension;
+        
+        // Si pas d'extension, garder l'ancienne
+        if (!newItemName.includes('.')) {
+          newExtension = oldExtension;
+        }
+        
+        const newLanguage = newExtension === '.r' ? 'r' : 'other';
+        
+        newItems[itemToRename] = {
+          ...file,
+          name: newItemName.includes('.') ? newItemName : `${newItemName}${newExtension}`,
+          language: newLanguage,
+          extension: newExtension,
+          lastModified: new Date()
+        };
+      } else {
+        const folder = item as WorkspaceFolder;
+        newItems[itemToRename] = {
+          ...folder,
+          name: newItemName
+        };
       }
-      const newLanguage = getLanguageFromExtension(newExtension);
-
-      setState(prev => ({
+      
+      return {
         ...prev,
-        items: {
-          ...prev.items,
-          [itemToRename]: {
-            ...file,
-            name: newItemName,
-            language: newLanguage,
-            extension: newExtension,
-            lastModified: new Date()
-          }
-        }
-      }));
-    } else {
-      const folder = item as WorkspaceFolder;
-
-      setState(prev => ({
-        ...prev,
-        items: {
-          ...prev.items,
-          [itemToRename]: {
-            ...folder,
-            name: newItemName,
-            path: folder.path.replace(/\/[^\/]+$/, `/${newItemName}`)
-          }
-        }
-      }));
-    }
+        items: newItems
+      };
+    });
+    
     setShowRenameModal(false);
     setItemToRename(null);
     setNewItemName('');
   };
 
+  // Fonction pour supprimer un élément
   const handleDeleteItem = () => {
     if (!itemToDelete) return;
-    const item = state.items[itemToDelete];
-
-    // Si c'est le root, on ne peut pas le supprimer
+    
+    // Ne pas supprimer le dossier racine
     if (itemToDelete === 'root') {
       alert("Impossible de supprimer le dossier racine");
+      setShowDeleteConfirm(false);
+      setItemToDelete(null);
       return;
     }
-    // Récursivement supprimer les enfants
+    
+    const item = state.items[itemToDelete];
+    
+    // Créer une copie des items
+    const newItems = { ...state.items };
+    
+    // Fonction récursive pour supprimer les enfants
     const deleteRecursive = (id: string) => {
-      const item = state.items[id];
+      const item = newItems[id];
       if (item.type === 'folder') {
         const folder = item as WorkspaceFolder;
         folder.children.forEach(childId => deleteRecursive(childId));
       }
-      delete state.items[id];
+      delete newItems[id];
     };
+    
+    // Supprimer l'élément et ses enfants
     deleteRecursive(itemToDelete);
+    
     // Retirer de la liste des enfants du parent
     if (item.parentId) {
-      const parent = state.items[item.parentId] as WorkspaceFolder;
-      setState(prev => ({
-        ...prev,
-        items: {
-          ...prev.items,
-          [item.parentId!]: {
-            ...parent,
-            children: parent.children.filter(id => id !== itemToDelete)
-          }
-        },
-        activeFileId: prev.activeFileId === itemToDelete ? null : prev.activeFileId,
-        currentFolderId: prev.currentFolderId === itemToDelete ? 'root' : prev.currentFolderId
-      }));
+      const parent = newItems[item.parentId] as WorkspaceFolder;
+      newItems[item.parentId] = {
+        ...parent,
+        children: parent.children.filter(id => id !== itemToDelete)
+      };
     }
+    
+    setState(prev => ({
+      ...prev,
+      items: newItems,
+      activeFileId: prev.activeFileId === itemToDelete ? null : prev.activeFileId,
+      currentFolderId: prev.currentFolderId === itemToDelete ? 'root' : prev.currentFolderId,
+      openFiles: prev.openFiles.filter(id => id !== itemToDelete)
+    }));
+    
     setShowDeleteConfirm(false);
     setItemToDelete(null);
   };
 
+  // Gestion des fichiers
+  const handleCreateFile = () => {
+    if (!newItemName.trim()) return;
+
+    let fileName = newItemName;
+    let extension = '.r';
+    
+    if (fileName.includes('.')) {
+      extension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+    } else {
+      fileName += extension;
+    }
+
+    const language = extension === '.r' ? 'r' : 'other';
+    const newId = `file_${Date.now()}`;
+    const parentId = state.currentFolderId || 'root';
+
+    const newFile: WorkspaceFile = {
+      id: newId,
+      name: fileName,
+      language,
+      code: language === 'r' 
+        ? `# Nouveau script R - ${new Date().toLocaleDateString()}\n# Atelier OpenEPI - Analyse épidémiologique\n\n# Charger les bibliothèques nécessaires\nlibrary(stats)\nlibrary(graphics)\n\n# Votre code ici...\ncat("Bienvenue dans l'atelier OpenEPI!\\n")`
+        : `# ${fileName}`,
+      lastModified: new Date(),
+      size: 0,
+      type: 'file',
+      path: `${parentId === 'root' ? '' : (state.items[parentId] as WorkspaceFolder).path}/${fileName}`,
+      parentId,
+      extension
+    };
+
+    setState(prev => {
+      const parent = prev.items[parentId] as WorkspaceFolder;
+      return {
+        ...prev,
+        items: {
+          ...prev.items,
+          [newId]: newFile,
+          [parentId]: {
+            ...parent,
+            children: [...parent.children, newId],
+            expanded: true
+          }
+        },
+        activeFileId: newId,
+        openFiles: [...prev.openFiles, newId]
+      };
+    });
+
+    setShowCreateFileModal(false);
+    setNewItemName('');
+  };
+
+  const handleCreateFolder = () => {
+    if (!newItemName.trim()) return;
+
+    const newId = `folder_${Date.now()}`;
+    const parentId = state.currentFolderId || 'root';
+
+    const newFolder: WorkspaceFolder = {
+      id: newId,
+      name: newItemName,
+      type: 'folder',
+      path: `${parentId === 'root' ? '' : (state.items[parentId] as WorkspaceFolder).path}/${newItemName}`,
+      parentId,
+      children: [],
+      expanded: false
+    };
+
+    setState(prev => {
+      const parent = prev.items[parentId] as WorkspaceFolder;
+      return {
+        ...prev,
+        items: {
+          ...prev.items,
+          [newId]: newFolder,
+          [parentId]: {
+            ...parent,
+            children: [...parent.children, newId],
+            expanded: true
+          }
+        }
+      };
+    });
+
+    setShowCreateFolderModal(false);
+    setNewItemName('');
+  };
+
+  const handleSelectFile = (fileId: string) => {
+    const file = state.items[fileId] as WorkspaceFile;
+    setState(prev => ({
+      ...prev,
+      activeFileId: fileId,
+      openFiles: prev.openFiles.includes(fileId) ? prev.openFiles : [...prev.openFiles, fileId]
+    }));
+  };
+
+  const handleCloseFile = (fileId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    
+    setState(prev => {
+      const newOpenFiles = prev.openFiles.filter(id => id !== fileId);
+      const newActiveFileId = prev.activeFileId === fileId 
+        ? (newOpenFiles.length > 0 ? newOpenFiles[newOpenFiles.length - 1] : null)
+        : prev.activeFileId;
+      
+      return {
+        ...prev,
+        openFiles: newOpenFiles,
+        activeFileId: newActiveFileId
+      };
+    });
+  };
+
+  // FONCTION CORRIGÉE POUR EXÉCUTER LE CODE
+  const handleRunCode = async () => {
+    if (!activeFile || activeFile.language !== 'r' || isRunning) return;
+
+    setIsRunning(true);
+    const startTime = Date.now();
+
+    try {
+      if (webR && webRStatus === 'ready') {
+        // Clear previous output
+      
+
+        // Utiliser capture.output pour capturer toute la sortie
+        const captureCode = `
+          captured <- capture.output({
+            ${activeFile.code}
+          }, type = "output")
+          captured
+        `;
+
+        try {
+          const result = await webR.evalR(captureCode);
+          const output = await result.toJs();
+          
+          let outputText = '';
+          if (output.values && output.values.length > 0) {
+            outputText = output.values.join('\n');
+          }
+
+          const endTime = Date.now();
+          setExecutionTime(endTime - startTime);
+
+          setState(prev => ({
+            ...prev,
+            output: prev.output + outputText + 
+                    `\n`
+          }));
+        } catch (error: any) {
+          const endTime = Date.now();
+          setExecutionTime(endTime - startTime);
+          setState(prev => ({
+            ...prev,
+            output: prev.output + 
+                    `Erreur R: ${error.message || error}\n` +
+                    `${'-'.repeat(50)}\n Exécution interrompue après ${endTime - startTime}ms\n\n`
+          }));
+        }
+      } else {
+        // Fallback simulation mode pour quand WebR n'est pas disponible
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Simulation d'une sortie R typique
+        const simulatedOutput = `> # === RÉSULTATS DE L'ANALYSE ÉPIDÉMIOLOGIQUE ===
+> cat("=== RÉSULTATS DE L'ANALYSE ÉPIDÉMIOLOGIQUE ===\\n")
+=== RÉSULTATS DE L'ANALYSE ÉPIDÉMIOLOGIQUE ===
+
+> cat("Risque chez les exposés:", round(result$risk_exposed * 100, 1), "%\\n")
+Risque chez les exposés: 70 %
+
+> cat("Risque chez les non-exposés:", round(result$risk_unexposed * 100, 1), "%\\n")
+Risque chez les non-exposés: 30 %
+
+> cat("\\n")
+
+> cat("Risque relatif (RR):", round(result$rr, 2), "\\n")
+Risque relatif (RR): 2.33
+
+> cat("IC 95%: [", round(result$ci_lower, 2), "-", round(result$ci_upper, 2), "]\\n")
+IC 95%: [ 1.45 - 3.76 ]
+
+> cat("\\n")
+
+> # Interprétation
+> if (result$rr > 1) {
++   cat("L'exposition est associée à un risque accru de maladie.\\n")
++ } else if (result$rr < 1) {
++   cat("L'exposition est associée à un risque réduit de maladie.\\n")
++ } else {
++   cat("Aucune association détectée.\\n")
++ }
+L'exposition est associée à un risque accru de maladie.
+
+> # === ANALYSE STATISTIQUE SUPPLÉMENTAIRE ===
+> # Test du Chi2
+> matrix_data <- matrix(c(70, 30, 30, 70), nrow = 2)
+> chi_test <- chisq.test(matrix_data)
+> cat("\\nTest du Chi2:\\n")
+
+Test du Chi2:
+> cat("p-value:", format.pval(chi_test$p.value, digits = 3), "\\n")
+p-value: <0.001
+
+> # === VISUALISATION ===
+> # Création d'un graphique simple
+> par(mfrow = c(1, 2))
+> 
+> # Barplot des risques
+> risks <- c(result$risk_exposed, result$risk_unexposed) * 100
+> barplot(risks, 
++         names.arg = c("Exposés", "Non-exposés"),
++         ylab = "Risque (%)",
++         main = "Distribution du risque",
++         col = c("#3b82f6", "#93c5fd"),
++         ylim = c(0, 50))
+> 
+> # Plot du RR avec intervalle de confiance
+> plot(1, result$rr, xlim = c(0.5, 1.5), ylim = c(0, max(result$ci_upper) + 1),
++      xaxt = 'n', xlab = '', ylab = "Risque relatif",
++      main = "RR avec IC 95%",
++      pch = 19, cex = 2, col = "#ef4444")
+> arrows(1, result$ci_lower, 1, result$ci_upper, 
++        angle = 90, code = 3, length = 0.1, col = "#ef4444")
+> abline(h = 1, lty = 2, col = "gray")`;
+
+        setExecutionTime(1000);
+        setState(prev => ({
+          ...prev,
+          output: ` Simulation d'exécution démarrée à ${new Date().toLocaleTimeString()}\n${'-'.repeat(50)}\n` +
+                  simulatedOutput +
+                  `\n${'-'.repeat(50)}\n Simulation terminée en 1000ms\n\n${prev.output}`
+        }));
+      }
+    } catch (error: any) {
+      const endTime = Date.now();
+      setExecutionTime(endTime - startTime);
+      setState(prev => ({
+        ...prev,
+        output: ` Erreur d'exécution (${endTime - startTime}ms):\n${error.message || error}\n\n${prev.output}`
+      }));
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   const handleDownloadFile = (fileId: string) => {
     const file = state.items[fileId] as WorkspaceFile;
-    const blob = new Blob([file.code], { type: 'text/plain' });
+    const blob = new Blob([file.code], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = file.name;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
   const handleDownloadFolder = async (folderId: string) => {
     const folder = state.items[folderId] as WorkspaceFolder;
     const zip = new JSZip();
-
-    const addToZip = (id: string, currentPath: string) => {
+    
+    const addToZip = (id: string, path: string) => {
       const item = state.items[id];
-
       if (item.type === 'file') {
         const file = item as WorkspaceFile;
-        zip.file(`${currentPath}/${file.name}`, file.code);
+        zip.file(`${path}/${file.name}`, file.code);
       } else {
         const subFolder = item as WorkspaceFolder;
-        const folderPath = `${currentPath}/${subFolder.name}`;
-        subFolder.children.forEach(childId => addToZip(childId, folderPath));
+        const newPath = `${path}/${subFolder.name}`;
+        subFolder.children.forEach(childId => addToZip(childId, newPath));
       }
     };
+    
     folder.children.forEach(childId => addToZip(childId, folder.name));
-
+    
     const content = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(content);
     const a = document.createElement('a');
     a.href = url;
     a.download = `${folder.name}.zip`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadAll = async () => {
-    const zip = new JSZip();
-    const root = state.items['root'] as WorkspaceFolder;
-
-    const addToZip = (id: string, currentPath: string) => {
-      const item = state.items[id];
-
-      if (item.type === 'file') {
-        const file = item as WorkspaceFile;
-        zip.file(`${currentPath}/${file.name}`, file.code);
-      } else if (id !== 'root') {
-        const folder = item as WorkspaceFolder;
-        const folderPath = `${currentPath}/${folder.name}`;
-        folder.children.forEach(childId => addToZip(childId, folderPath));
-      } else {
-        const folder = item as WorkspaceFolder;
-        folder.children.forEach(childId => addToZip(childId, currentPath));
-      }
-    };
-    addToZip('root', '');
-
-    const content = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(content);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `workspace_${new Date().toISOString().slice(0, 10)}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleClearOutput = () => {
+    setState(prev => ({ ...prev, output: '' }));
   };
 
   const handleUploadFile = async () => {
     if (!uploadedFile) return;
-
+    
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const content = e.target?.result as string;
-      const extension = uploadedFile.name.substring(uploadedFile.name.lastIndexOf('.')).toLowerCase();
-      const language = getLanguageFromExtension(extension);
+      const extension = uploadedFile.name.includes('.') 
+        ? uploadedFile.name.substring(uploadedFile.name.lastIndexOf('.')).toLowerCase()
+        : '';
+      
+      const language = extension === '.r' ? 'r' : 'other';
       const newId = `file_${Date.now()}`;
       const parentId = state.currentFolderId || 'root';
-
+      
+      const newFile: WorkspaceFile = {
+        id: newId,
+        name: uploadedFile.name,
+        language,
+        code: content,
+        lastModified: new Date(),
+        size: content.length,
+        type: 'file',
+        path: `${parentId === 'root' ? '' : (state.items[parentId] as WorkspaceFolder).path}/${uploadedFile.name}`,
+        parentId,
+        extension: extension || '.txt'
+      };
+      
       setState(prev => {
         const parent = prev.items[parentId] as WorkspaceFolder;
         return {
           ...prev,
           items: {
             ...prev.items,
-            [newId]: {
-              id: newId,
-              name: uploadedFile.name,
-              language,
-              code: content,
-              lastModified: new Date(),
-              size: content.length,
-              type: 'file',
-              path: `${parent.path}/${uploadedFile.name}`,
-              parentId,
-              extension
-            },
+            [newId]: newFile,
             [parentId]: {
               ...parent,
               children: [...parent.children, newId],
               expanded: true
             }
           },
-          activeFileId: newId
+          activeFileId: newId,
+          openFiles: [...prev.openFiles, newId]
         };
       });
+      
       setShowUploadModal(false);
       setUploadedFile(null);
     };
+    
     reader.readAsText(uploadedFile);
   };
 
-  const handleSelectFile = (fileId: string) => {
-    const file = state.items[fileId] as WorkspaceFile;
-    if (file.language === 'other') {
-      alert("Ce type de fichier ne peut pas être édité dans l'éditeur de code");
-      return;
-    }
-    setState(prev => ({ ...prev, activeFileId: fileId }));
-  };
-
-  const handleSelectFolder = (folderId: string) => {
+  const renderFileTree = (folderId: string, depth = 0) => {
     const folder = state.items[folderId] as WorkspaceFolder;
-    setState(prev => ({
-      ...prev,
-      currentFolderId: folderId,
-      items: {
-        ...prev.items,
-        [folderId]: { ...folder, expanded: !folder.expanded }
-      }
-    }));
-  };
-
-  const handleCodeChange = (value: string) => {
-    if (!activeFile) return;
-
-    setState(prev => ({
-      ...prev,
-      items: {
-        ...prev.items,
-        [prev.activeFileId!]: {
-          ...(prev.items[prev.activeFileId!] as WorkspaceFile),
-          code: value,
-          lastModified: new Date(),
-          size: value.length
-        }
-      }
-    }));
-
-    // Analyse si auto-run activé
-    if (state.autoRun) {
-      const analysis = analyzeCode(value, activeFile.language);
-      setCodeAnalysis(analysis);
-      handleRunCode(); // Auto-exécuter si activé
-    }
-  };
-
-  // Fonctions pour l'analyse et la conversion
-  const analyzeCode = (code: string, currentLanguage: WorkspaceFile['language']): CodeAnalysis => {
-    const analysis: CodeAnalysis = {
-      isValid: true,
-      suggestions: [],
-      errors: []
-    };
-    // Détection améliorée avec plus de patterns
-    const lines = code.split('\n');
-    const rPatterns = ['<-', '%>%', 'library(', 'function(', 'print(paste'];
-    const pythonPatterns = ['def ', 'import ', 'print(f"', 'class '];
-    const jsPatterns = ['function ', 'const ', 'let ', 'console.log(', '=>'];
-
-    const rCount = rPatterns.reduce((count, pat) => count + lines.filter(line => line.includes(pat)).length, 0);
-    const pyCount = pythonPatterns.reduce((count, pat) => count + lines.filter(line => line.includes(pat)).length, 0);
-    const jsCount = jsPatterns.reduce((count, pat) => count + lines.filter(line => line.includes(pat)).length, 0);
-
-    let detected = currentLanguage;
-    if (rCount > pyCount && rCount > jsCount) detected = 'r';
-    else if (pyCount > rCount && pyCount > jsCount) detected = 'python';
-    else if (jsCount > rCount && jsCount > pyCount) detected = 'javascript';
-
-    if (detected !== currentLanguage) {
-      analysis.detectedLanguage = detected;
-      analysis.suggestions.push(`Code détecté comme ${detected.toUpperCase()}. Considérer une conversion automatique.`);
-      analysis.isValid = false;
-    }
-
-    // Vérification basique d'erreurs
-    if (code.includes('syntax error')) analysis.errors.push('Potentielle erreur de syntaxe détectée.');
-
-    return analysis;
-  };
-
-  const handleLanguageChange = (lang: WorkspaceFile['language']) => {
-    if (!activeFile) return;
-
-    lastLanguageChangeTime.current = Date.now();
-    const analysis = analyzeCode(activeFile.code, lang);
-
-    if (analysis.detectedLanguage && analysis.detectedLanguage !== lang) {
-      setPendingLanguageChange(lang);
-      setCodeAnalysis(analysis);
-      setShowConversionAlert(true);
-    } else {
-      updateFileLanguage(lang);
-    }
-  };
-
-  const updateFileLanguage = (lang: WorkspaceFile['language']) => {
-    setState(prev => ({
-      ...prev,
-      items: {
-        ...prev.items,
-        [prev.activeFileId!]: {
-          ...(prev.items[prev.activeFileId!] as WorkspaceFile),
-          language: lang,
-          name: (prev.items[prev.activeFileId!] as WorkspaceFile).name.replace(
-            /\.(r|py|js)$/,
-            lang === 'python' ? '.py' : lang === 'javascript' ? '.js' : '.r'
-          ),
-          extension: getExtensionFromLanguage(lang)
-        }
-      }
-    }));
-    setState(prev => ({ ...prev, autoRun: false }));
-  };
-
-  const handleConvertCode = () => {
-    if (!pendingLanguageChange || !codeAnalysis || !activeFile) return;
-
-    let convertedCode = activeFile.code;
-
-    // Conversions améliorées avec plus de règles
-    if (activeFile.language === 'r' && pendingLanguageChange === 'python') {
-      convertedCode = convertedCode
-        .replace(/<-/g, '=')
-        .replace(/function\((.*?)\)/g, 'def $1:')
-        .replace(/print\(paste\((.*?)\)\)/g, 'print(f"$1")')
-        .replace(/library\((.*?)\)/g, 'import $1')
-        .replace(/\[/g, '[') // Ajustements supplémentaires si nécessaire
-        .replace(/\$/g, '.');
-    } else if (activeFile.language === 'python' && pendingLanguageChange === 'r') {
-      convertedCode = convertedCode
-        .replace(/def (.*?):/g, '$1 <- function(')
-        .replace(/print\(f"(.*?)"\)/g, 'print(paste($1))')
-        .replace(/import (.*?)/g, 'library($1)')
-        .replace(/\./g, '$');
-    } else if (activeFile.language === 'r' && pendingLanguageChange === 'javascript') {
-      convertedCode = convertedCode
-        .replace(/<-/g, '=')
-        .replace(/function\((.*?)\)/g, 'function($1)')
-        .replace(/print\(paste\((.*?)\)\)/g, 'console.log($1)')
-        .replace(/library\((.*?)\)/g, '// Import $1 (JS equivalent)');
-    } else if (activeFile.language === 'javascript' && pendingLanguageChange === 'r') {
-      convertedCode = convertedCode
-        .replace(/function\((.*?)\)/g, 'function($1)')
-        .replace(/console\.log\((.*?)\)/g, 'print(paste($1))');
-    } else if (activeFile.language === 'python' && pendingLanguageChange === 'javascript') {
-      convertedCode = convertedCode
-        .replace(/def (.*?):/g, 'function $1')
-        .replace(/print\(f"(.*?)"\)/g, 'console.log(`$1`)')
-        .replace(/import (.*?)/g, '// Import $1 (JS equivalent)');
-    } else if (activeFile.language === 'javascript' && pendingLanguageChange === 'python') {
-      convertedCode = convertedCode
-        .replace(/function (.*?)\{/g, 'def $1:')
-        .replace(/console\.log\(`(.*?)`\)/g, 'print(f"$1")');
-    }
-
-    setState(prev => ({
-      ...prev,
-      items: {
-        ...prev.items,
-        [prev.activeFileId!]: {
-          ...(prev.items[prev.activeFileId!] as WorkspaceFile),
-          language: pendingLanguageChange,
-          code: convertedCode,
-          name: (prev.items[prev.activeFileId!] as WorkspaceFile).name.replace(
-            /\.(r|py|js)$/,
-            pendingLanguageChange === 'python' ? '.py' :
-            pendingLanguageChange === 'javascript' ? '.js' : '.r'
-          ),
-          extension: getExtensionFromLanguage(pendingLanguageChange)
-        }
-      }
-    }));
-
-    setShowConversionAlert(false);
-    setPendingLanguageChange(null);
-
-    // Message dans le terminal
-    setState(prev => ({
-      ...prev,
-      output: `🔄 Code converti de ${activeFile.language.toUpperCase()} vers ${pendingLanguageChange.toUpperCase()}. Vérifiez les ajustements manuels si nécessaire.\n\n${prev.output}`
-    }));
-  };
-
-  // Exécution réelle du code
-  const handleRunCode = async () => {
-    if (!activeFile || isRunning) return;
-
-    setIsRunning(true);
-    const startTime = Date.now();
-    let output = '';
-    let variables = {};
-    let error = null;
-
-    try {
-      if (activeFile.language === 'javascript') {
-        // Exécution JS native
-        const func = new Function(activeFile.code);
-        const consoleLog = console.log;
-        const logs = [];
-        console.log = (...args) => logs.push(args.join(' '));
-        func();
-        console.log = consoleLog;
-        output = logs.join('\n');
-      } else if (activeFile.language === 'python' && pyodide) {
-        // Exécution Python avec Pyodide
-        // Installer des modules si nécessaire (ex: numpy)
-        await pyodide.loadPackage('micropip');
-        const micropip = pyodide.pyimport('micropip');
-        // Exemple : await micropip.install('numpy');
-        output = await pyodide.runPythonAsync(activeFile.code);
-      } else if (activeFile.language === 'r' && webR) {
-        // Exécution R avec WebR
-        const shelter = await webR.evalR(activeFile.code);
-        output = await shelter.toJs();
-        await shelter.close();
-      }
-    } catch (err) {
-      error = err.message;
-    }
-
-    const endTime = Date.now();
-    const executionTimeMs = endTime - startTime;
-    setExecutionTime(executionTimeMs);
-
-    setState(prev => ({
-      ...prev,
-      output: error ? `❌ Erreur: ${error}\n\n${prev.output}` : `${output}\n✅ Terminé en ${executionTimeMs}ms\n\n${prev.output}`,
-      variables: variables // À implémenter l'inspection des variables
-    }));
-
-    setIsRunning(false);
-  };
-
-  const LanguageIcon = ({ language }: { language: string }) => {
-    switch (language) {
-      case 'python': return <span className="w-6 h-6 bg-gradient-to-br from-blue-500 to-yellow-500 rounded text-white font-bold text-xs flex items-center justify-center">Py</span>;
-      case 'r': return <span className="w-6 h-6 bg-gradient-to-br from-blue-600 to-blue-800 rounded text-white font-bold text-xs flex items-center justify-center">R</span>;
-      case 'javascript': return <span className="w-6 h-6 bg-gradient-to-br from-yellow-500 to-yellow-700 rounded text-white font-bold text-xs flex items-center justify-center">JS</span>;
-      default: return <FileCode className="w-4 h-4" />;
-    }
-  };
-
-  const renderTree = (folderId: string, depth = 0) => {
-    const folder = state.items[folderId] as WorkspaceFolder;
-
+    
     return (
-      <div key={folderId} className="select-none">
+      <div key={folderId} className="space-y-0.5">
+        {/* Dossier */}
         <div
-          className={`flex items-center px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors ${
-            state.currentFolderId === folderId ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700' : ''
+          className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors group ${
+            state.currentFolderId === folderId 
+              ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' 
+              : 'hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
-          style={{ paddingLeft: `${depth * 20 + 8}px` }}
-          onClick={() => handleSelectFolder(folderId)}
+          onClick={() => setState(prev => ({
+            ...prev,
+            currentFolderId: folderId,
+            items: {
+              ...prev.items,
+              [folderId]: {
+                ...folder,
+                expanded: !folder.expanded
+              }
+            }
+          }))}
         >
-          <div className="flex items-center flex-1 min-w-0">
+          <div className="flex items-center flex-1 min-w-0" style={{ paddingLeft: `${depth * 16}px` }}>
             {folder.expanded ? (
-              <ChevronDown className="w-4 h-4 mr-1 flex-shrink-0 text-gray-600" />
+              <ChevronDown className="w-3 h-3 mr-1.5 flex-shrink-0 text-gray-500" />
             ) : (
-              <ChevronRightIcon className="w-4 h-4 mr-1 flex-shrink-0 text-gray-600" />
+              <ChevronRightIcon className="w-3 h-3 mr-1.5 flex-shrink-0 text-gray-500" />
             )}
             {folder.expanded ? (
-              <FolderOpen className="w-4 h-4 mr-2 flex-shrink-0 text-blue-600" />
+              <FolderOpen className="w-4 h-4 mr-2 flex-shrink-0 text-blue-500" />
             ) : (
-              <FolderClosed className="w-4 h-4 mr-2 flex-shrink-0 text-blue-600" />
+              <FolderClosed className="w-4 h-4 mr-2 flex-shrink-0 text-blue-500" />
             )}
             <span className="text-sm font-medium truncate">{folder.name}</span>
+            <Badge variant="outline" className="ml-2 text-xs py-0 h-4">
+              {folder.children.length}
+            </Badge>
           </div>
-
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus:opacity-100">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <MoreVertical className="w-3 h-3" />
               </Button>
             </DropdownMenuTrigger>
@@ -841,13 +907,16 @@ export default function WorkspacePage() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleDownloadFolder(folderId)}>
                 <Download className="w-4 h-4 mr-2" />
-                Télécharger en ZIP
+                Télécharger (ZIP)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => {
-                setItemToDelete(folderId);
-                setShowDeleteConfirm(true);
-              }} className="text-red-600 focus:text-red-600">
+              <DropdownMenuItem 
+                onClick={() => {
+                  setItemToDelete(folderId);
+                  setShowDeleteConfirm(true);
+                }}
+                className="text-red-600 focus:text-red-600"
+              >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Supprimer
               </DropdownMenuItem>
@@ -855,314 +924,225 @@ export default function WorkspacePage() {
           </DropdownMenu>
         </div>
 
-        {folder.expanded && (
-          <div>
-            {folder.children.map(childId => {
-              const child = state.items[childId];
-              if (child.type === 'folder') {
-                return renderTree(childId, depth + 1);
-              } else {
-                const file = child as WorkspaceFile;
-                return (
-                  <ContextMenu key={childId}>
-                    <ContextMenuTrigger asChild>
-                      <div
-                        className={`flex items-center px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors group ${
-                          state.activeFileId === childId ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700' : ''
-                        }`}
-                        style={{ paddingLeft: `${(depth + 1) * 20 + 8}px` }}
-                        onClick={() => handleSelectFile(childId)}
-                        onDoubleClick={() => {
-                          if (file.language === 'other') return;
-                          setRenamingItemId(childId);
-                          setRenamingItemName(file.name);
-                        }}
-                      >
-                        <div className="flex items-center flex-1 min-w-0">
-                          {getFileIcon(file.extension)}
-                          <span className="ml-2 text-sm font-medium truncate">
-                            {renamingItemId === childId ? (
-                              <input
-                                ref={inputRef}
-                                type="text"
-                                value={renamingItemName}
-                                onChange={(e) => setRenamingItemName(e.target.value)}
-                                onBlur={() => {
-                                  if (renamingItemName.trim() && isValidExtension(renamingItemName)) {
-                                    const newExtension = renamingItemName.includes('.')
-                                      ? renamingItemName.substring(renamingItemName.lastIndexOf('.')).toLowerCase()
-                                      : file.extension;
-                                    const newLanguage = getLanguageFromExtension(newExtension);
-
-                                    setState(prev => ({
-                                      ...prev,
-                                      items: {
-                                        ...prev.items,
-                                        [childId]: {
-                                          ...file,
-                                          name: renamingItemName,
-                                          language: newLanguage,
-                                          extension: newExtension
-                                        }
-                                      }
-                                    }));
-                                  }
-                                  setRenamingItemId(null);
-                                  setRenamingItemName('');
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    if (renamingItemName.trim() && isValidExtension(renamingItemName)) {
-                                      const newExtension = renamingItemName.includes('.')
-                                        ? renamingItemName.substring(renamingItemName.lastIndexOf('.')).toLowerCase()
-                                        : file.extension;
-                                      const newLanguage = getLanguageFromExtension(newExtension);
-
-                                      setState(prev => ({
-                                        ...prev,
-                                        items: {
-                                          ...prev.items,
-                                          [childId]: {
-                                            ...file,
-                                            name: renamingItemName,
-                                            language: newLanguage,
-                                            extension: newExtension
-                                          }
-                                        }
-                                      }));
-                                    }
-                                    setRenamingItemId(null);
-                                    setRenamingItemName('');
-                                  } else if (e.key === 'Escape') {
-                                    setRenamingItemId(null);
-                                    setRenamingItemName('');
-                                  }
-                                }}
-                                className="px-1 py-0.5 text-sm border border-gray-300 rounded focus:border-blue-500 focus:outline-none w-full dark:border-gray-600 dark:bg-gray-800"
-                              />
-                            ) : (
-                              file.name
-                            )}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDownloadFile(childId);
-                                  }}
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <Download className="w-3 h-3" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Télécharger</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                                <MoreVertical className="w-3 h-3" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                              <DropdownMenuItem onClick={() => {
-                                setItemToRename(childId);
-                                setNewItemName(file.name);
-                                setShowRenameModal(true);
-                              }}>
-                                <Edit2 className="w-4 h-4 mr-2" />
-                                Renommer
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDownloadFile(childId)}>
-                                <Download className="w-4 h-4 mr-2" />
-                                Télécharger
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => {
-                                setItemToDelete(childId);
-                                setShowDeleteConfirm(true);
-                              }} className="text-red-600 focus:text-red-600">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Supprimer
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent className="w-48">
-                      <ContextMenuItem onClick={() => handleSelectFile(childId)}>
-                        <File className="w-4 h-4 mr-2" />
-                        Ouvrir
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={() => handleDownloadFile(childId)}>
-                        <Download className="w-4 h-4 mr-2" />
-                        Télécharger
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem onClick={() => {
-                        setItemToRename(childId);
-                        setNewItemName(file.name);
-                        setShowRenameModal(true);
-                      }}>
-                        <Edit2 className="w-4 h-4 mr-2" />
-                        Renommer
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={() => {
-                        setItemToDelete(childId);
-                        setShowDeleteConfirm(true);
-                      }} className="text-red-600">
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Supprimer
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                );
-              }
-            })}
-          </div>
-        )}
+        {/* Contenu du dossier */}
+        {folder.expanded && folder.children.map(childId => {
+          const child = state.items[childId];
+          if (child.type === 'folder') {
+            return renderFileTree(childId, depth + 1);
+          } else {
+            const file = child as WorkspaceFile;
+            const isActive = state.activeFileId === childId;
+            
+            return (
+              <ContextMenu key={childId}>
+                <ContextMenuTrigger asChild>
+                  <div
+                    className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors group ${
+                      isActive
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                    onClick={() => handleSelectFile(childId)}
+                    style={{ paddingLeft: `${(depth + 1) * 16 + 20}px` }}
+                  >
+                    <div className="flex items-center flex-1 min-w-0">
+                      {getFileIcon(file.extension)}
+                      <span className="ml-2 text-sm truncate">{file.name}</span>
+                      {file.isDirty && (
+                        <span className="ml-2 w-2 h-2 rounded-full bg-yellow-500" />
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center opacity-0 group-hover:opacity-100">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadFile(childId);
+                              }}
+                            >
+                              <Download className="w-3 h-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Télécharger</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                </ContextMenuTrigger>
+                
+                <ContextMenuContent className="w-48">
+                  <ContextMenuItem onClick={() => handleSelectFile(childId)}>
+                    <File className="w-4 h-4 mr-2" />
+                    Ouvrir
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => handleDownloadFile(childId)}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Télécharger
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => {
+                    setItemToRename(childId);
+                    setNewItemName(file.name);
+                    setShowRenameModal(true);
+                  }}>
+                    <Edit2 className="w-4 h-4 mr-2" />
+                    Renommer
+                  </ContextMenuItem>
+                  <ContextMenuItem 
+                    onClick={() => {
+                      setItemToDelete(childId);
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="text-red-600"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Supprimer
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            );
+          }
+        })}
       </div>
     );
   };
 
-  // Rendu principal
-  return (
-    <div className={`flex flex-col h-screen bg-background ${theme} ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b bg-card shadow-sm">
-        <div className="flex items-center space-x-3">
-          <Button variant="ghost" size="sm" onClick={() => setLocation('/')} className="h-8 w-8 p-0">
-            <ChevronRight className="w-4 h-4 rotate-180" />
-          </Button>
+  // Statistiques du workspace
+  const stats = {
+    totalFiles: Object.values(state.items).filter(item => item.type === 'file').length,
+    totalFolders: Object.values(state.items).filter(item => item.type === 'folder').length - 1,
+    totalLines: activeFile ? activeFile.code.split('\n').length : 0,
+    totalSize: Object.values(state.items)
+      .filter(item => item.type === 'file')
+      .reduce((sum, file) => sum + (file as WorkspaceFile).size, 0)
+  };
 
+  return (
+    <div className={`flex flex-col h-screen bg-background ${state.theme}`}>
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-2 border-b">
+        <div className="flex items-center space-x-4">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setLocation('/')}
+            className="gap-2"
+          >
+            <ChevronRight className="w-4 h-4 rotate-180" />
+            Retour
+          </Button>
+          
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow">
-              <Code className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex items-center space-x-2">
-              <FolderTree className="w-5 h-5 text-blue-600" />
-              <div>
-                <h1 className="font-bold text-sm">Atelier OpenEPI</h1>
-                <p className="text-xs text-muted-foreground">
-                  {activeFile ? activeFile.name : 'Sélectionnez un fichier'}
-                </p>
-              </div>
+           
+            <div>
+              <h1 className="font-bold text-lg">Epi WorkSpace</h1>
+              <p className="text-xs text-muted-foreground">
+                Editeur de Code R
+              </p>
             </div>
           </div>
         </div>
+        
         <div className="flex items-center space-x-2">
-          {activeFile && (
-            <Button 
-              variant="default" 
-              size="sm" 
-              className="h-8 px-3 bg-gradient-to-r from-green-600 to-emerald-600" 
+          <div className="flex items-center space-x-2 px-3 border-r">
+            <Switch 
+              checked={state.autoRun} 
+              onCheckedChange={(checked) => setState(prev => ({ ...prev, autoRun: checked }))}
+              id="auto-run"
+            />
+            <Label htmlFor="auto-run" className="text-sm cursor-pointer">
+              Auto-run R
+            </Label>
+          </div>
+          
+          {activeFile && activeFile.language === 'r' && (
+            <Button
+              variant="default"
+              size="sm"
               onClick={handleRunCode}
-              disabled={isRunning || !pyodide || !webR}
+              disabled={isRunning}
+              className="gap-2 bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900"
             >
-              {isRunning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
-              <span className="text-xs">{isRunning ? 'Exécution...' : 'Exécuter'}</span>
+              {isRunning ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              {isRunning ? 'Exécution...' : 'Exécuter R'}
             </Button>
           )}
-          {activeFile && (
-            <div className="flex items-center space-x-2 px-3 border-l">
-              <Switch checked={state.autoRun} onCheckedChange={(checked) => setState(prev => ({ ...prev, autoRun: checked }))} className="scale-75" />
-              <Label className="text-xs cursor-pointer">Auto-run</Label>
-            </div>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => setIsChatbotOpen(!isChatbotOpen)} className="h-8 w-8 p-0">
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setState(prev => ({ 
+              ...prev, 
+              theme: prev.theme === 'light' ? 'dark' : 'light' 
+            }))}
+          >
+            {state.theme === 'light' ? '🌙' : '☀️'}
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsChatbotOpen(!isChatbotOpen)}
+          >
             <Bot className="w-4 h-4" />
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <Settings className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
-                <Sparkles className="w-4 h-4 mr-2" />
-                Changer thème ({theme === 'light' ? 'Sombre' : 'Clair'})
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </header>
-      {/* Alerte de conversion */}
-      {showConversionAlert && codeAnalysis && pendingLanguageChange && (
-        <Alert className="mx-4 mt-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 shadow">
-          <AlertCircle className="w-4 h-4 text-blue-600" />
-          <AlertDescription className="flex items-center justify-between w-full">
-            <div>
-              Détection de langage : code semble être en{' '}
-              <span className="font-bold">{codeAnalysis.detectedLanguage?.toUpperCase()}</span>. {codeAnalysis.suggestions.join(' ')}
-            </div>
-            <div className="flex space-x-2">
-              <Button size="sm" variant="outline" onClick={() => setShowConversionAlert(false)}>Ignorer</Button>
-              <Button size="sm" onClick={handleConvertCode} className="bg-blue-600 hover:bg-blue-700">
-                <Sparkles className="w-3 h-3 mr-2" />
-                Convertir automatiquement
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-      {/* Main layout */}
+      
+      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Arborescence */}
+        {/* Sidebar */}
         {showSidebar && (
-          <div className="w-72 border-r bg-card flex flex-col shadow-inner">
+          <div className="w-64 border-r flex flex-col bg-card">
             <div className="p-3 border-b">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm flex items-center">
-                  <FolderTree className="w-4 h-4 mr-2 text-primary" />
-                  Explorateur de fichiers
+                  <FolderTree className="w-4 h-4 mr-2" />
+                  Explorateur
                 </h3>
-                <div className="flex space-x-1">
+                <div className="flex gap-1">
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            setShowCreateFileModal(true);
-                            setNewItemName('');
-                          }}
+                          onClick={() => setShowCreateFileModal(true)}
                           className="h-7 w-7 p-0"
                         >
                           <FilePlus className="w-4 h-4" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="top">Nouveau fichier</TooltipContent>
+                      <TooltipContent>Nouveau fichier</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            setShowCreateFolderModal(true);
-                            setNewItemName('');
-                          }}
+                          onClick={() => setShowCreateFolderModal(true)}
                           className="h-7 w-7 p-0"
                         >
                           <FolderPlus className="w-4 h-4" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="top">Nouveau dossier</TooltipContent>
+                      <TooltipContent>Nouveau dossier</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1175,331 +1155,384 @@ export default function WorkspacePage() {
                           <Upload className="w-4 h-4" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="top">Uploader fichier</TooltipContent>
+                      <TooltipContent>Uploader</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                </div>
+              </div>
+              
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher..."
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
+            </div>
+            
+            <ScrollArea className="flex-1">
+              <div className="p-2">
+                {renderFileTree('root')}
+              </div>
+            </ScrollArea>
+            
+            <div className="p-3 border-t">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Fichiers:</span>
+                  <span className="font-medium">{stats.totalFiles}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Dossiers:</span>
+                  <span className="font-medium">{stats.totalFolders}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Taille:</span>
+                  <span className="font-medium">
+                    {(stats.totalSize / 1024).toFixed(1)} KB
+                  </span>
+                </div>
+               
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Main Editor Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* File Tabs */}
+          {openFiles.length > 0 && (
+            <div className="border-b">
+              <div className="flex items-center px-2">
+                <ScrollArea className="flex-1" orientation="horizontal">
+                  <div className="flex">
+                    {openFiles.map((file) => {
+                      const isActive = state.activeFileId === file.id;
+                      return (
+                        <div
+                          key={file.id}
+                          className={`flex items-center px-3 py-2 border-r text-sm cursor-pointer transition-colors ${
+                            isActive
+                              ? 'bg-background border-b-2 border-b-blue-500 text-foreground'
+                              : 'bg-muted/50 hover:bg-muted text-muted-foreground'
+                          }`}
+                          onClick={() => handleSelectFile(file.id)}
+                        >
+                          {getFileIcon(file.extension)}
+                          <span className="ml-2 max-w-[150px] truncate">
+                            {file.name}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="ml-2 h-5 w-5 p-0 hover:bg-background"
+                            onClick={(e) => handleCloseFile(file.id, e)}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+                
+                <div className="flex items-center px-2">
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={handleDownloadAll}
-                          className="h-7 w-7 p-0"
+                          onClick={() => setShowSidebar(!showSidebar)}
+                          className="h-8 w-8 p-0"
                         >
-                          <Archive className="w-4 h-4" />
+                          {showSidebar ? (
+                            <PanelLeftClose className="w-4 h-4" />
+                          ) : (
+                            <PanelLeftOpen className="w-4 h-4" />
+                          )}
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="top">Télécharger tout (ZIP)</TooltipContent>
+                      <TooltipContent>
+                        {showSidebar ? 'Masquer explorateur' : 'Afficher explorateur'}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowTerminal(!showTerminal)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {showTerminal ? (
+                            <PanelLeftClose className="w-4 h-4 rotate-90" />
+                          ) : (
+                            <PanelLeftOpen className="w-4 h-4 rotate-90" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {showTerminal ? 'Masquer terminal' : 'Afficher terminal'}
+                      </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
               </div>
-              <Input placeholder="Rechercher dans le workspace..." className="h-8 text-xs" prefix={<Search className="w-4 h-4 text-muted-foreground" />} />
             </div>
-            <ScrollArea className="flex-1">
-              <div className="p-2">
-                {renderTree('root')}
-              </div>
-            </ScrollArea>
-            {/* Stats */}
-            <div className="p-3 border-t text-xs text-muted-foreground">
-              <div className="flex justify-between mb-1">
-                <span>Fichiers:</span>
-                <span>{Object.values(state.items).filter(item => item.type === 'file').length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Dossiers:</span>
-                <span>{Object.values(state.items).filter(item => item.type === 'folder').length - 1}</span>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Éditeur principal */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {activeFile && activeFile.language !== 'other' ? (
-            <>
-              {/* Barre d'outils éditeur */}
-              <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm">
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-1 bg-muted rounded-lg p-1">
-                    {(['r', 'python', 'javascript'] as const).map((lang) => (
-                      <button
-                        key={lang}
-                        onClick={() => handleLanguageChange(lang)}
-                        className={`flex items-center justify-center h-7 px-3 rounded-md transition-all text-xs font-medium ${
-                          activeFile.language === lang
-                            ? 'bg-background shadow ring-1 ring-border'
-                            : 'hover:bg-muted-foreground/10'
-                        }`}
-                      >
-                        {activeFile.language === lang && <Check className="w-3 h-3 mr-1 text-success" />}
-                        <LanguageIcon language={lang} />
-                        <span className="ml-1">{lang === 'r' ? 'R' : lang === 'python' ? 'Py' : 'JS'}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {getFileIcon(activeFile.extension)}
-                    <span className="text-sm font-medium">{activeFile.name}</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {activeFile.extension.toUpperCase().replace('.', '')}
-                    </Badge>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {activeFile.code.length} caractères • {activeFile.code.split('\n').length} lignes
-                  </Badge>
+          )}
+          
+          {/* Editor or Empty State */}
+          {activeFile ? (
+            <div className="flex-1 overflow-hidden">
+              <Suspense fallback={
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Button variant="outline" size="sm" onClick={() => handleDownloadFile(activeFile.id)} className="h-7 text-xs">
-                    <Download className="w-3 h-3 mr-1" />
-                    Télécharger
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    setItemToRename(activeFile.id);
-                    setNewItemName(activeFile.name);
-                    setShowRenameModal(true);
-                  }} className="h-7 text-xs">
-                    <Edit2 className="w-3 h-3 mr-1" />
-                    Renommer
-                  </Button>
-                </div>
-              </div>
-              {/* Éditeur */}
-              <div className="flex-1 overflow-hidden">
+              }>
                 <CodeEditor
                   value={activeFile.code}
                   language={activeFile.language}
-                  onChange={handleCodeChange}
-                  height="100%"
-                  theme={theme === 'light' ? 'vs-light' : 'vs-dark'}
+                  onChange={(value) => {
+                    setState(prev => ({
+                      ...prev,
+                      items: {
+                        ...prev.items,
+                        [prev.activeFileId!]: {
+                          ...(prev.items[prev.activeFileId!] as WorkspaceFile),
+                          code: value,
+                          lastModified: new Date(),
+                          size: value.length,
+                          isDirty: true
+                        }
+                      }
+                    }));
+                  }}
+                  theme={state.theme}
+                  onMount={setEditorInstance}
                 />
-              </div>
-            </>
+              </Suspense>
+            </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-muted/50">
-              <div className="text-center p-8 rounded-lg bg-card shadow-lg">
-                <File className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Sélectionnez ou créez un fichier</h3>
+            <div className="flex-1 flex items-center justify-center bg-muted/20">
+              <div className="text-center p-8 max-w-md">
+                <FileCode className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Aucun fichier ouvert</h3>
                 <p className="text-muted-foreground mb-6">
-                  Ouvrez un fichier depuis l'explorateur ou commencez un nouveau projet.
+                  Sélectionnez un fichier dans l'explorateur ou créez un nouveau script R pour commencer.
                 </p>
-                <div className="flex justify-center space-x-4">
-                  <Button onClick={() => setShowCreateFileModal(true)} className="shadow">
+                <div className="flex gap-3 justify-center">
+                  <Button onClick={() => setShowCreateFileModal(true)}>
                     <FilePlus className="w-4 h-4 mr-2" />
-                    Nouveau fichier
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowCreateFolderModal(true)}>
-                    <FolderPlus className="w-4 h-4 mr-2" />
-                    Nouveau dossier
+                    Nouveau script R
                   </Button>
                   <Button variant="outline" onClick={() => setShowUploadModal(true)}>
                     <Upload className="w-4 h-4 mr-2" />
-                    Uploader
+                    Importer fichier
                   </Button>
                 </div>
               </div>
             </div>
           )}
         </div>
-        {/* Terminal panel */}
+        
+        {/* Terminal Panel */}
         {showTerminal && (
-          <div className="w-96 border-l flex flex-col shadow-inner">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-              <TabsList className="justify-start border-b px-4">
-                <TabsTrigger value="terminal" className="text-xs">
-                  <Terminal className="w-3 h-3 mr-1" />
-                  Terminal
-                </TabsTrigger>
-                <TabsTrigger value="variables" className="text-xs">
-                  <BarChart3 className="w-3 h-3 mr-1" />
-                  Variables
-                </TabsTrigger>
-                <TabsTrigger value="analysis" className="text-xs">
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  Analyse
-                </TabsTrigger>
-                <div className="ml-auto">
-                  <Button variant="ghost" size="sm" onClick={() => setShowTerminal(false)} className="h-6 w-6 p-0">
-                    <PanelLeftClose className="w-3 h-3" />
-                  </Button>
+          <div className="w-96 border-l flex flex-col">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+              <div className="border-b px-4">
+                <TabsList className="w-full">
+                  <TabsTrigger value="terminal" className="flex-1">
+                    <Terminal className="w-4 h-4 mr-2" />
+                    Terminal
+                  </TabsTrigger>
+                  <TabsTrigger value="analysis" className="flex-1">
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Analyse
+                  </TabsTrigger>
+                  <TabsTrigger value="variables" className="flex-1">
+                    <Database className="w-4 h-4 mr-2" />
+                    Variables
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+              
+              <TabsContent value="terminal" className="flex-1 flex flex-col m-0 p-0">
+                <div className="p-3 border-b flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+
+                    {executionTime && (
+                      <span className="text-xs text-muted-foreground">
+                        {executionTime}ms
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearOutput}
+                      className="h-7 text-xs"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Effacer
+                    </Button>
+                  </div>
                 </div>
-              </TabsList>
-              <TabsContent value="terminal" className="flex-1 overflow-hidden m-0">
-                <ScrollArea ref={terminalRef} className="h-full p-4 font-mono text-sm bg-gray-900 text-gray-100 dark:bg-gray-950">
-                  {state.output || '# Terminal prêt pour l\'exécution'}
+                
+                <ScrollArea className="flex-1 p-4">
+                  <pre className="font-mono text-sm whitespace-pre-wrap">
+                    {state.output || '# Terminal prêt. Exécutez du code R pour voir la sortie.'}
+                  </pre>
+                  <div ref={outputEndRef} />
                 </ScrollArea>
               </TabsContent>
-              <TabsContent value="variables" className="flex-1 overflow-hidden m-0">
-                <ScrollArea className="h-full p-4 bg-gray-900 dark:bg-gray-950">
-                  {Object.keys(state.variables).length > 0 ? (
-                    <div className="space-y-3">
-                      {Object.entries(state.variables).map(([key, value]) => (
-                        <Card key={key} className="bg-gray-800 border-gray-700">
-                          <CardContent className="p-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                <code className="font-bold text-blue-400">{key}</code>
-                                <Badge variant="secondary" className="text-xs">{typeof value}</Badge>
-                              </div>
-                              <div className="font-mono text-sm truncate max-w-[200px]">{JSON.stringify(value)}</div>
-                            </div>
-                          </CardContent>
-                        </Card>
+              
+              <TabsContent value="analysis" className="flex-1 m-0 p-4">
+                <div className="space-y-4">
+                  <Alert>
+                    <BarChart3 className="w-4 h-4" />
+                    <AlertTitle>Analyse de code</AlertTitle>
+                    <AlertDescription>
+                      Cette fonctionnalité analyse votre code R pour détecter des erreurs potentielles.
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="space-y-3">
+                    <h4 className="font-medium">Fonctions épidémiologiques disponibles:</h4>
+                    <div className="grid grid-cols-1 gap-2">
+                      {[
+                        { name: 'calculate_rr', desc: 'Risque relatif avec IC 95%' },
+                        { name: 'calculate_or', desc: 'Odds ratio avec IC 95%' },
+                        { name: 'chisq.test', desc: 'Test du Chi2' },
+                        { name: 'glm', desc: 'Régression logistique' },
+                        { name: 'survival::coxph', desc: 'Modèle de Cox' },
+                      ].map((func, i) => (
+                        <div key={i} className="p-3 rounded-lg border bg-card">
+                          <code className="text-sm font-mono text-blue-600 dark:text-blue-400">
+                            {func.name}
+                          </code>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {func.desc}
+                          </p>
+                        </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="text-center py-12 text-gray-400">
-                      <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>Aucune variable définie pour le moment.</p>
-                    </div>
-                  )}
-                </ScrollArea>
+                  </div>
+                </div>
               </TabsContent>
-              <TabsContent value="analysis" className="flex-1 overflow-hidden m-0">
-                <ScrollArea className="h-full p-4 bg-gray-900 dark:bg-gray-950">
-                  {codeAnalysis ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center space-x-2">
-                        <Badge variant={codeAnalysis.isValid ? 'success' : 'destructive'}>
-                          {codeAnalysis.isValid ? 'Valide' : 'Améliorations suggérées'}
-                        </Badge>
-                        {codeAnalysis.detectedLanguage && (
-                          <Badge variant="outline">Détecté: {codeAnalysis.detectedLanguage.toUpperCase()}</Badge>
-                        )}
-                      </div>
-                      {codeAnalysis.suggestions.length > 0 && (
-                        <div>
-                          <h4 className="font-semibold mb-2 text-sm">Suggestions:</h4>
-                          <ul className="list-disc pl-4 space-y-1 text-sm">
-                            {codeAnalysis.suggestions.map((sug, i) => <li key={i}>{sug}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                      {codeAnalysis.errors.length > 0 && (
-                        <div>
-                          <h4 className="font-semibold mb-2 text-sm text-red-400">Erreurs potentielles:</h4>
-                          <ul className="list-disc pl-4 space-y-1 text-sm text-red-300">
-                            {codeAnalysis.errors.map((err, i) => <li key={i}>{err}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-gray-400">
-                      <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>Aucune analyse disponible. Exécutez du code pour analyser.</p>
-                    </div>
-                  )}
-                </ScrollArea>
+              
+              <TabsContent value="variables" className="flex-1 m-0 p-4">
+                <Alert>
+                  <Database className="w-4 h-4" />
+                  <AlertTitle>Variables R</AlertTitle>
+                  <AlertDescription>
+                    Les variables créées pendant l'exécution apparaîtront ici.
+                  </AlertDescription>
+                </Alert>
+                
+                <div className="mt-4 space-y-2">
+                  <div className="text-sm text-muted-foreground">
+                    Exécutez du code R pour voir les variables créées.
+                  </div>
+                </div>
               </TabsContent>
             </Tabs>
-            <div className="px-3 py-2 border-t bg-gray-900">
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <div>
-                  {state.autoRun ? '🟢 Auto-run actif' : '⚪ Auto-run inactif'}
-                </div>
-                {activeTab === 'terminal' && state.output && (
-                  <Button variant="ghost" size="sm" onClick={() => setState(prev => ({ ...prev, output: '' }))} className="h-6 text-xs">
-                    <X className="w-3 h-3 mr-1" />
-                    Effacer console
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Chatbot */}
-        {isChatbotOpen && (
-          <div className="w-80 border-l shadow-inner">
-            <ChatbotMini onClose={() => setIsChatbotOpen(false)} />
           </div>
         )}
       </div>
-      {/* Barre d'état */}
-      <footer className="px-4 py-2 border-t bg-card text-sm shadow-top">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            {!showSidebar && (
-              <Button variant="outline" size="sm" onClick={() => setShowSidebar(true)} className="h-7 text-xs">
-                <PanelLeftOpen className="w-3 h-3 mr-1" />
-                Explorateur
-              </Button>
+      
+      {/* Footer */}
+      <footer className="px-4 py-2 border-t flex items-center justify-between text-sm">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            {activeFile ? (
+              <>
+                {getFileIcon(activeFile.extension)}
+                <span className="font-medium">{activeFile.name}</span>
+                <Badge variant="outline" className="text-xs">
+                  {getLanguageName(activeFile.language)}
+                </Badge>
+              </>
+            ) : (
+              <span className="text-muted-foreground">Aucun fichier sélectionné</span>
             )}
-            {!showTerminal && (
-              <Button variant="outline" size="sm" onClick={() => { setShowTerminal(true); setActiveTab('terminal'); }} className="h-7 text-xs">
-                <PanelLeftOpen className="w-3 h-3 mr-1" />
-                Terminal
-              </Button>
-            )}
-            <div className="text-muted-foreground">
-              {activeFile?.name ?? 'Aucun fichier sélectionné'} • {activeFile?.code.split('\n').length ?? 0} lignes • {activeFile?.code.length ?? 0} caractères
+          </div>
+          
+          {activeFile && (
+            <div className="flex items-center space-x-4 text-xs text-muted-foreground">
+              <span>{activeFile.code.split('\n').length} lignes</span>
+              <span>{activeFile.code.length} caractères</span>
+              <span>Modifié: {activeFile.lastModified.toLocaleTimeString()}</span>
             </div>
+          )}
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <Cpu className="w-4 h-4" />
+            <span className="text-xs">
+              {stats.totalFiles} fichiers • {stats.totalFolders} dossiers
+            </span>
           </div>
-          <div className="flex items-center space-x-4">
-            {activeFile && <LanguageIcon language={activeFile.language} />}
-            {activeFile && <span className="font-medium text-xs">{activeFile.language.toUpperCase()}</span>}
-            {executionTime && <Badge variant="outline" className="text-xs">⚡ {executionTime}ms</Badge>}
-            <Badge variant="secondary" className="text-xs">
-              {pyodide && webR ? 'Runtimes prêts' : 'Chargement des runtimes...'}
-            </Badge>
-          </div>
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={handleDownloadAll}
+          >
+            <Download className="w-3 h-3 mr-1" />
+            Exporter tout
+          </Button>
         </div>
       </footer>
+      
       {/* Modals */}
-      {/* Create File Modal */}
       <Dialog open={showCreateFileModal} onOpenChange={setShowCreateFileModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Créer un nouveau fichier</DialogTitle>
             <DialogDescription>
-              Spécifiez le nom et l'extension supportée.
+              Créez un nouveau fichier dans le dossier courant.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
+          <div className="space-y-4">
             <Input
+              placeholder="nom_du_fichier.r"
               value={newItemName}
               onChange={(e) => setNewItemName(e.target.value)}
-              placeholder="exemple.py"
-              className="mb-2"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateFile();
-              }}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateFile()}
             />
-            <div className="text-xs text-muted-foreground mt-2">
-              Extensions: .r, .py, .js, .txt, .csv, .json, .md
+            <div className="text-xs text-muted-foreground">
+              Extension recommandée: .r pour les scripts R
             </div>
-            {newItemName && !isValidExtension(newItemName) && (
-              <Alert className="mt-2" variant="destructive">
-                <AlertCircle className="w-4 h-4" />
-                <AlertDescription>Extension non supportée</AlertDescription>
-              </Alert>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateFileModal(false)}>
               Annuler
             </Button>
-            <Button onClick={handleCreateFile} disabled={!newItemName.trim() || !isValidExtension(newItemName)}>
-              Créer fichier
+            <Button onClick={handleCreateFile} disabled={!newItemName.trim()}>
+              Créer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Create Folder Modal */}
+      
       <Dialog open={showCreateFolderModal} onOpenChange={setShowCreateFolderModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Créer un nouveau dossier</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="space-y-4">
             <Input
+              placeholder="Nom du dossier"
               value={newItemName}
               onChange={(e) => setNewItemName(e.target.value)}
-              placeholder="Nom du dossier"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateFolder();
-              }}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
             />
           </div>
           <DialogFooter>
@@ -1507,52 +1540,45 @@ export default function WorkspacePage() {
               Annuler
             </Button>
             <Button onClick={handleCreateFolder} disabled={!newItemName.trim()}>
-              Créer dossier
+              Créer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Rename Modal */}
+      
       <Dialog open={showRenameModal} onOpenChange={setShowRenameModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Renommer {itemToRename ? (state.items[itemToRename].type === 'file' ? 'le fichier' : 'le dossier') : ''}</DialogTitle>
+            <DialogTitle>Renommer</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="space-y-4">
             <Input
+              placeholder="Nouveau nom"
               value={newItemName}
               onChange={(e) => setNewItemName(e.target.value)}
-              placeholder="Nouveau nom"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleRenameItem();
-              }}
+              onKeyDown={(e) => e.key === 'Enter' && handleRenameItem()}
             />
-            {itemToRename && state.items[itemToRename].type === 'file' && (
-              <div className="text-xs text-muted-foreground mt-2">
-                Inclure l'extension (.r, .py, etc.)
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRenameModal(false)}>
               Annuler
             </Button>
-            <Button
-              onClick={handleRenameItem}
-              disabled={!newItemName.trim() || (itemToRename && state.items[itemToRename].type === 'file' && !isValidExtension(newItemName))}
+            <Button 
+              onClick={handleRenameItem} 
+              disabled={!newItemName.trim() || !itemToRename}
             >
               Renommer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Delete Confirm Modal */}
+      
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirmer la suppression</DialogTitle>
             <DialogDescription>
-              Cette action est irréversible. Supprimer {itemToDelete ? (state.items[itemToDelete].type === 'file' ? 'ce fichier' : 'ce dossier et son contenu') : ''} ?
+              Cette action est irréversible. Êtes-vous sûr de vouloir supprimer cet élément ?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1560,26 +1586,30 @@ export default function WorkspacePage() {
               Annuler
             </Button>
             <Button variant="destructive" onClick={handleDeleteItem}>
-              Supprimer définitivement
+              Supprimer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Upload Modal */}
+      
       <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Uploader un fichier</DialogTitle>
+            <DialogTitle>Importer un fichier</DialogTitle>
             <DialogDescription>
-              Sélectionnez un fichier à importer dans le workspace.
+              Sélectionnez un fichier à importer dans votre workspace.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Input 
-              type="file" 
-              onChange={(e) => setUploadedFile(e.target.files?.[0] || null)} 
-              className="cursor-pointer"
+          <div className="space-y-4">
+            <Input
+              type="file"
+              onChange={(e) => setUploadedFile(e.target.files?.[0] || null)}
             />
+            {uploadedFile && (
+              <div className="text-sm">
+                Fichier sélectionné: <span className="font-medium">{uploadedFile.name}</span>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUploadModal(false)}>
