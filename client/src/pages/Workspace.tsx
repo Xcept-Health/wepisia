@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, Link } from 'wouter';
 import {
   Play, Download, Terminal, ChevronRight, X, 
   FileCode, PanelLeftClose, PanelLeftOpen, File, Trash2, FolderPlus,
@@ -26,6 +26,7 @@ import { Separator } from '@/components/ui/separator';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import JSZip from 'jszip';
 import { Chart } from 'chart.js';
+import { link } from 'fs';
 
 // Charger Monaco Editor dynamiquement avec React.lazy
 const CodeEditor = lazy(() => import('@/components/CodeEditor/CodeEditor'));
@@ -1018,25 +1019,26 @@ p-value: <0.001
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b">
         <div className="flex items-center space-x-4">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setLocation('/')}
-            className="gap-2"
-          >
-            <ChevronRight className="w-4 h-4 rotate-180" />
-            Retour
-          </Button>
+        <nav aria-label="Breadcrumb">
+              <ol className="flex items-center space-x-2 text-sm">
+                <li>
+                  <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                    Accueil
+                  </Link>
+                </li>
+                <li>
+                  <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
+                </li>
+                <li>
+                  <Link href="/workspace" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                    WorkSpace
+                  </Link>
+                </li>
+                
+              </ol>
+          </nav>
           
-          <div className="flex items-center space-x-3">
-           
-            <div>
-              <h1 className="font-bold text-lg">Epi WorkSpace</h1>
-              <p className="text-xs text-muted-foreground">
-                Editeur de Code R
-              </p>
-            </div>
-          </div>
+          
         </div>
         
         <div className="flex items-center space-x-2">
@@ -1153,13 +1155,7 @@ p-value: <0.001
                 </div>
               </div>
               
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher..."
-                  className="pl-8 h-8 text-sm"
-                />
-              </div>
+            
             </div>
             
             <ScrollArea className="flex-1">
@@ -1335,7 +1331,7 @@ p-value: <0.001
         {showTerminal && (
           <div className="w-96 border-l flex flex-col">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-              <div className="border-b px-4">
+              <div className=" px-4">
                 <TabsList className="w-full">
                   <TabsTrigger value="terminal" className="flex-1">
                     <Terminal className="w-4 h-4 mr-2" />
@@ -1350,7 +1346,7 @@ p-value: <0.001
               </div>
               
               <TabsContent value="terminal" className="flex-1 flex flex-col m-0 p-0">
-                <div className="p-3 border-b flex items-center justify-between">
+                <div className="p-3  flex items-center justify-between">
                   <div className="flex items-center space-x-2">
 
                     {executionTime && (
