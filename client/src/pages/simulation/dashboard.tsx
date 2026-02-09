@@ -19,12 +19,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { HexColorPicker } from 'react-colorful';
+import Globe from 'globe.gl';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler, annotationPlugin);
 
 // Types et interfaces
 type ModelType = 'SIR' | 'SEIR' | 'SEIRD' | 'SEIQRD' | 'CUSTOM';
-
 interface Region {
   id: string;
   name: string;
@@ -39,39 +39,52 @@ interface Region {
   longitude: number;
   color: string;
   connections: string[];
-  cluster?: number; // Pour clustering optionnel
+  cluster?: number;
 }
-
 interface SimulationParams {
   model: ModelType;
-  beta: number;      // Taux de transmission
-  sigma: number;     // Taux d'incubation
-  gamma: number;     // Taux de guérison
-  mu: number;        // Taux de mortalité
-  delta: number;     // Taux de quarantaine
-  theta: number;     // Taux de sortie de quarantaine
-  R0: number;        // Nombre de reproduction de base
-  mobility: number;  // Mobilité inter-régions
+  beta: number;
+  sigma: number;
+  gamma: number;
+  mu: number;
+  delta: number;
+  theta: number;
+  R0: number;
+  mobility: number;
 }
-
 interface Intervention {
   type: string;
   effectiveness: number;
   startDay: number;
 }
-
 interface Scenario {
   name: string;
   params: SimulationParams;
   interventions: Intervention[];
 }
-
 interface NetworkSettings {
   chargeStrength: number;
   linkDistance: number;
   enableClustering: boolean;
   nodeShape: 'circle' | 'square' | 'triangle';
   linkStyle: 'solid' | 'dashed';
+}
+interface MapSettings {
+  markerShape: 'circle' | 'marker';
+  markerOpacity: number;
+  lineStyle: 'solid' | 'dashed';
+  lineOpacity: number;
+  tileTheme: 'light' | 'dark' | 'satellite';
+  showLabels: boolean;
+  zoomLevel: number;
+}
+interface ChartSettings {
+  lineStyle: 'solid' | 'dashed';
+  lineWidth: number;
+  fillOpacity: number;
+  showGrid: boolean;
+  theme: 'light' | 'dark';
+  showAnnotations: boolean;
 }
 
 const initialRegions: Region[] = [
@@ -239,7 +252,7 @@ const predefinedScenarios: Scenario[] = [
       delta: 0.05,
       theta: 0.1,
       R0: 2.5,
-      mobility: 0.05 // Mobilité réduite
+      mobility: 0.05
     },
     interventions: [
       { type: 'Confinement', effectiveness: 60, startDay: 10 }
@@ -290,8 +303,26 @@ const initialNetworkSettings: NetworkSettings = {
   linkStyle: 'solid'
 };
 
+const initialMapSettings: MapSettings = {
+  markerShape: 'circle',
+  markerOpacity: 0.8,
+  lineStyle: 'solid',
+  lineOpacity: 0.3,
+  tileTheme: 'light',
+  showLabels: true,
+  zoomLevel: 5
+};
+
+const initialChartSettings: ChartSettings = {
+  lineStyle: 'solid',
+  lineWidth: 2,
+  fillOpacity: 0.1,
+  showGrid: true,
+  theme: 'light',
+  showAnnotations: true
+};
+
 const EpidemiologicalSimulation: React.FC = () => {
-  // États principaux
   const [regions, setRegions] = useState<Region[]>(initialRegions.map(r => ({ ...r })));
   const [history, setHistory] = useState<any[]>([]);
   const [currentDay, setCurrentDay] = useState(0);
@@ -301,13 +332,14 @@ const EpidemiologicalSimulation: React.FC = () => {
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<string>('Base');
   const [networkSettings, setNetworkSettings] = useState<NetworkSettings>(initialNetworkSettings);
+  const [mapSettings, setMapSettings] = useState<MapSettings>(initialMapSettings);
+  const [chartSettings, setChartSettings] = useState<ChartSettings>(initialChartSettings);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
-
-  // Modèles et paramètres
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [showChartModal, setShowChartModal] = useState(false);
+  const [mapType, setMapType] = useState<'2d' | '3d'>('3d'); // Par défaut 3D
   const [activeModel, setActiveModel] = useState<ModelType>('SEIRD');
   const [params, setParams] = useState<SimulationParams>(predefinedScenarios[0].params);
-
-  // UI États
   const [activeView, setActiveView] = useState<'map' | 'charts' | 'table' | 'network'>('map');
   const [showParamsModal, setShowParamsModal] = useState(false);
   const [isComparisonParams, setIsComparisonParams] = useState(false);
@@ -317,13 +349,14 @@ const EpidemiologicalSimulation: React.FC = () => {
   const [isComparing, setIsComparing] = useState(false);
   const [comparisonParams, setComparisonParams] = useState<SimulationParams | null>(null);
   const [comparisonHistory, setComparisonHistory] = useState<any[]>([]);
-
-  // Références
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  
   const mapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<NodeJS.Timeout>();
+  const globeInstanceRef = useRef<any>(null);
+  const animationFrameRef = useRef<number>();
 
-  // Modèles de simulation
   const models = {
     SIR: {
       name: 'SIR',
@@ -400,28 +433,22 @@ const EpidemiologicalSimulation: React.FC = () => {
     }
   };
 
-  // Fonction pour exécuter une simulation complète (pour comparaison)
   const runFullSimulation = (simParams: SimulationParams, simInterventions: Intervention[]) => {
     let simRegions = initialRegions.map(r => ({ ...r }));
     let simHistory: any[] = [];
     let simDay = 0;
-
-    const maxDays = 365; // Un an pour la comparaison
+    const maxDays = 365;
     while (simDay < maxDays) {
-      // Appliquer interventions
       const activeInterventions = simInterventions.filter(i => simDay >= i.startDay);
       const reduction = activeInterventions.reduce((sum, i) => sum + i.effectiveness / 100, 0);
       const localParams = { ...simParams, beta: simParams.beta * (1 - reduction) };
-
       simRegions = simRegions.map(region => {
         const model = models[activeModel];
         const equations = model.equations(region, localParams);
         
-        // Apply mobility (corrected: affect I based on relative infection rates)
         const mobilityEffect = simRegions
           .filter(r => region.connections.includes(r.id))
           .reduce((sum, r) => sum + (r.I / r.population - region.I / region.population) * localParams.mobility * region.population, 0);
-
         return {
           ...region,
           S: Math.max(0, region.S + equations.dS),
@@ -432,7 +459,6 @@ const EpidemiologicalSimulation: React.FC = () => {
           Q: equations.dQ ? Math.max(0, (region.Q || 0) + equations.dQ) : region.Q
         };
       });
-
       const totals = simRegions.reduce((acc, region) => ({
         S: acc.S + region.S,
         E: acc.E + region.E,
@@ -440,108 +466,392 @@ const EpidemiologicalSimulation: React.FC = () => {
         R: acc.R + region.R,
         D: acc.D + (region.D || 0)
       }), { S: 0, E: 0, I: 0, R: 0, D: 0 });
-
       simHistory.push({ day: simDay, totals, regions: simRegions.map(r => ({ ...r })) });
       simDay++;
     }
-
     return simHistory;
   };
 
-  // Initialisation de la carte avec Leaflet
-  useEffect(() => {
-    if (activeView !== 'map' || !mapRef.current) return;
-
-    const hasCoordinates = regions.every(r => r.latitude !== 0 && r.longitude !== 0);
-
-    if (!hasCoordinates) {
-      // Afficher message si pas de coordonnées
-      mapRef.current.innerHTML = '<div class="flex items-center justify-center h-full text-gray-600">Pas de coordonnées géographiques disponibles pour les régions.</div>';
-      return;
+  const handleMapTypeChange = (newType: '2d' | '3d') => {
+    if (mapType === newType) return;
+    
+    setIsTransitioning(true);
+    
+    // Animation de fondu
+    if (mapRef.current) {
+      mapRef.current.style.opacity = '0.5';
+      mapRef.current.style.transition = 'opacity 0.3s ease-in-out';
     }
+    
+    setTimeout(() => {
+      setMapType(newType);
+      setIsTransitioning(false);
+      
+      if (mapRef.current) {
+        mapRef.current.style.opacity = '1';
+      }
+    }, 300);
+  };
 
-    const map = L.map(mapRef.current).setView([46.2276, 2.2137], 5); // Centre sur l'Europe occidentale
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-
-    // Ajouter marqueurs pour les régions
-    regions.forEach(region => {
+  const animateGlobeData = () => {
+    if (!globeInstanceRef.current || mapType !== '3d' || activeView !== 'map') return;
+    
+    const globe = globeInstanceRef.current;
+    
+    // Animation des points
+    const pointsData = regions.map(region => {
       const infectionRate = region.I / region.population;
-      let fillColor = region.color;
-      if (infectionRate > 0.01) fillColor = '#ef4444';
-      else if (infectionRate > 0.001) fillColor = '#f59e0b';
-
-      const marker = L.circleMarker([region.latitude, region.longitude], {
-        radius: Math.sqrt(region.population) / 300,
-        color: fillColor,
-        fillColor: fillColor,
-        fillOpacity: 0.8
-      }).addTo(map);
-
-      marker.bindPopup(`
-        <strong>${region.name}</strong><br/>
-        Population: ${region.population.toLocaleString()}<br/>
-        Infectés: ${Math.round(region.I)} (${(region.I/region.population*100).toFixed(2)}%)<br/>
-        Décès: ${region.D || 0}<br/>
-        R₀ local: ${(params.beta/params.gamma).toFixed(2)}
-      `);
-
-      // Ajouter connexions
+      let color = region.color;
+      if (infectionRate > 0.01) color = '#ef4444';
+      else if (infectionRate > 0.001) color = '#f59e0b';
+      
+      return {
+        lat: region.latitude,
+        lng: region.longitude,
+        size: Math.sqrt(region.population) / 300000,
+        color: color,
+        name: region.name,
+        population: region.population,
+        I: region.I,
+        D: region.D || 0,
+        // Animation de pulsation
+        pulse: Math.sin(Date.now() * 0.001 + region.id.length) * 0.1 + 1
+      };
+    });
+    
+    globe.pointsData(pointsData);
+    
+    // Animation des arcs
+    const arcsData: any[] = [];
+    regions.forEach(region => {
       region.connections.forEach(targetId => {
         const target = regions.find(r => r.id === targetId);
         if (target) {
-          L.polyline([[region.latitude, region.longitude], [target.latitude, target.longitude]], {
-            color: '#94a3b8',
-            weight: params.mobility * 5,
-            opacity: 0.3
-          }).addTo(map);
+          const flowIntensity = Math.min(1, (region.I + target.I) / (region.population + target.population) * 100);
+          
+          arcsData.push({
+            startLat: region.latitude,
+            startLng: region.longitude,
+            endLat: target.latitude,
+            endLng: target.longitude,
+            color: `rgba(148, 163, 184, ${0.3 + flowIntensity * 0.7})`,
+            stroke: params.mobility * (0.5 + flowIntensity),
+            // Animation du dash
+            dashLength: 0.2 + Math.sin(Date.now() * 0.001) * 0.1
+          });
         }
       });
     });
+    
+    globe.arcsData(arcsData);
+  };
 
-    // Ajouter légende
-    const legend = L.control({ position: 'bottomright' });
-    legend.onAdd = () => {
-      const div = L.DomUtil.create('div', 'info legend bg-white p-2 rounded shadow');
-      div.innerHTML = `
-        <h4>Légende</h4>
-        <i style="background: green; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Faible infection<br>
-        <i style="background: orange; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Moyenne infection<br>
-        <i style="background: red; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Haute infection<br>
-        Taille ~ √Population<br>
-        Lignes: Mobilité
-      `;
-      return div;
-    };
-    legend.addTo(map);
+  useEffect(() => {
+    if (activeView !== 'map' || !mapRef.current) return;
+    
+    const hasCoordinates = regions.every(r => r.latitude !== 0 && r.longitude !== 0);
+    if (!hasCoordinates) {
+      mapRef.current.innerHTML = '<div class="flex items-center justify-center h-full text-gray-600">Pas de coordonnées géographiques disponibles pour les régions.</div>';
+      return;
+    }
+    
+    // Nettoyer les instances précédentes
+    if (globeInstanceRef.current) {
+      globeInstanceRef.current._destructor?.();
+      globeInstanceRef.current = null;
+    }
+    
+    mapRef.current.innerHTML = '';
+    let map: any;
+    
+    if (mapType === '2d') {
+      map = L.map(mapRef.current).setView([46.2276, 2.2137], mapSettings.zoomLevel);
+      let tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      if (mapSettings.tileTheme === 'dark') {
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+      } else if (mapSettings.tileTheme === 'satellite') {
+        tileUrl = 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
+      }
+      L.tileLayer(tileUrl, {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+      
+      regions.forEach(region => {
+        const infectionRate = region.I / region.population;
+        let fillColor = region.color;
+        if (infectionRate > 0.01) fillColor = '#ef4444';
+        else if (infectionRate > 0.001) fillColor = '#f59e0b';
+        let marker;
+        if (mapSettings.markerShape === 'circle') {
+          marker = L.circleMarker([region.latitude, region.longitude], {
+            radius: Math.sqrt(region.population) / 300,
+            color: fillColor,
+            fillColor: fillColor,
+            fillOpacity: mapSettings.markerOpacity
+          }).addTo(map);
+        } else {
+          marker = L.marker([region.latitude, region.longitude], {
+            icon: L.icon({
+              iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-green.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41]
+            }),
+            opacity: mapSettings.markerOpacity
+          }).addTo(map);
+        }
+        marker.bindPopup(`
+          <strong>${region.name}</strong><br/>
+          Population: ${region.population.toLocaleString()}<br/>
+          Infectés: ${Math.round(region.I)} (${(region.I/region.population*100).toFixed(2)}%)<br/>
+          Décès: ${region.D || 0}<br/>
+          R₀ local: ${(params.beta/params.gamma).toFixed(2)}
+        `);
+        if (mapSettings.showLabels) {
+          L.tooltip({
+            permanent: true,
+            direction: 'top',
+            className: 'text-xs'
+          }).setContent(region.name).setLatLng([region.latitude, region.longitude]).addTo(map);
+        }
+        region.connections.forEach(targetId => {
+          const target = regions.find(r => r.id === targetId);
+          if (target) {
+            L.polyline([[region.latitude, region.longitude], [target.latitude, target.longitude]], {
+              color: '#94a3b8',
+              weight: params.mobility * 5,
+              opacity: mapSettings.lineOpacity,
+              dashArray: mapSettings.lineStyle === 'dashed' ? '5,5' : null
+            }).addTo(map);
+          }
+        });
+      });
+      
+      const legend = L.control({ position: 'bottomright' });
+      legend.onAdd = () => {
+        const div = L.DomUtil.create('div', 'info legend bg-white p-2 rounded shadow');
+        div.innerHTML = `
+          <h4>Légende</h4>
+          <i style="background: green; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Faible infection<br>
+          <i style="background: orange; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Moyenne infection<br>
+          <i style="background: red; width: 18px; height: 18px; display: inline-block; border-radius: 50%;"></i> Haute infection<br>
+          Taille ~ √Population<br>
+          Lignes: Mobilité
+        `;
+        return div;
+      };
+      legend.addTo(map);
+    } else {
+      // Créer un conteneur spécifique pour le globe
+      const globeContainer = document.createElement('div');
+      globeContainer.style.width = '100%';
+      globeContainer.style.height = '100%';
+      globeContainer.style.position = 'absolute';
+      globeContainer.style.top = '0';
+      globeContainer.style.left = '0';
+      
+      mapRef.current.appendChild(globeContainer);
+      
+      const getPointColor = (region: Region) => {
+        const infectionRate = region.I / region.population;
+        if (infectionRate > 0.01) return '#ef4444';
+        if (infectionRate > 0.001) return '#f59e0b';
+        return region.color;
+      };
+
+      const pointsData = regions.map(region => ({
+        lat: region.latitude,
+        lng: region.longitude,
+        size: Math.sqrt(region.population) / 300000,
+        color: getPointColor(region),
+        name: region.name,
+        population: region.population,
+        I: region.I,
+        D: region.D || 0
+      }));
+
+      const arcsData: any[] = [];
+      regions.forEach(region => {
+        region.connections.forEach(targetId => {
+          const target = regions.find(r => r.id === targetId);
+          if (target) {
+            arcsData.push({
+              startLat: region.latitude,
+              startLng: region.longitude,
+              endLat: target.latitude,
+              endLng: target.longitude,
+              color: '#94a3b8',
+              stroke: params.mobility * 0.5
+            });
+          }
+        });
+      });
+
+      const myGlobe = Globe()(globeContainer)
+        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+        .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+        // Centrage parfait sur l'Europe
+        .pointOfView({ lat: 48.0, lng: 2.0, altitude: 1.5 })
+        .onGlobeReady(() => {
+          // Activation de la rotation automatique
+          myGlobe.controls().autoRotate = true;
+          myGlobe.controls().autoRotateSpeed = 0.3;
+          myGlobe.controls().enableZoom = true;
+          myGlobe.controls().enablePan = true;
+          
+          // Smooth transition vers la vue initiale
+          setTimeout(() => {
+            myGlobe.pointOfView({ lat: 48.0, lng: 2.0, altitude: 1.5 }, 2000);
+          }, 500);
+        })
+        .pointsData(pointsData)
+        .pointAltitude('size')
+        .pointColor('color')
+        .pointRadius(0.5)
+        // Animation des points
+        .pointsTransitionDuration(2000)
+        .pointLabel((d: any) => `
+          <div style="
+            background: white; 
+            padding: 8px; 
+            border-radius: 4px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 200px;
+          ">
+            <strong>${d.name}</strong><br/>
+            Population: ${d.population.toLocaleString()}<br/>
+            Infectés: ${Math.round(d.I)}<br/>
+            Décès: ${Math.round(d.D)}
+          </div>
+        `)
+        .arcsData(arcsData)
+        .arcColor('color')
+        .arcStroke('stroke')
+        .arcDashLength(mapSettings.lineStyle === 'dashed' ? 0.5 : 0)
+        .arcDashGap(mapSettings.lineStyle === 'dashed' ? 0.1 : 0)
+        .arcDashAnimateTime(3000)
+        .arcAltitudeAutoScale(0.3)
+        // Effets d'ambiance
+        .atmosphereColor('#3a0ca3')
+        .atmosphereAltitude(0.2)
+        // Optimisation des performances
+        .pointResolution(window.innerWidth < 768 ? 8 : 16);
+
+      globeInstanceRef.current = myGlobe;
+      
+      // Animation de fondu pour le globe
+      globeContainer.style.opacity = '0';
+      setTimeout(() => {
+        globeContainer.style.transition = 'opacity 0.5s ease-in-out';
+        globeContainer.style.opacity = '1';
+      }, 100);
+    }
 
     return () => {
-      map.remove();
+      if (mapType === '2d') {
+        map?.remove();
+      } else {
+        // Cleanup propre du globe
+        if (globeInstanceRef.current) {
+          try {
+            globeInstanceRef.current._destructor?.();
+          } catch (e) {
+            console.log('Cleanup du globe:', e);
+          }
+          globeInstanceRef.current = null;
+        }
+      }
     };
-  }, [regions, activeView, params.mobility]);
+  }, [regions, activeView, params.mobility, mapSettings, mapType]);
 
-  // Initialisation du réseau avec D3 (amélioré avec clustering et styles)
+  // Animation du globe
+  useEffect(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    if (mapType === '3d' && isRunning && activeView === 'map') {
+      const animate = () => {
+        animateGlobeData();
+        animationFrameRef.current = requestAnimationFrame(animate);
+      };
+      animate();
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [mapType, isRunning, regions, params.mobility, activeView]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (activeView === 'map') {
+        if (e.key === '2') {
+          handleMapTypeChange('2d');
+          e.preventDefault();
+        } else if (e.key === '3') {
+          handleMapTypeChange('3d');
+          e.preventDefault();
+        }
+      }
+      if (activeView === 'map' && mapType === '3d') {
+        switch (e.key) {
+          case 'ArrowLeft':
+            rotateGlobe('left');
+            e.preventDefault();
+            break;
+          case 'ArrowRight':
+            rotateGlobe('right');
+            e.preventDefault();
+            break;
+          case 'ArrowUp':
+            rotateGlobe('up');
+            e.preventDefault();
+            break;
+          case 'ArrowDown':
+            rotateGlobe('down');
+            e.preventDefault();
+            break;
+          case 'r':
+          case 'R':
+            if (globeInstanceRef.current) {
+              globeInstanceRef.current.pointOfView(
+                { lat: 48.0, lng: 2.0, altitude: 1.5 },
+                1000
+              );
+            }
+            e.preventDefault();
+            break;
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mapType, activeView]);
+
   useEffect(() => {
     if (activeView !== 'network' || !svgRef.current) return;
-
     const svg = d3.select(svgRef.current);
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
-
     svg.selectAll('*').remove();
-
-    const links = regions.flatMap(region => 
+    
+    const links = regions.flatMap(region =>
       region.connections.map(targetId => ({ source: region.id, target: targetId }))
     );
-
+    
     const simulation = d3.forceSimulation<Region>(regions)
       .force('link', d3.forceLink<Region, { source: string; target: string }>(links).id(d => d.id).distance(networkSettings.linkDistance).strength(0.1))
       .force('charge', d3.forceManyBody().strength(networkSettings.chargeStrength))
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collide', d3.forceCollide().radius(d => Math.sqrt(d.population) / 300 + 5));
-
+    
     if (networkSettings.enableClustering && regions.some(r => r.cluster !== undefined)) {
       simulation.force('cluster', alpha => {
         regions.forEach(node => {
@@ -555,8 +865,7 @@ const EpidemiologicalSimulation: React.FC = () => {
         });
       });
     }
-
-    // Draw links
+    
     const link = svg.append('g')
       .selectAll('line')
       .data(links)
@@ -565,8 +874,7 @@ const EpidemiologicalSimulation: React.FC = () => {
       .attr('stroke', '#94a3b8')
       .attr('stroke-width', d => params.mobility * 5)
       .attr('stroke-dasharray', networkSettings.linkStyle === 'dashed' ? '5,5' : 'none');
-
-    // Draw nodes with different shapes
+    
     const node = svg.append('g')
       .selectAll('path')
       .data(regions)
@@ -579,7 +887,7 @@ const EpidemiologicalSimulation: React.FC = () => {
         } else if (networkSettings.nodeShape === 'triangle') {
           return `M 0 ${-size} L ${size} ${size} L ${-size} ${size} Z`;
         } else {
-          return d3.symbol(d3.symbolCircle, size * size * Math.PI)(); // Circle by default
+          return d3.symbol(d3.symbolCircle, size * size * Math.PI)();
         }
       })
       .attr('fill', d => {
@@ -604,8 +912,7 @@ const EpidemiologicalSimulation: React.FC = () => {
           d.fy = null;
         })
       );
-
-    // Add labels
+    
     const labels = svg.append('g')
       .selectAll('text')
       .data(regions)
@@ -615,39 +922,34 @@ const EpidemiologicalSimulation: React.FC = () => {
       .attr('font-size', '10px')
       .attr('dx', 12)
       .attr('dy', '.35em');
-
+    
     simulation.on('tick', () => {
       link
         .attr('x1', d => (d.source as any).x)
         .attr('y1', d => (d.source as any).y)
         .attr('x2', d => (d.target as any).x)
         .attr('y2', d => (d.target as any).y);
-
       node
         .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`);
-
       labels
         .attr('x', d => d.x || 0)
         .attr('y', d => d.y || 0);
     });
   }, [regions, activeView, params.mobility, networkSettings]);
 
-  // Simulation step
   const simulateStep = () => {
-    // Appliquer interventions actives
     const activeInterventions = interventions.filter(i => currentDay >= i.startDay);
     const reduction = activeInterventions.reduce((sum, i) => sum + i.effectiveness / 100, 0);
     const localParams = { ...params, beta: params.beta * (1 - reduction) };
-
+    
     setRegions(prev => prev.map(region => {
       const model = models[activeModel];
       const equations = model.equations(region, localParams);
       
-      // Apply mobility (corrected: affect I based on relative infection rates)
       const mobilityEffect = prev
         .filter(r => region.connections.includes(r.id))
         .reduce((sum, r) => sum + (r.I / r.population - region.I / region.population) * localParams.mobility * region.population, 0);
-
+      
       return {
         ...region,
         S: Math.max(0, region.S + equations.dS),
@@ -658,11 +960,10 @@ const EpidemiologicalSimulation: React.FC = () => {
         Q: equations.dQ ? Math.max(0, (region.Q || 0) + equations.dQ) : region.Q
       };
     }));
-
+    
     setCurrentDay(prev => prev + 1);
   };
 
-  // Gestion de la simulation
   useEffect(() => {
     if (isRunning) {
       simulationRef.current = setInterval(simulateStep, 1000 / speed);
@@ -672,7 +973,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     };
   }, [isRunning, speed, activeModel, params, interventions, currentDay]);
 
-  // Mise à jour de l'historique
   useEffect(() => {
     const totals = regions.reduce((acc, region) => ({
       S: acc.S + region.S,
@@ -681,7 +981,7 @@ const EpidemiologicalSimulation: React.FC = () => {
       R: acc.R + region.R,
       D: acc.D + (region.D || 0)
     }), { S: 0, E: 0, I: 0, R: 0, D: 0 });
-
+    
     setHistory(prev => [...prev, {
       day: currentDay,
       totals,
@@ -689,13 +989,11 @@ const EpidemiologicalSimulation: React.FC = () => {
     }]);
   }, [currentDay]);
 
-  // Gestion des scénarios
   const applyScenario = (scenarioName: string) => {
     const scenario = predefinedScenarios.find(s => s.name === scenarioName);
     if (scenario) {
       setParams(scenario.params);
       setInterventions(scenario.interventions);
-      // Réinitialiser la simulation pour appliquer le scénario
       setIsRunning(false);
       setCurrentDay(0);
       setHistory([]);
@@ -703,7 +1001,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     }
   };
 
-  // Fonction d'export CSV
   const exportData = () => {
     const csvData = history.map(h => ({ day: h.day, ...h.totals }));
     const csv = Papa.unparse(csvData);
@@ -714,7 +1011,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     link.click();
   };
 
-  // Fonction d'export JSON complet
   const exportFullState = () => {
     const state = {
       regions,
@@ -723,7 +1019,9 @@ const EpidemiologicalSimulation: React.FC = () => {
       params,
       interventions,
       activeModel,
-      networkSettings
+      networkSettings,
+      mapSettings,
+      chartSettings
     };
     const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
     const link = document.createElement('a');
@@ -732,7 +1030,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     link.click();
   };
 
-  // Fonction d'import JSON
   const importFullState = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -744,50 +1041,56 @@ const EpidemiologicalSimulation: React.FC = () => {
       setInterventions(state.interventions);
       setActiveModel(state.activeModel);
       setNetworkSettings(state.networkSettings || initialNetworkSettings);
+      setMapSettings(state.mapSettings || initialMapSettings);
+      setChartSettings(state.chartSettings || initialChartSettings);
     };
     reader.readAsText(file);
   };
 
-  // Données pour les graphiques
   const getChartDatasets = (hist: any[], labelSuffix: string = '', borderDash: number[] = []) => [
     {
       label: 'Susceptibles' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.S),
       borderColor: '#3b82f6',
-      borderDash,
-      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
+      borderWidth: chartSettings.lineWidth,
+      backgroundColor: `rgba(59, 130, 246, ${chartSettings.fillOpacity})`,
       fill: true
     },
     {
       label: 'Exposés' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.E),
       borderColor: '#f59e0b',
-      borderDash,
-      backgroundColor: 'rgba(245, 158, 11, 0.1)',
+      borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
+      borderWidth: chartSettings.lineWidth,
+      backgroundColor: `rgba(245, 158, 11, ${chartSettings.fillOpacity})`,
       fill: true
     },
     {
       label: 'Infectés' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.I),
       borderColor: '#ef4444',
-      borderDash,
-      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+      borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
+      borderWidth: chartSettings.lineWidth,
+      backgroundColor: `rgba(239, 68, 68, ${chartSettings.fillOpacity})`,
       fill: true
     },
     {
       label: 'Guéris' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.R),
       borderColor: '#10b981',
-      borderDash,
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+      borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
+      borderWidth: chartSettings.lineWidth,
+      backgroundColor: `rgba(16, 185, 129, ${chartSettings.fillOpacity})`,
       fill: true
     },
     {
       label: 'Décès' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.D),
       borderColor: '#6b7280',
-      borderDash,
-      backgroundColor: 'rgba(107, 114, 128, 0.1)',
+      borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
+      borderWidth: chartSettings.lineWidth,
+      backgroundColor: `rgba(107, 114, 128, ${chartSettings.fillOpacity})`,
       fill: true
     },
     {
@@ -801,20 +1104,20 @@ const EpidemiologicalSimulation: React.FC = () => {
         return (beta * (S / N) / params.gamma) || 0;
       }),
       borderColor: '#000000',
-      borderDash,
-      backgroundColor: 'rgba(0, 0, 0, 0.1)',
+      borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
+      borderWidth: chartSettings.lineWidth,
+      backgroundColor: `rgba(0, 0, 0, ${chartSettings.fillOpacity})`,
       fill: true
     }
   ];
 
   const chartData = {
     labels: history.slice(-100).map(h => `J${h.day}`),
-    datasets: isComparing 
-      ? [...getChartDatasets(history), ...getChartDatasets(comparisonHistory, ' (Comparaison)', [5, 5])] 
+    datasets: isComparing
+      ? [...getChartDatasets(history), ...getChartDatasets(comparisonHistory, ' (Comparaison)', [5, 5])]
       : getChartDatasets(history)
   };
 
-  // Annotations pour interventions
   const chartAnnotations = interventions.map((int, index) => ({
     type: 'line',
     xMin: int.startDay,
@@ -830,7 +1133,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     }
   }));
 
-  // Calcul des indicateurs
   const indicators = {
     currentInfections: Math.round(regions.reduce((sum, r) => sum + r.I, 0)),
     totalDeaths: Math.round(regions.reduce((sum, r) => sum + (r.D || 0), 0)),
@@ -839,28 +1141,58 @@ const EpidemiologicalSimulation: React.FC = () => {
     healthcarePressure: (regions.reduce((sum, r) => sum + r.I, 0) / 1000).toFixed(1)
   };
 
-  // Changer couleur de région
   const changeRegionColor = (id: string, newColor: string) => {
     setRegions(prev => prev.map(r => r.id === id ? { ...r, color: newColor } : r));
   };
 
-  // Changer nom de région
   const changeRegionName = (id: string, newName: string) => {
     setRegions(prev => prev.map(r => r.id === id ? { ...r, name: newName } : r));
   };
 
-  // Changer cluster de région
   const changeRegionCluster = (id: string, newCluster: number) => {
     setRegions(prev => prev.map(r => r.id === id ? { ...r, cluster: newCluster } : r));
   };
 
+  const rotateGlobe = (direction: 'left' | 'right' | 'up' | 'down') => {
+    if (!globeInstanceRef.current) return;
+    
+    const globe = globeInstanceRef.current;
+    const pov = globe.pointOfView();
+    const step = direction.includes('left') || direction.includes('right') ? 15 : 10;
+    
+    // Désactiver la rotation automatique pendant le contrôle manuel
+    globe.controls().autoRotate = false;
+    
+    switch (direction) {
+      case 'left':
+        pov.lng -= step;
+        break;
+      case 'right':
+        pov.lng += step;
+        break;
+      case 'up':
+        pov.lat = Math.min(85, pov.lat + step);
+        break;
+      case 'down':
+        pov.lat = Math.max(-85, pov.lat - step);
+        break;
+    }
+    
+    globe.pointOfView(pov, 500);
+    
+    // Réactiver la rotation automatique après un délai
+    setTimeout(() => {
+      if (globeInstanceRef.current) {
+        globeInstanceRef.current.controls().autoRotate = true;
+      }
+    }, 3000);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-4">
-      {/* Tooltip D3 */}
       <div id="tooltip" className="fixed bg-white p-3 rounded-lg shadow-xl border pointer-events-none opacity-0 z-50 transition-opacity">
       </div>
-
-      {/* Header */}
+      
       <header className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -909,8 +1241,7 @@ const EpidemiologicalSimulation: React.FC = () => {
             </button>
           </div>
         </div>
-
-        {/* Navigation rapide */}
+        
         <div className="flex flex-wrap gap-2 mb-6">
           {(['SIR', 'SEIR', 'SEIRD', 'SEIQRD'] as ModelType[]).map(model => (
             <button
@@ -931,8 +1262,7 @@ const EpidemiologicalSimulation: React.FC = () => {
             Paramètres
           </button>
         </div>
-
-        {/* Sélection de scénario */}
+        
         <div className="flex items-center gap-4 mb-4">
           <label className="text-sm font-medium">Scénario:</label>
           <select
@@ -949,8 +1279,38 @@ const EpidemiologicalSimulation: React.FC = () => {
           </select>
         </div>
       </header>
-
-      {/* Indicateurs rapides */}
+      
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Vue active:</span>
+            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+              {activeView === 'map' ? 'Carte' :
+               activeView === 'charts' ? 'Graphiques' :
+               activeView === 'table' ? 'Tableau' : 'Réseau'}
+            </span>
+          </div>
+          
+          {activeView === 'map' && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Mode carte:</span>
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${mapType === '2d' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'}`}>
+                {mapType === '2d' ? '2D (Leaflet)' : '3D (Globe)'}
+              </span>
+              <span className="text-xs text-gray-500">
+                {mapType === '3d' ? 'Utilisez les flèches ou les boutons pour tourner le globe' : 'Cliquez sur les régions pour plus d\'infos'}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        {activeView === 'map' && mapType === '3d' && (
+          <div className="text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
+            <span className="font-medium">Touches clavier:</span> 2 (2D) • 3 (3D) • ←↑↓→ (rotation) • R (réinitialiser)
+          </div>
+        )}
+      </div>
+      
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {[
           { label: 'Jour', value: currentDay, color: 'bg-blue-100 text-blue-800' },
@@ -971,8 +1331,7 @@ const EpidemiologicalSimulation: React.FC = () => {
           </motion.div>
         ))}
       </div>
-
-      {/* Contrôles de simulation */}
+      
       <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -1008,7 +1367,6 @@ const EpidemiologicalSimulation: React.FC = () => {
             >
               Réinitialiser
             </button>
-
             <button
               onClick={() => setShowInterventionModal(true)}
               className="px-4 py-3 bg-yellow-600 text-white rounded-lg"
@@ -1016,7 +1374,6 @@ const EpidemiologicalSimulation: React.FC = () => {
               + Intervention
             </button>
           </div>
-
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">Vitesse:</span>
@@ -1030,7 +1387,6 @@ const EpidemiologicalSimulation: React.FC = () => {
               />
               <span className="text-sm font-medium">{speed}x</span>
             </div>
-
             <div className="flex gap-2">
               {['map', 'charts', 'table', 'network'].map(view => (
                 <button
@@ -1048,22 +1404,126 @@ const EpidemiologicalSimulation: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Vue principale */}
+      
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Carte / Visualisation principale */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-4">
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-4 relative">
           {activeView === 'map' && (
-            <div ref={mapRef} className="h-[500px] relative" />
+            <>
+              <div className="relative h-[500px] bg-gradient-to-b from-blue-50 to-gray-100 rounded-lg overflow-hidden">
+                {isTransitioning && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                  </div>
+                )}
+                <div 
+                  ref={mapRef} 
+                  className="h-full w-full transition-all duration-500 ease-in-out"
+                  style={{
+                    opacity: isTransitioning ? 0.5 : 1,
+                  }}
+                />
+                
+                <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+                  <button
+                    onClick={() => handleMapTypeChange(mapType === '2d' ? '3d' : '2d')}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg shadow-lg flex items-center gap-2"
+                  >
+                    {mapType === '2d' ? (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4 4 0 003 15z" />
+                        </svg>
+                        Mode 3D
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                        </svg>
+                        Mode 2D
+                      </>
+                    )}
+                  </button>
+                  
+                  {mapType === '3d' && (
+                    <div className="bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-lg">
+                      <div className="text-xs font-semibold text-gray-700 mb-1">Contrôles Globe</div>
+                      <div className="grid grid-cols-3 gap-1">
+                        <button
+                          onClick={() => rotateGlobe('up')}
+                          className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                          title="Tourner vers le haut"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => rotateGlobe('left')}
+                          className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                          title="Tourner à gauche"
+                        >
+                          ←
+                        </button>
+                        <button
+                          onClick={() => rotateGlobe('right')}
+                          className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                          title="Tourner à droite"
+                        >
+                          →
+                        </button>
+                        <div className="col-span-3">
+                          <button
+                            onClick={() => rotateGlobe('down')}
+                            className="w-full p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                            title="Tourner vers le bas"
+                          >
+                            ↓
+                          </button>
+                        </div>
+                        <div className="col-span-3 mt-1">
+                          <button
+                            onClick={() => {
+                              if (globeInstanceRef.current) {
+                                globeInstanceRef.current.pointOfView(
+                                  { lat: 48.0, lng: 2.0, altitude: 1.5 },
+                                  1000
+                                );
+                              }
+                            }}
+                            className="w-full p-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-xs"
+                          >
+                            Réinitialiser vue
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                <button
+                  onClick={() => setShowMapModal(true)}
+                  className="absolute top-4 right-4 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg z-10 flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Paramètres
+                </button>
+              </div>
+            </>
           )}
-
+          
           {activeView === 'charts' && (
-            <div className="space-y-6">
+            <div className="space-y-6 relative">
               <div className="h-80">
-                <Line 
+                <Line
                   data={chartData}
                   options={{
                     responsive: true,
+                    scales: {
+                      x: { grid: { display: chartSettings.showGrid } },
+                      y: { grid: { display: chartSettings.showGrid } }
+                    },
                     plugins: {
                       legend: {
                         position: 'top' as const,
@@ -1073,8 +1533,16 @@ const EpidemiologicalSimulation: React.FC = () => {
                         text: `Évolution des compartiments (Modèle ${activeModel})` + (isComparing ? ' avec Comparaison' : '')
                       },
                       annotation: {
-                        annotations: chartAnnotations
+                        annotations: chartSettings.showAnnotations ? chartAnnotations : []
                       }
+                    },
+                    elements: {
+                      line: {
+                        borderWidth: chartSettings.lineWidth
+                      }
+                    },
+                    layout: {
+                      padding: 20
                     }
                   }}
                 />
@@ -1094,13 +1562,23 @@ const EpidemiologicalSimulation: React.FC = () => {
                     responsive: true,
                     plugins: {
                       legend: { display: false }
+                    },
+                    scales: {
+                      x: { grid: { display: chartSettings.showGrid } },
+                      y: { grid: { display: chartSettings.showGrid } }
                     }
                   }}
                 />
               </div>
+              <button
+                onClick={() => setShowChartModal(true)}
+                className="absolute top-4 right-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
+              >
+                Paramètres Graphiques
+              </button>
             </div>
           )}
-
+          
           {activeView === 'table' && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left text-gray-500">
@@ -1133,7 +1611,7 @@ const EpidemiologicalSimulation: React.FC = () => {
               </table>
             </div>
           )}
-
+          
           {activeView === 'network' && (
             <div className="h-[500px] relative">
               <svg ref={svgRef} className="w-full h-full" />
@@ -1146,8 +1624,7 @@ const EpidemiologicalSimulation: React.FC = () => {
             </div>
           )}
         </div>
-
-        {/* Sidebar info */}
+        
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-xl font-bold mb-4">Détails du Modèle</h2>
           
@@ -1164,7 +1641,7 @@ const EpidemiologicalSimulation: React.FC = () => {
                 {activeModel === 'SEIQRD' && 'Avec quarantaine et décès'}
               </p>
             </div>
-
+            
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-gray-50 rounded">
                 <div className="text-sm text-gray-500">β (Transmission)</div>
@@ -1183,7 +1660,7 @@ const EpidemiologicalSimulation: React.FC = () => {
                 <div className="text-lg font-bold">{params.mu.toFixed(3)}</div>
               </div>
             </div>
-
+            
             <div className="mt-6">
               <h3 className="font-medium mb-3">Régions et Personnalisation</h3>
               <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -1201,22 +1678,22 @@ const EpidemiologicalSimulation: React.FC = () => {
                       </span>
                     </div>
                     <div className="text-sm text-gray-600">
-                      Pop: {region.population.toLocaleString()} • 
-                      Infectés: {Math.round(region.I)} • 
+                      Pop: {region.population.toLocaleString()} •
+                      Infectés: {Math.round(region.I)} •
                       Décès: {Math.round(region.D || 0)}
                     </div>
                     <div className="mt-2 flex gap-2">
                       <div>
-                        <button 
+                        <button
                           onClick={() => setSelectedRegionId(region.id === selectedRegionId ? null : region.id)}
                           className="text-sm text-blue-600"
                         >
                           {selectedRegionId === region.id ? 'Fermer' : 'Couleur'}
                         </button>
                         {selectedRegionId === region.id && (
-                          <HexColorPicker 
-                            color={region.color} 
-                            onChange={(color) => changeRegionColor(region.id, color)} 
+                          <HexColorPicker
+                            color={region.color}
+                            onChange={(color) => changeRegionColor(region.id, color)}
                           />
                         )}
                       </div>
@@ -1237,8 +1714,8 @@ const EpidemiologicalSimulation: React.FC = () => {
           </div>
         </div>
       </main>
-
-      {/* Modale Paramètres */}
+      
+      {/* Modales restantes */}
       <AnimatePresence>
         {showParamsModal && (
           <motion.div
@@ -1259,7 +1736,6 @@ const EpidemiologicalSimulation: React.FC = () => {
                 <h2 className="text-2xl font-bold">Configuration du Modèle</h2>
                 <p className="text-gray-600">Paramètres épidémiologiques avancés {isComparisonParams ? 'pour la comparaison' : ''}</p>
               </div>
-
               <div className="p-6">
                 <div className="grid grid-cols-2 gap-6">
                   {Object.entries(params).filter(([key]) => !['model', 'R0'].includes(key)).map(([key, value]) => (
@@ -1284,7 +1760,6 @@ const EpidemiologicalSimulation: React.FC = () => {
                     </div>
                   ))}
                 </div>
-
                 <div className="mt-8 pt-6 border-t flex justify-end gap-3">
                   <button
                     onClick={() => setShowParamsModal(false)}
@@ -1299,7 +1774,7 @@ const EpidemiologicalSimulation: React.FC = () => {
                         setComparisonHistory(runFullSimulation(params, interventions));
                         setIsComparing(true);
                         setIsComparisonParams(false);
-                      } 
+                      }
                       setShowParamsModal(false);
                     }}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg"
@@ -1312,8 +1787,7 @@ const EpidemiologicalSimulation: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Modale Interventions */}
+      
       <AnimatePresence>
         {showInterventionModal && (
           <motion.div
@@ -1336,7 +1810,7 @@ const EpidemiologicalSimulation: React.FC = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Type d'intervention</label>
-                  <select 
+                  <select
                     id="interventionType"
                     className="w-full p-2 border rounded"
                   >
@@ -1349,24 +1823,24 @@ const EpidemiologicalSimulation: React.FC = () => {
                 
                 <div>
                   <label className="block text-sm font-medium mb-2">Efficacité (%)</label>
-                  <input 
+                  <input
                     id="effectiveness"
-                    type="range" 
-                    min="0" 
-                    max="100" 
+                    type="range"
+                    min="0"
+                    max="100"
                     defaultValue="50"
-                    className="w-full" 
+                    className="w-full"
                   />
                   <span id="effectivenessValue">50%</span>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium mb-2">Jour de début</label>
-                  <input 
+                  <input
                     id="startDay"
-                    type="number" 
-                    className="w-full p-2 border rounded" 
-                    defaultValue={currentDay} 
+                    type="number"
+                    className="w-full p-2 border rounded"
+                    defaultValue={currentDay}
                   />
                 </div>
                 
@@ -1395,8 +1869,7 @@ const EpidemiologicalSimulation: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Modale Import Data */}
+      
       <AnimatePresence>
         {showDataModal && (
           <motion.div
@@ -1419,8 +1892,8 @@ const EpidemiologicalSimulation: React.FC = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Fichier CSV (régions)</label>
-                  <input 
-                    type="file" 
+                  <input
+                    type="file"
                     accept=".csv"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -1453,8 +1926,8 @@ const EpidemiologicalSimulation: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Fichier JSON (état complet)</label>
-                  <input 
-                    type="file" 
+                  <input
+                    type="file"
                     accept=".json"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -1480,8 +1953,7 @@ const EpidemiologicalSimulation: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Modale Explications */}
+      
       <AnimatePresence>
         {showExplanationModal && (
           <motion.div
@@ -1503,6 +1975,22 @@ const EpidemiologicalSimulation: React.FC = () => {
               
               <div className="p-6 space-y-4">
                 <div>
+                  <h3 className="font-bold">Contrôles de la Carte 3D</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li><strong>Boutons de rotation :</strong> Visibles en haut à gauche en mode 3D</li>
+                    <li><strong>Raccourcis clavier :</strong>
+                      <ul className="list-circle pl-5">
+                        <li><code>2</code> : Basculer en mode 2D</li>
+                        <li><code>3</code> : Basculer en mode 3D</li>
+                        <li><code>Flèches</code> : Tourner le globe</li>
+                        <li><code>R</code> : Réinitialiser la vue</li>
+                      </ul>
+                    </li>
+                    <li><strong>Zoom :</strong> Molette de la souris ou pincement tactile</li>
+                    <li><strong>Rotation libre :</strong> Glisser-déposer avec la souris</li>
+                  </ul>
+                </div>
+                <div>
                   <h3 className="font-bold">Mode Comparaison</h3>
                   <p>Le mode comparaison permet de lancer une simulation parallèle avec des paramètres différents et de comparer les courbes d'évolution sur les graphiques. Cliquez sur "Comparer" pour configurer les paramètres de comparaison.</p>
                 </div>
@@ -1522,6 +2010,10 @@ const EpidemiologicalSimulation: React.FC = () => {
                   <h3 className="font-bold">Réseau Amélioré</h3>
                   <p>Le vue réseau permet maintenant de personnaliser le style (forme des nœuds, style des liens), activer le clustering (basé sur l'attribut cluster des régions), ajuster la force de répulsion et la distance des liens.</p>
                 </div>
+                <div>
+                  <h3 className="font-bold">Personnalisation Carte et Graphiques</h3>
+                  <p>Nouvelles modales pour personnaliser la carte (forme des marqueurs, thème des tuiles, etc.) et les graphiques (style des lignes, opacité, grille, etc.).</p>
+                </div>
                 <div className="flex justify-end">
                   <button
                     onClick={() => setShowExplanationModal(false)}
@@ -1535,8 +2027,7 @@ const EpidemiologicalSimulation: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Modale Paramètres Réseau */}
+      
       <AnimatePresence>
         {showNetworkModal && (
           <motion.div
@@ -1559,33 +2050,33 @@ const EpidemiologicalSimulation: React.FC = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Force de Répulsion</label>
-                  <input 
-                    type="range" 
+                  <input
+                    type="range"
                     min="-500"
                     max="0"
                     value={networkSettings.chargeStrength}
                     onChange={(e) => setNetworkSettings(prev => ({ ...prev, chargeStrength: Number(e.target.value) }))}
-                    className="w-full" 
+                    className="w-full"
                   />
                   <span>{networkSettings.chargeStrength}</span>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium mb-2">Distance des Liens</label>
-                  <input 
-                    type="range" 
+                  <input
+                    type="range"
                     min="50"
                     max="300"
                     value={networkSettings.linkDistance}
                     onChange={(e) => setNetworkSettings(prev => ({ ...prev, linkDistance: Number(e.target.value) }))}
-                    className="w-full" 
+                    className="w-full"
                   />
                   <span>{networkSettings.linkDistance}</span>
                 </div>
                 
                 <div className="flex items-center">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={networkSettings.enableClustering}
                     onChange={(e) => setNetworkSettings(prev => ({ ...prev, enableClustering: e.target.checked }))}
                   />
@@ -1594,7 +2085,7 @@ const EpidemiologicalSimulation: React.FC = () => {
                 
                 <div>
                   <label className="block text-sm font-medium mb-2">Forme des Nœuds</label>
-                  <select 
+                  <select
                     value={networkSettings.nodeShape}
                     onChange={(e) => setNetworkSettings(prev => ({ ...prev, nodeShape: e.target.value as 'circle' | 'square' | 'triangle' }))}
                     className="w-full p-2 border rounded"
@@ -1607,7 +2098,7 @@ const EpidemiologicalSimulation: React.FC = () => {
                 
                 <div>
                   <label className="block text-sm font-medium mb-2">Style des Liens</label>
-                  <select 
+                  <select
                     value={networkSettings.linkStyle}
                     onChange={(e) => setNetworkSettings(prev => ({ ...prev, linkStyle: e.target.value as 'solid' | 'dashed' }))}
                     className="w-full p-2 border rounded"
@@ -1620,6 +2111,230 @@ const EpidemiologicalSimulation: React.FC = () => {
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={() => setShowNetworkModal(false)}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      <AnimatePresence>
+        {showMapModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowMapModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6 border-b">
+                <h2 className="text-2xl font-bold">Paramètres de la Carte</h2>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Forme des Marqueurs</label>
+                  <select
+                    value={mapSettings.markerShape}
+                    onChange={(e) => setMapSettings(prev => ({ ...prev, markerShape: e.target.value as 'circle' | 'marker' }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="circle">Cercle</option>
+                    <option value="marker">Marqueur (icône)</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Opacité des Marqueurs</label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.1"
+                    value={mapSettings.markerOpacity}
+                    onChange={(e) => setMapSettings(prev => ({ ...prev, markerOpacity: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <span>{mapSettings.markerOpacity}</span>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Style des Lignes</label>
+                  <select
+                    value={mapSettings.lineStyle}
+                    onChange={(e) => setMapSettings(prev => ({ ...prev, lineStyle: e.target.value as 'solid' | 'dashed' }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="solid">Solide</option>
+                    <option value="dashed">Pointillé</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Opacité des Lignes</label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.1"
+                    value={mapSettings.lineOpacity}
+                    onChange={(e) => setMapSettings(prev => ({ ...prev, lineOpacity: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <span>{mapSettings.lineOpacity}</span>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Thème des Tuiles</label>
+                  <select
+                    value={mapSettings.tileTheme}
+                    onChange={(e) => setMapSettings(prev => ({ ...prev, tileTheme: e.target.value as 'light' | 'dark' | 'satellite' }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="light">Clair</option>
+                    <option value="dark">Sombre</option>
+                    <option value="satellite">Satellite</option>
+                  </select>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={mapSettings.showLabels}
+                    onChange={(e) => setMapSettings(prev => ({ ...prev, showLabels: e.target.checked }))}
+                  />
+                  <label className="ml-2">Afficher les Labels</label>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Niveau de Zoom Initial</label>
+                  <input
+                    type="range"
+                    min="3"
+                    max="10"
+                    value={mapSettings.zoomLevel}
+                    onChange={(e) => setMapSettings(prev => ({ ...prev, zoomLevel: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <span>{mapSettings.zoomLevel}</span>
+                </div>
+                
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowMapModal(false)}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      <AnimatePresence>
+        {showChartModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowChartModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6 border-b">
+                <h2 className="text-2xl font-bold">Paramètres des Graphiques</h2>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Style des Lignes</label>
+                  <select
+                    value={chartSettings.lineStyle}
+                    onChange={(e) => setChartSettings(prev => ({ ...prev, lineStyle: e.target.value as 'solid' | 'dashed' }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="solid">Solide</option>
+                    <option value="dashed">Pointillé</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Épaisseur des Lignes</label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    value={chartSettings.lineWidth}
+                    onChange={(e) => setChartSettings(prev => ({ ...prev, lineWidth: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <span>{chartSettings.lineWidth}</span>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Opacité du Remplissage</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={chartSettings.fillOpacity}
+                    onChange={(e) => setChartSettings(prev => ({ ...prev, fillOpacity: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <span>{chartSettings.fillOpacity}</span>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={chartSettings.showGrid}
+                    onChange={(e) => setChartSettings(prev => ({ ...prev, showGrid: e.target.checked }))}
+                  />
+                  <label className="ml-2">Afficher la Grille</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={chartSettings.showAnnotations}
+                    onChange={(e) => setChartSettings(prev => ({ ...prev, showAnnotations: e.target.checked }))}
+                  />
+                  <label className="ml-2">Afficher les Annotations</label>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Thème</label>
+                  <select
+                    value={chartSettings.theme}
+                    onChange={(e) => setChartSettings(prev => ({ ...prev, theme: e.target.value as 'light' | 'dark' }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="light">Clair</option>
+                    <option value="dark">Sombre</option>
+                  </select>
+                </div>
+                
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowChartModal(false)}
                     className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                   >
                     Fermer

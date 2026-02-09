@@ -792,7 +792,7 @@ const GeospatialVisualization: React.FC = () => {
           <div className="mb-8">
             <Card>
               <CardHeader>
-               
+                <CardTitle>Carte Interactive des Données Épidémiologiques</CardTitle>
                 <CardDescription>
                   Visualisez la distribution spatiale des cas et identifiez les zones à risque
                 </CardDescription>
