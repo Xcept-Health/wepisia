@@ -38,21 +38,7 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
     <>
       <div className="fixed bottom-6 right-6 z-40">
         <div className="relative">
-          {/* Tooltip */}
-
-          {/* Message bulle */}
-          {showBubble && !isActive && (
-            <div className="absolute bottom-full right-0 mb-3 animate-bounce-in">
-              <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
-                <div className="flex items-center">
-                  <Sparkles className="w-3 h-3 mr-2 animate-pulse" />
-                  <span>Besoin d'aide ? Je suis là !</span>
-                </div>
-                <div className="absolute -bottom-1.5 right-4 w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-600 transform rotate-45" />
-              </div>
-            </div>
-          )}
-
+       
           {/* Bouton principal */}
           <Button
             onClick={onClick}
@@ -77,11 +63,7 @@ export function ChatbotToggle({ onClick, isActive, notificationCount = 0 }: Chat
             ) : (
               <>
                 <MessageCircle className="w-7 h-7 text-white relative z-10" />
-                {notificationCount > 0 && (
-                  <Badge className="absolute -top-1 -right-1 h-6 w-6 p-0 flex items-center justify-center bg-red-500 text-white text-xs font-bold shadow-lg border-2 border-white dark:border-gray-900">
-                    {notificationCount}
-                  </Badge>
-                )}
+               
               </>
             )}
           </Button>

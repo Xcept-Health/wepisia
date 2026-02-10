@@ -13,6 +13,7 @@ import {
   Legend,
   Filler
 } from 'chart.js';
+import { ChevronRight } from 'lucide-react';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import { Line, Bar } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,7 +21,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { HexColorPicker } from 'react-colorful';
 import Globe from 'globe.gl';
-
+import {Link} from 'wouter'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler, annotationPlugin);
 
 // Types et interfaces
@@ -1196,8 +1197,24 @@ const EpidemiologicalSimulation: React.FC = () => {
       <header className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Simulateur Épidémiologique</h1>
-            <p className="text-gray-600">Modélisation avancée des dynamiques de propagation</p>
+          <nav aria-label="Breadcrumb">
+              <ol className="flex items-center space-x-2 text-sm">
+                <li>
+                  <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                    Accueil
+                  </Link>
+                </li>
+                <li>
+                  <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
+                </li>
+                <li>
+                  <Link href="/workspace" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                    Tableau de Bord
+                  </Link>
+                </li>
+                
+              </ol>
+         </nav>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -1261,9 +1278,7 @@ const EpidemiologicalSimulation: React.FC = () => {
             </svg>
             Paramètres
           </button>
-        </div>
-        
-        <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-4 ">
           <label className="text-sm font-medium">Scénario:</label>
           <select
             value={selectedScenario}
@@ -1278,38 +1293,12 @@ const EpidemiologicalSimulation: React.FC = () => {
             ))}
           </select>
         </div>
-      </header>
-      
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Vue active:</span>
-            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-              {activeView === 'map' ? 'Carte' :
-               activeView === 'charts' ? 'Graphiques' :
-               activeView === 'table' ? 'Tableau' : 'Réseau'}
-            </span>
-          </div>
-          
-          {activeView === 'map' && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Mode carte:</span>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${mapType === '2d' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'}`}>
-                {mapType === '2d' ? '2D (Leaflet)' : '3D (Globe)'}
-              </span>
-              <span className="text-xs text-gray-500">
-                {mapType === '3d' ? 'Utilisez les flèches ou les boutons pour tourner le globe' : 'Cliquez sur les régions pour plus d\'infos'}
-              </span>
-            </div>
-          )}
         </div>
         
-        {activeView === 'map' && mapType === '3d' && (
-          <div className="text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
-            <span className="font-medium">Touches clavier:</span> 2 (2D) • 3 (3D) • ←↑↓→ (rotation) • R (réinitialiser)
-          </div>
-        )}
-      </div>
+
+      </header>
+      
+     
       
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {[

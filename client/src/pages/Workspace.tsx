@@ -213,7 +213,6 @@ abline(h = 1, lty = 2, col = "gray")
   });
 
   const [activeTab, setActiveTab] = useState<string>('terminal');
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showTerminal, setShowTerminal] = useState<boolean>(true);
   const [showSidebar, setShowSidebar] = useState<boolean>(true);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
@@ -260,11 +259,10 @@ abline(h = 1, lty = 2, col = "gray")
         
     
       } catch (error) {
-        console.error('Erreur WebR:', error);
         setWebRStatus('error');
         setState(prev => ({
           ...prev,
-          output: `⚠️ WebR non disponible: ${error instanceof Error ? error.message : 'Erreur inconnue'}\n🔧 Mode simulation activé\n\n${prev.output}`
+          output: `Nous rencontrons un problème: ${error instanceof Error ? error.message : 'Erreur inconnue'}\n Mode simulation activé\n\n${prev.output}`
         }));
       }
     };
@@ -376,7 +374,7 @@ abline(h = 1, lty = 2, col = "gray")
       // Ajouter un message dans le terminal
       setState(prev => ({
         ...prev,
-        output: `📦 Workspace téléchargé avec succès!\n${prev.output}`
+        output: `Workspace téléchargé avec succès!\n${prev.output}`
       }));
     } catch (error) {
       console.error('Erreur lors du téléchargement:', error);
@@ -1036,7 +1034,7 @@ p-value: <0.001
                 </li>
                 
               </ol>
-          </nav>
+         </nav>
           
           
         </div>
@@ -1049,7 +1047,7 @@ p-value: <0.001
               id="auto-run"
             />
             <Label htmlFor="auto-run" className="text-sm cursor-pointer">
-              Auto-run R
+              Auto-run
             </Label>
           </div>
           
@@ -1362,7 +1360,7 @@ p-value: <0.001
                       onClick={handleClearOutput}
                       className="h-7 text-xs"
                     >
-                      <Trash className="w-3 h-3 mr-1" />
+                      <Trash2 className="w-3 h-3 mr-1" />
                     
                     </Button>
                   </div>
