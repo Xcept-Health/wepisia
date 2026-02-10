@@ -33,7 +33,6 @@ interface DiseaseExample {
   id: string;
   name: string;
   description: string;
-  icon: string;
   color: string;
   source: {
     organization: string;
@@ -95,7 +94,6 @@ const GeospatialVisualization: React.FC = () => {
       id: 'ebola-2014-2016',
       name: 'Épidémie Ebola 2014-2016',
       description: 'Crise sanitaire majeure en Afrique de l\'Ouest',
-      icon: '🦠',
       color: 'bg-red-500',
       source: {
         organization: 'OMS',
@@ -143,7 +141,6 @@ const GeospatialVisualization: React.FC = () => {
       id: 'covid-global',
       name: 'COVID-19 Distribution',
       description: 'Données agrégées de la pandémie COVID-19',
-      icon: '🦠',
       color: 'bg-blue-500',
       source: {
         organization: 'Johns Hopkins University',
