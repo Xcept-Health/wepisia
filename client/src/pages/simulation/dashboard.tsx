@@ -22,7 +22,126 @@ import 'leaflet/dist/leaflet.css';
 import { HexColorPicker } from 'react-colorful';
 import Globe from 'globe.gl';
 import {Link} from 'wouter'
+
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler, annotationPlugin);
+
+// Options des graphiques
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      position: 'top' as const,
+      labels: {
+        color: '#374151',
+        font: {
+          size: 11,
+          family: "'Inter', sans-serif"
+        },
+        padding: 20,
+        usePointStyle: true,
+      }
+    },
+    tooltip: {
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      titleColor: '#111827',
+      bodyColor: '#4B5563',
+      borderColor: '#E5E7EB',
+      borderWidth: 1,
+      cornerRadius: 8,
+      boxPadding: 6,
+    }
+  },
+  scales: {
+    x: {
+      grid: {
+        color: 'rgba(229, 231, 235, 0.3)',
+        drawBorder: false
+      },
+      ticks: {
+        color: '#6B7280',
+        font: {
+          size: 10,
+          family: "'Inter', sans-serif"
+        }
+      }
+    },
+    y: {
+      grid: {
+        color: 'rgba(229, 231, 235, 0.3)',
+        drawBorder: false
+      },
+      ticks: {
+        color: '#6B7280',
+        font: {
+          size: 10,
+          family: "'Inter', sans-serif"
+        }
+      }
+    }
+  },
+  elements: {
+    line: {
+      tension: 0.4,
+      borderWidth: 2
+    },
+    point: {
+      radius: 0,
+      hoverRadius: 6
+    }
+  },
+  interaction: {
+    intersect: false,
+    mode: 'index' as const
+  }
+};
+
+const barOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      display: false
+    },
+    tooltip: {
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      titleColor: '#111827',
+      bodyColor: '#4B5563',
+      borderColor: '#E5E7EB',
+      borderWidth: 1,
+      cornerRadius: 8
+    }
+  },
+  scales: {
+    x: {
+      grid: {
+        display: false
+      },
+      ticks: {
+        color: '#6B7280',
+        font: {
+          size: 10,
+          family: "'Inter', sans-serif"
+        }
+      }
+    },
+    y: {
+      grid: {
+        color: 'rgba(229, 231, 235, 0.3)'
+      },
+      ticks: {
+        color: '#6B7280',
+        font: {
+          size: 10,
+          family: "'Inter', sans-serif"
+        },
+        callback: function(value: any) {
+          return value + '%';
+        }
+      }
+    }
+  }
+};
 
 // Types et interfaces
 type ModelType = 'SIR' | 'SEIR' | 'SEIRD' | 'SEIQRD' | 'CUSTOM';
@@ -338,7 +457,7 @@ const EpidemiologicalSimulation: React.FC = () => {
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [showChartModal, setShowChartModal] = useState(false);
-  const [mapType, setMapType] = useState<'2d' | '3d'>('3d'); // Par défaut 3D
+  const [mapType, setMapType] = useState<'2d' | '3d'>('3d');
   const [activeModel, setActiveModel] = useState<ModelType>('SEIRD');
   const [params, setParams] = useState<SimulationParams>(predefinedScenarios[0].params);
   const [activeView, setActiveView] = useState<'map' | 'charts' | 'table' | 'network'>('map');
@@ -351,6 +470,7 @@ const EpidemiologicalSimulation: React.FC = () => {
   const [comparisonParams, setComparisonParams] = useState<SimulationParams | null>(null);
   const [comparisonHistory, setComparisonHistory] = useState<any[]>([]);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showSidePanel, setShowSidePanel] = useState(false);
   
   const mapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -477,8 +597,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     if (mapType === newType) return;
     
     setIsTransitioning(true);
-    
-    // Animation de fondu
     if (mapRef.current) {
       mapRef.current.style.opacity = '0.5';
       mapRef.current.style.transition = 'opacity 0.3s ease-in-out';
@@ -487,7 +605,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     setTimeout(() => {
       setMapType(newType);
       setIsTransitioning(false);
-      
       if (mapRef.current) {
         mapRef.current.style.opacity = '1';
       }
@@ -498,8 +615,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     if (!globeInstanceRef.current || mapType !== '3d' || activeView !== 'map') return;
     
     const globe = globeInstanceRef.current;
-    
-    // Animation des points
     const pointsData = regions.map(region => {
       const infectionRate = region.I / region.population;
       let color = region.color;
@@ -515,21 +630,18 @@ const EpidemiologicalSimulation: React.FC = () => {
         population: region.population,
         I: region.I,
         D: region.D || 0,
-        // Animation de pulsation
         pulse: Math.sin(Date.now() * 0.001 + region.id.length) * 0.1 + 1
       };
     });
     
     globe.pointsData(pointsData);
     
-    // Animation des arcs
     const arcsData: any[] = [];
     regions.forEach(region => {
       region.connections.forEach(targetId => {
         const target = regions.find(r => r.id === targetId);
         if (target) {
           const flowIntensity = Math.min(1, (region.I + target.I) / (region.population + target.population) * 100);
-          
           arcsData.push({
             startLat: region.latitude,
             startLng: region.longitude,
@@ -537,7 +649,6 @@ const EpidemiologicalSimulation: React.FC = () => {
             endLng: target.longitude,
             color: `rgba(148, 163, 184, ${0.3 + flowIntensity * 0.7})`,
             stroke: params.mobility * (0.5 + flowIntensity),
-            // Animation du dash
             dashLength: 0.2 + Math.sin(Date.now() * 0.001) * 0.1
           });
         }
@@ -556,7 +667,6 @@ const EpidemiologicalSimulation: React.FC = () => {
       return;
     }
     
-    // Nettoyer les instances précédentes
     if (globeInstanceRef.current) {
       globeInstanceRef.current._destructor?.();
       globeInstanceRef.current = null;
@@ -642,16 +752,14 @@ const EpidemiologicalSimulation: React.FC = () => {
       };
       legend.addTo(map);
     } else {
-      // Créer un conteneur spécifique pour le globe
       const globeContainer = document.createElement('div');
       globeContainer.style.width = '100%';
       globeContainer.style.height = '100%';
       globeContainer.style.position = 'absolute';
       globeContainer.style.top = '0';
       globeContainer.style.left = '0';
-      
       mapRef.current.appendChild(globeContainer);
-      
+
       const getPointColor = (region: Region) => {
         const infectionRate = region.I / region.population;
         if (infectionRate > 0.01) return '#ef4444';
@@ -690,16 +798,12 @@ const EpidemiologicalSimulation: React.FC = () => {
       const myGlobe = Globe()(globeContainer)
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
-        // Centrage parfait sur l'Europe
         .pointOfView({ lat: 48.0, lng: 2.0, altitude: 1.5 })
         .onGlobeReady(() => {
-          // Activation de la rotation automatique
           myGlobe.controls().autoRotate = true;
           myGlobe.controls().autoRotateSpeed = 0.3;
           myGlobe.controls().enableZoom = true;
           myGlobe.controls().enablePan = true;
-          
-          // Smooth transition vers la vue initiale
           setTimeout(() => {
             myGlobe.pointOfView({ lat: 48.0, lng: 2.0, altitude: 1.5 }, 2000);
           }, 500);
@@ -708,16 +812,9 @@ const EpidemiologicalSimulation: React.FC = () => {
         .pointAltitude('size')
         .pointColor('color')
         .pointRadius(0.5)
-        // Animation des points
         .pointsTransitionDuration(2000)
         .pointLabel((d: any) => `
-          <div style="
-            background: white; 
-            padding: 8px; 
-            border-radius: 4px; 
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            max-width: 200px;
-          ">
+          <div style="background: white; padding: 8px; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 200px;">
             <strong>${d.name}</strong><br/>
             Population: ${d.population.toLocaleString()}<br/>
             Infectés: ${Math.round(d.I)}<br/>
@@ -731,15 +828,11 @@ const EpidemiologicalSimulation: React.FC = () => {
         .arcDashGap(mapSettings.lineStyle === 'dashed' ? 0.1 : 0)
         .arcDashAnimateTime(3000)
         .arcAltitudeAutoScale(0.3)
-        // Effets d'ambiance
         .atmosphereColor('#3a0ca3')
         .atmosphereAltitude(0.2)
-        // Optimisation des performances
         .pointResolution(window.innerWidth < 768 ? 8 : 16);
 
       globeInstanceRef.current = myGlobe;
-      
-      // Animation de fondu pour le globe
       globeContainer.style.opacity = '0';
       setTimeout(() => {
         globeContainer.style.transition = 'opacity 0.5s ease-in-out';
@@ -751,7 +844,6 @@ const EpidemiologicalSimulation: React.FC = () => {
       if (mapType === '2d') {
         map?.remove();
       } else {
-        // Cleanup propre du globe
         if (globeInstanceRef.current) {
           try {
             globeInstanceRef.current._destructor?.();
@@ -764,7 +856,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     };
   }, [regions, activeView, params.mobility, mapSettings, mapType]);
 
-  // Animation du globe
   useEffect(() => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -1053,62 +1144,51 @@ const EpidemiologicalSimulation: React.FC = () => {
       label: 'Susceptibles' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.S),
       borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59, 130, 246, 0.05)',
       borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
       borderWidth: chartSettings.lineWidth,
-      backgroundColor: `rgba(59, 130, 246, ${chartSettings.fillOpacity})`,
-      fill: true
+      fill: true,
+      tension: 0.4
     },
     {
       label: 'Exposés' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.E),
       borderColor: '#f59e0b',
+      backgroundColor: 'rgba(245, 158, 11, 0.05)',
       borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
       borderWidth: chartSettings.lineWidth,
-      backgroundColor: `rgba(245, 158, 11, ${chartSettings.fillOpacity})`,
-      fill: true
+      fill: true,
+      tension: 0.4
     },
     {
       label: 'Infectés' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.I),
       borderColor: '#ef4444',
+      backgroundColor: 'rgba(239, 68, 68, 0.05)',
       borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
       borderWidth: chartSettings.lineWidth,
-      backgroundColor: `rgba(239, 68, 68, ${chartSettings.fillOpacity})`,
-      fill: true
+      fill: true,
+      tension: 0.4
     },
     {
       label: 'Guéris' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.R),
       borderColor: '#10b981',
+      backgroundColor: 'rgba(16, 185, 129, 0.05)',
       borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
       borderWidth: chartSettings.lineWidth,
-      backgroundColor: `rgba(16, 185, 129, ${chartSettings.fillOpacity})`,
-      fill: true
+      fill: true,
+      tension: 0.4
     },
     {
       label: 'Décès' + labelSuffix,
       data: hist.slice(-100).map(h => h.totals.D),
       borderColor: '#6b7280',
+      backgroundColor: 'rgba(107, 114, 128, 0.05)',
       borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
       borderWidth: chartSettings.lineWidth,
-      backgroundColor: `rgba(107, 114, 128, ${chartSettings.fillOpacity})`,
-      fill: true
-    },
-    {
-      label: 'Rt' + labelSuffix,
-      data: hist.slice(-100).map(h => {
-        const S = h.totals.S;
-        const N = regions.reduce((sum, r) => sum + r.population, 0);
-        const activeInterventions = interventions.filter(i => h.day >= i.startDay);
-        const reduction = activeInterventions.reduce((sum, i) => sum + i.effectiveness / 100, 0);
-        const beta = params.beta * (1 - reduction);
-        return (beta * (S / N) / params.gamma) || 0;
-      }),
-      borderColor: '#000000',
-      borderDash: chartSettings.lineStyle === 'dashed' ? [5, 5] : borderDash,
-      borderWidth: chartSettings.lineWidth,
-      backgroundColor: `rgba(0, 0, 0, ${chartSettings.fillOpacity})`,
-      fill: true
+      fill: true,
+      tension: 0.4
     }
   ];
 
@@ -1117,6 +1197,19 @@ const EpidemiologicalSimulation: React.FC = () => {
     datasets: isComparing
       ? [...getChartDatasets(history), ...getChartDatasets(comparisonHistory, ' (Comparaison)', [5, 5])]
       : getChartDatasets(history)
+  };
+
+  const barData = {
+    labels: regions.map(r => r.name),
+    datasets: [{
+      label: 'Taux d\'infection (%)',
+      data: regions.map(r => (r.I / r.population) * 100),
+      backgroundColor: regions.map(r => r.color + '80'),
+      borderColor: regions.map(r => r.color),
+      borderWidth: 1,
+      borderRadius: 6,
+      hoverBackgroundColor: regions.map(r => r.color)
+    }]
   };
 
   const chartAnnotations = interventions.map((int, index) => ({
@@ -1161,7 +1254,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     const pov = globe.pointOfView();
     const step = direction.includes('left') || direction.includes('right') ? 15 : 10;
     
-    // Désactiver la rotation automatique pendant le contrôle manuel
     globe.controls().autoRotate = false;
     
     switch (direction) {
@@ -1181,7 +1273,6 @@ const EpidemiologicalSimulation: React.FC = () => {
     
     globe.pointOfView(pov, 500);
     
-    // Réactiver la rotation automatique après un délai
     setTimeout(() => {
       if (globeInstanceRef.current) {
         globeInstanceRef.current.controls().autoRotate = true;
@@ -1216,135 +1307,201 @@ const EpidemiologicalSimulation: React.FC = () => {
               </ol>
          </nav>
           </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => {
-                setIsComparisonParams(true);
-                setShowParamsModal(true);
-              }}
-              className={`px-4 py-2 rounded-lg ${isComparing ? 'bg-purple-600 text-white' : 'bg-gray-200'}`}
-            >
-              {isComparing ? 'Mode Comparaison Actif' : 'Comparer Simulations'}
-            </button>
-            <button
-              onClick={() => setShowDataModal(true)}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              Importer
-            </button>
-            <button
-              onClick={exportData}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Exporter CSV
-            </button>
-            <button
-              onClick={exportFullState}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg flex items-center gap-2"
-            >
-              Exporter JSON
-            </button>
-            <button
-              onClick={() => setShowExplanationModal(true)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
-            >
-              Explications
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-4 mt-2">
+  
+            {/* --- GROUPE : ANALYSE & MODE --- */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setIsComparisonParams(true);
+                  setShowParamsModal(true);
+                }}
+                className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                  isComparing 
+                    ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 shadow-sm' 
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span className="relative flex h-2 w-2">
+                  {isComparing && (
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  )}
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${isComparing ? 'bg-indigo-600' : 'bg-slate-300'}`}></span>
+                </span>
+                {isComparing ? 'Mode Comparaison Actif' : 'Comparer Simulations'}
+              </button>
+
+              <button
+                onClick={() => setShowExplanationModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-indigo-600 text-sm font-medium transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Explications
+              </button>
+            </div>
+
+            {/* --- GROUPE : DONNÉES (Import/Export) --- */}
+            <div className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-2xl border border-slate-200/50">
+              <button
+                onClick={() => setShowDataModal(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-white hover:text-emerald-600 rounded-xl transition-all text-xs font-bold uppercase tracking-tight"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Importer
+              </button>
+
+              <div className="w-px h-4 bg-slate-200 mx-1" /> {/* Séparateur vertical */}
+
+              <button
+                onClick={exportData}
+                className="flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-white hover:text-indigo-600 rounded-xl transition-all text-xs font-bold uppercase tracking-tight"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                CSV
+              </button>
+
+              <button
+                onClick={exportFullState}
+                className="flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-white hover:text-indigo-600 rounded-xl transition-all text-xs font-bold uppercase tracking-tight"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                JSON
+              </button>
+            </div>
+
           </div>
         </div>
         
-        <div className="flex flex-wrap gap-2 mb-6">
-          {(['SIR', 'SEIR', 'SEIRD', 'SEIQRD'] as ModelType[]).map(model => (
-            <button
-              key={model}
-              onClick={() => setActiveModel(model)}
-              className={`px-4 py-2 rounded-lg ${activeModel === model ? 'bg-blue-600 text-white' : 'bg-white'}`}
-            >
-              {model}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-4 mb-8">
+          
+          {/* --- SÉLECTEUR DE MODÈLE (Segmented Control) --- */}
+          <div className="flex bg-slate-100/80 p-1 rounded-xl items-center border border-slate-200/50">
+            {(['SIR', 'SEIR', 'SEIRD', 'SEIQRD'] as ModelType[]).map(model => (
+              <button
+                key={model}
+                onClick={() => setActiveModel(model)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 ${
+                  activeModel === model
+                    ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {model}
+              </button>
+            ))}
+          </div>
+
+          {/* --- BOUTON PARAMÈTRES (Style Minimal) --- */}
           <button
             onClick={() => setShowParamsModal(true)}
-            className="px-4 py-2 bg-gray-800 text-white rounded-lg flex items-center gap-2"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm active:scale-95"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
             </svg>
-            Paramètres
+            <span className="text-sm font-medium">Réglages</span>
           </button>
-          <div className="flex items-center gap-4 ">
-          <label className="text-sm font-medium">Scénario:</label>
-          <select
-            value={selectedScenario}
-            onChange={(e) => {
-              setSelectedScenario(e.target.value);
-              applyScenario(e.target.value);
-            }}
-            className="p-2 border rounded"
-          >
-            {predefinedScenarios.map(sc => (
-              <option key={sc.name} value={sc.name}>{sc.name}</option>
-            ))}
-          </select>
+
+          {/* --- SÉLECTEUR DE SCÉNARIO (Stylisé) --- */}
+          <div className="flex items-center gap-3 ml-auto bg-white border border-slate-200 pl-4 pr-2 py-1.5 rounded-xl shadow-sm">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-r border-slate-100 pr-3">
+              Scénario
+            </label>
+            <div className="relative flex items-center">
+              <select
+                value={selectedScenario}
+                onChange={(e) => {
+                  setSelectedScenario(e.target.value);
+                  applyScenario(e.target.value);
+                }}
+                className="appearance-none bg-transparent pr-8 pl-1 py-0.5 text-sm font-semibold text-slate-700 focus:outline-none cursor-pointer z-10"
+              >
+                {predefinedScenarios.map(sc => (
+                  <option key={sc.name} value={sc.name}>{sc.name}</option>
+                ))}
+              </select>
+              {/* Icône de flèche personnalisée pour remplacer celle du navigateur */}
+              <svg className="w-4 h-4 text-slate-400 absolute right-0 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+
         </div>
-        </div>
-        
 
       </header>
       
      
       
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
         {[
-          { label: 'Jour', value: currentDay, color: 'bg-blue-100 text-blue-800' },
-          { label: 'Infectés Actifs', value: indicators.currentInfections.toLocaleString(), color: 'bg-red-100 text-red-800' },
-          { label: 'R₀ Effectif', value: indicators.effectiveR, color: 'bg-orange-100 text-orange-800' },
-          { label: 'Pic (Jour)', value: indicators.peakDay, color: 'bg-purple-100 text-purple-800' },
-          { label: 'Pression Soins', value: `${indicators.healthcarePressure}/1000`, color: 'bg-yellow-100 text-yellow-800' }
+          { label: 'Jour', value: currentDay },
+          { label: 'Infectés Actifs', value: indicators.currentInfections.toLocaleString() },
+          { label: 'R₀ Effectif', value: indicators.effectiveR },
+          { label: 'Pic (Jour)', value: indicators.peakDay },
+          { label: 'Pression Soins', value: `${indicators.healthcarePressure}/1000` }
         ].map((indicator, idx) => (
           <motion.div
             key={idx}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.1 }}
-            className={`p-4 rounded-xl shadow-sm ${indicator.color}`}
+            transition={{ delay: idx * 0.05 }}
+            className="relative overflow-hidden bg-white border border-slate-100 p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0,02)] group hover:shadow-md transition-shadow duration-300"
           >
-            <div className="text-sm font-medium">{indicator.label}</div>
-            <div className="text-2xl font-bold">{indicator.value}</div>
+            {/* Barre d'accentuation latérale ultra-fine */}
+            <div className={`absolute left-0 top-0 bottom-0 w-1 ${indicator.color} opacity-60`} />
+            
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest uppercase">
+                {indicator.label}
+              </span>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-slate-800 tracking-tight">
+                  {indicator.value}
+                </span>
+                {/* Petit point de rappel de couleur */}
+                <div className={`w-1.5 h-1.5 rounded-full ${indicator.color} opacity-20 group-hover:opacity-100 transition-opacity`} />
+              </div>
+            </div>
           </motion.div>
         ))}
       </div>
       
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+      <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-2xl shadow-sm p-3 mb-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+          
+          {/* --- BLOC LECTURE & RÉINITIALISATION --- */}
+          <div className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-full border border-slate-100">
             <button
               onClick={() => setIsRunning(!isRunning)}
-              className={`px-6 py-3 rounded-lg flex items-center gap-2 ${isRunning ? 'bg-orange-600' : 'bg-blue-600'} text-white`}
+              className={`flex items-center gap-2 px-5 py-2 rounded-full font-medium transition-all duration-200 ${
+                isRunning 
+                  ? 'bg-white text-orange-600 shadow-sm' 
+                  : 'bg-indigo-600 text-white shadow-md shadow-indigo-100 hover:bg-indigo-700'
+              }`}
             >
               {isRunning ? (
                 <>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  Pause
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                  <span className="text-sm">Pause</span>
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                  </svg>
-                  Démarrer
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                  <span className="text-sm">Démarrer</span>
                 </>
               )}
             </button>
-            
+
             <button
               onClick={() => {
                 setIsRunning(false);
@@ -1352,353 +1509,436 @@ const EpidemiologicalSimulation: React.FC = () => {
                 setHistory([]);
                 setRegions(initialRegions.map(r => ({ ...r })));
               }}
-              className="px-4 py-3 bg-gray-600 text-white rounded-lg"
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-white rounded-full transition-all"
+              title="Réinitialiser"
             >
-              Réinitialiser
-            </button>
-            <button
-              onClick={() => setShowInterventionModal(true)}
-              className="px-4 py-3 bg-yellow-600 text-white rounded-lg"
-            >
-              + Intervention
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </button>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Vitesse:</span>
+
+          {/* --- BLOC VUES (NAVIGATION) --- */}
+          <div className="flex bg-slate-100/80 p-1 rounded-xl items-center">
+            {[
+              { id: 'map', label: 'Carte', icon: <path d="M9 20l-5-2V4l5 2m0 14l6-2m-6 2V6m6 12l5 2V6l-5-2m0 14V4" /> },
+              { id: 'charts', label: 'Stats', icon: <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /> },
+              { id: 'table', label: 'Liste', icon: <path d="M4 6h16M4 10h16M4 14h16M4 18h16" /> },
+              { id: 'network', label: 'Flux', icon: <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /> }
+            ].map(view => (
+              <button
+                key={view.id}
+                onClick={() => setActiveView(view.id)}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  activeView === view.id
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  {view.icon}
+                </svg>
+                {view.label}
+              </button>
+            ))}
+          </div>
+
+          {/* --- BLOC RÉGLAGES ET ACTION --- */}
+          <div className="flex items-center gap-6">
+            <div className="hidden sm:flex items-center gap-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Vitesse</span>
               <input
                 type="range"
-                min="1"
-                max="10"
+                min="1" max="10"
                 value={speed}
                 onChange={(e) => setSpeed(Number(e.target.value))}
-                className="w-32"
+                className="w-20 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500"
               />
-              <span className="text-sm font-medium">{speed}x</span>
+              <span className="text-xs font-semibold text-slate-600 w-6">{speed}x</span>
             </div>
-            <div className="flex gap-2">
-              {['map', 'charts', 'table', 'network'].map(view => (
-                <button
-                  key={view}
-                  onClick={() => setActiveView(view as any)}
-                  className={`px-4 py-2 rounded ${activeView === view ? 'bg-blue-100 text-blue-700' : 'text-gray-600'}`}
-                >
-                  {view === 'map' && 'Carte'}
-                  {view === 'charts' && 'Graphiques'}
-                  {view === 'table' && 'Tableau'}
-                  {view === 'network' && 'Réseau'}
-                </button>
-              ))}
-            </div>
+
+            <button
+              onClick={() => setShowInterventionModal(true)}
+              className="group flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200"
+            >
+              <div className="p-0.5 bg-slate-700 rounded-full group-hover:bg-indigo-500 transition-colors">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span className="text-sm font-medium">Intervention</span>
+            </button>
           </div>
+
         </div>
       </div>
       
-      <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-4 relative">
-          {activeView === 'map' && (
-            <>
-              <div className="relative h-[500px] bg-gradient-to-b from-blue-50 to-gray-100 rounded-lg overflow-hidden">
-                {isTransitioning && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* --- ZONE DE VISUALISATION (COL 2/3) --- */}
+        <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden relative h-[600px] flex flex-col">
+          
+          {/* BOUTON PARAMÈTRES UNIQUE & SOFT */}
+          <div className="absolute top-4 right-4 z-40">
+            <button
+              onClick={() => setShowSidePanel(!showSidePanel)}
+              className={`p-3 rounded-2xl backdrop-blur-md transition-all duration-300 border shadow-xl ${
+                showSidePanel 
+                  ? 'bg-slate-900 text-white border-slate-900 rotate-90' 
+                  : 'bg-white/80 text-slate-500 border-slate-200 hover:text-indigo-600'
+              }`}
+            >
+              {showSidePanel ? (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+              )}
+            </button>
+          </div>
+
+          {/* PANNEAU LATÉRAL DE RÉGLAGES (SIDE PANEL) */}
+          <div className={`absolute top-0 right-0 h-full w-80 bg-white/90 backdrop-blur-2xl border-l border-slate-100 z-30 transform transition-transform duration-500 ease-in-out shadow-2xl ${showSidePanel ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className="p-8 pt-20 h-full overflow-y-auto">
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-6">Configuration Vue</h3>
+              
+              {/* Contenu dynamique du panneau selon la vue */}
+              <div className="space-y-8">
+                {activeView === 'map' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-500 font-medium">Type de Projection</p>
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                      <button onClick={() => handleMapTypeChange('2d')} className={`py-2 text-xs rounded-lg transition-all ${mapType === '2d' ? 'bg-white shadow-sm text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}>Plat (2D)</button>
+                      <button onClick={() => handleMapTypeChange('3d')} className={`py-2 text-xs rounded-lg transition-all ${mapType === '3d' ? 'bg-white shadow-sm text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}>Globe (3D)</button>
+                    </div>
+                    <div className="space-y-4">
+                      <p className="text-xs text-slate-500 font-medium">Thème Carte</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['light', 'dark', 'satellite'].map(theme => (
+                          <button
+                            key={theme}
+                            onClick={() => setMapSettings(prev => ({ ...prev, tileTheme: theme as any }))}
+                            className={`py-2 text-xs rounded-lg transition-all ${mapSettings.tileTheme === theme ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                          >
+                            {theme === 'light' ? 'Clair' : theme === 'dark' ? 'Sombre' : 'Satellite'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
-                <div 
-                  ref={mapRef} 
-                  className="h-full w-full transition-all duration-500 ease-in-out"
-                  style={{
-                    opacity: isTransitioning ? 0.5 : 1,
-                  }}
-                />
                 
-                <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
-                  <button
-                    onClick={() => handleMapTypeChange(mapType === '2d' ? '3d' : '2d')}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg shadow-lg flex items-center gap-2"
-                  >
-                    {mapType === '2d' ? (
-                      <>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4 4 0 003 15z" />
-                        </svg>
-                        Mode 3D
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                        </svg>
-                        Mode 2D
-                      </>
-                    )}
-                  </button>
-                  
-                  {mapType === '3d' && (
-                    <div className="bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-lg">
-                      <div className="text-xs font-semibold text-gray-700 mb-1">Contrôles Globe</div>
-                      <div className="grid grid-cols-3 gap-1">
+                {activeView === 'charts' && (
+                  <div className="space-y-6">
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-2">Style des Lignes</p>
+                      <div className="grid grid-cols-2 gap-2">
                         <button
-                          onClick={() => rotateGlobe('up')}
-                          className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                          title="Tourner vers le haut"
+                          onClick={() => setChartSettings(prev => ({ ...prev, lineStyle: 'solid' }))}
+                          className={`py-2 text-xs rounded-lg ${chartSettings.lineStyle === 'solid' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-100 text-slate-600'}`}
                         >
-                          ↑
+                          Continue
                         </button>
                         <button
-                          onClick={() => rotateGlobe('left')}
-                          className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                          title="Tourner à gauche"
+                          onClick={() => setChartSettings(prev => ({ ...prev, lineStyle: 'dashed' }))}
+                          className={`py-2 text-xs rounded-lg ${chartSettings.lineStyle === 'dashed' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-100 text-slate-600'}`}
                         >
-                          ←
+                          Pointillée
                         </button>
-                        <button
-                          onClick={() => rotateGlobe('right')}
-                          className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                          title="Tourner à droite"
-                        >
-                          →
-                        </button>
-                        <div className="col-span-3">
-                          <button
-                            onClick={() => rotateGlobe('down')}
-                            className="w-full p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                            title="Tourner vers le bas"
-                          >
-                            ↓
-                          </button>
-                        </div>
-                        <div className="col-span-3 mt-1">
-                          <button
-                            onClick={() => {
-                              if (globeInstanceRef.current) {
-                                globeInstanceRef.current.pointOfView(
-                                  { lat: 48.0, lng: 2.0, altitude: 1.5 },
-                                  1000
-                                );
-                              }
-                            }}
-                            className="w-full p-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-xs"
-                          >
-                            Réinitialiser vue
-                          </button>
-                        </div>
                       </div>
+                    </div>
+                    
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-2">Épaisseur</p>
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        value={chartSettings.lineWidth}
+                        onChange={(e) => setChartSettings(prev => ({ ...prev, lineWidth: Number(e.target.value) }))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-1">
+                        <span>Fine</span>
+                        <span>Épaisse</span>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-2">Opacité Remplissage</p>
+                      <input
+                        type="range"
+                        min="0"
+                        max="0.3"
+                        step="0.05"
+                        value={chartSettings.fillOpacity}
+                        onChange={(e) => setChartSettings(prev => ({ ...prev, fillOpacity: Number(e.target.value) }))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-1">
+                        <span>Transparent</span>
+                        <span>Opaque</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-700">Afficher la grille</span>
+                      <button
+                        onClick={() => setChartSettings(prev => ({ ...prev, showGrid: !prev.showGrid }))}
+                        className={`w-12 h-6 rounded-full transition-all ${chartSettings.showGrid ? 'bg-indigo-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full transform transition-transform ${chartSettings.showGrid ? 'translate-x-7' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {activeView === 'network' && (
+                  <div className="space-y-6">
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-2">Forme des Nœuds</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['circle', 'square', 'triangle'].map(shape => (
+                          <button
+                            key={shape}
+                            onClick={() => setNetworkSettings(prev => ({ ...prev, nodeShape: shape as any }))}
+                            className={`py-2 text-xs rounded-lg transition-all ${networkSettings.nodeShape === shape ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                          >
+                            {shape === 'circle' ? 'Cercle' : shape === 'square' ? 'Carré' : 'Triangle'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-2">Style des Liens</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setNetworkSettings(prev => ({ ...prev, linkStyle: 'solid' }))}
+                          className={`py-2 text-xs rounded-lg ${networkSettings.linkStyle === 'solid' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-100 text-slate-600'}`}
+                        >
+                          Continue
+                        </button>
+                        <button
+                          onClick={() => setNetworkSettings(prev => ({ ...prev, linkStyle: 'dashed' }))}
+                          className={`py-2 text-xs rounded-lg ${networkSettings.linkStyle === 'dashed' ? 'bg-indigo-100 text-indigo-600 font-bold' : 'bg-slate-100 text-slate-600'}`}
+                        >
+                          Pointillée
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium mb-2">Force Répulsion</p>
+                      <input
+                        type="range"
+                        min="-500"
+                        max="-50"
+                        value={networkSettings.chargeStrength}
+                        onChange={(e) => setNetworkSettings(prev => ({ ...prev, chargeStrength: Number(e.target.value) }))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-700">Activer clustering</span>
+                      <button
+                        onClick={() => setNetworkSettings(prev => ({ ...prev, enableClustering: !prev.enableClustering }))}
+                        className={`w-12 h-6 rounded-full transition-all ${networkSettings.enableClustering ? 'bg-indigo-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full transform transition-transform ${networkSettings.enableClustering ? 'translate-x-7' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ZONE DE CONTENU PRINCIPALE */}
+          <div className="flex-1 relative bg-slate-50">
+            
+            {/* VUE MAP (2D/3D) */}
+            {activeView === 'map' && (
+              <div className="h-full w-full relative animate-in fade-in duration-700">
+                {isTransitioning && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-[2px] z-20">
+                    <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+                <div ref={mapRef} className="h-full w-full" style={{ opacity: isTransitioning ? 0.6 : 1 }} />
+                
+                {/* HUD de rotation 3D */}
+                {mapType === '3d' && (
+                  <div className="absolute bottom-6 left-6 flex flex-col items-center gap-1 bg-white/80 backdrop-blur-md p-2 rounded-2xl border border-slate-200 shadow-xl">
+                    <button onClick={() => rotateGlobe('up')} className="p-2 hover:bg-indigo-50 rounded-lg text-slate-400 hover:text-indigo-600 transition-all">↑</button>
+                    <div className="flex gap-1">
+                      <button onClick={() => rotateGlobe('left')} className="p-2 hover:bg-indigo-50 rounded-lg text-slate-400 hover:text-indigo-600 transition-all">←</button>
+                      <button onClick={() => rotateGlobe('right')} className="p-2 hover:bg-indigo-50 rounded-lg text-slate-400 hover:text-indigo-600 transition-all">→</button>
+                    </div>
+                    <button onClick={() => rotateGlobe('down')} className="p-2 hover:bg-indigo-50 rounded-lg text-slate-400 hover:text-indigo-600 transition-all">↓</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VUE CHARTS */}
+            {activeView === 'charts' && (
+              <div className="h-full w-full p-8 overflow-y-auto space-y-8 animate-in slide-in-from-bottom-4">
+                <div className="h-[300px] bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                  <h3 className="text-sm font-bold text-slate-800 mb-4">Évolution des Compartiments</h3>
+                  <Line data={chartData} options={chartOptions} />
+                </div>
+                <div className="h-[250px] bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                  <h3 className="text-sm font-bold text-slate-800 mb-4">Taux d'Infection par Région</h3>
+                  <Bar data={barData} options={barOptions} />
+                </div>
+              </div>
+            )}
+
+            {/* VUE TABLE */}
+            {activeView === 'table' && (
+              <div className="h-full w-full overflow-y-auto animate-in fade-in">
+                <div className="bg-white rounded-2xl m-4">
+                  <div className="p-6 border-b border-slate-100">
+                    <h3 className="text-sm font-bold text-slate-800">Données Détailées par Région</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-6 py-4 font-bold text-slate-400 text-[10px] uppercase tracking-widest">Région</th>
+                          <th className="px-6 py-4 font-bold text-slate-800 text-center">S</th>
+                          <th className="px-6 py-4 font-bold text-slate-800 text-center">E</th>
+                          <th className="px-6 py-4 font-bold text-slate-800 text-center">I</th>
+                          {activeModel.includes('Q') && <th className="px-6 py-4 font-bold text-slate-800 text-center">Q</th>}
+                          <th className="px-6 py-4 font-bold text-slate-800 text-center">R</th>
+                          {activeModel.includes('D') && <th className="px-6 py-4 font-bold text-slate-800 text-center">D</th>}
+                          <th className="px-6 py-4 font-bold text-slate-800 text-right">Taux</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {regions.map(r => (
+                          <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 font-semibold text-slate-700">{r.name}</td>
+                            <td className="px-6 py-4 text-center font-mono text-blue-600">{Math.round(r.S).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-center font-mono text-amber-600">{Math.round(r.E).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-center font-mono text-rose-600 font-bold">{Math.round(r.I).toLocaleString()}</td>
+                            {activeModel.includes('Q') && <td className="px-6 py-4 text-center font-mono text-violet-600">{Math.round(r.Q || 0).toLocaleString()}</td>}
+                            <td className="px-6 py-4 text-center font-mono text-emerald-600">{Math.round(r.R).toLocaleString()}</td>
+                            {activeModel.includes('D') && <td className="px-6 py-4 text-center font-mono text-slate-600">{Math.round(r.D || 0).toLocaleString()}</td>}
+                            <td className="px-6 py-4 text-right font-bold text-slate-700">
+                              <span className="inline-block px-2 py-1 rounded-full bg-rose-50 text-rose-600 text-xs">
+                                {((r.I / r.population) * 100).toFixed(2)}%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VUE NETWORK */}
+            {activeView === 'network' && (
+              <div className="h-full w-full relative">
+                <svg ref={svgRef} className="w-full h-full" />
+                <div className="absolute top-4 right-4 bg-white/80 backdrop-blur-md p-3 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-rose-500"></div>
+                    <span className="text-xs text-slate-700">Haute infection</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                    <span className="text-xs text-slate-700">Infection modérée</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
+                    <span className="text-xs text-slate-700">Faible infection</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* --- DÉTAILS DU MODÈLE (COL 1/3) --- */}
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 h-[600px] flex flex-col overflow-hidden animate-in slide-in-from-right-4">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-black text-slate-800 tracking-tight">Analyse {activeModel}</h2>
+            <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full font-bold uppercase">{activeModel}</span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-2 space-y-6 custom-scrollbar">
+            {/* Paramètres Clés */}
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'β Trans.', value: params.beta, color: 'bg-amber-50 text-amber-600' },
+                { label: 'γ Guérison', value: params.gamma, color: 'bg-emerald-50 text-emerald-600' },
+                { label: 'σ Incubation', value: params.sigma, color: 'bg-blue-50 text-blue-600' },
+                { label: 'μ Mortalité', value: params.mu, color: 'bg-rose-50 text-rose-600' }
+              ].map((item, idx) => (
+                <div key={idx} className={`${item.color} p-3 rounded-2xl border border-current/10`}>
+                  <div className="text-[10px] uppercase font-bold opacity-70 mb-1">{item.label}</div>
+                  <div className="text-lg font-black font-mono">{item.value.toFixed(3)}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Interventions Actives */}
+            {interventions.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Interventions Actives</h3>
+                <div className="space-y-2">
+                  {interventions.map((intervention, idx) => (
+                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-semibold text-slate-700">{intervention.type}</span>
+                        <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
+                          J{intervention.startDay}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Efficacité: <span className="font-bold">{intervention.effectiveness}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Liste des Régions */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Régions actives</h3>
+              {regions.map(region => (
+                <div key={region.id} className="p-4 rounded-2xl border border-slate-50 hover:border-indigo-100 transition-all bg-slate-50/30 group">
+                  <div className="flex justify-between items-center mb-2">
+                    <input
+                      type="text"
+                      value={region.name}
+                      onChange={(e) => changeRegionName(region.id, e.target.value)}
+                      className="bg-transparent font-bold text-slate-700 outline-none w-2/3 focus:text-indigo-600 transition-colors"
+                    />
+                    <div className="w-3 h-3 rounded-full shadow-inner" style={{ backgroundColor: region.color }} />
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      Pop: {region.population.toLocaleString()}
+                    </div>
+                    <button 
+                      onClick={() => setSelectedRegionId(region.id === selectedRegionId ? null : region.id)}
+                      className="text-[10px] font-bold text-indigo-500 hover:underline"
+                    >
+                      Couleur
+                    </button>
+                  </div>
+                  {selectedRegionId === region.id && (
+                    <div className="mt-4 pt-4 border-t border-white flex justify-center scale-90 origin-top">
+                      <HexColorPicker color={region.color} onChange={(color) => changeRegionColor(region.id, color)} />
                     </div>
                   )}
                 </div>
-                
-                <button
-                  onClick={() => setShowMapModal(true)}
-                  className="absolute top-4 right-4 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg z-10 flex items-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Paramètres
-                </button>
-              </div>
-            </>
-          )}
-          
-          {activeView === 'charts' && (
-            <div className="space-y-6 relative">
-              <div className="h-80">
-                <Line
-                  data={chartData}
-                  options={{
-                    responsive: true,
-                    scales: {
-                      x: { grid: { display: chartSettings.showGrid } },
-                      y: { grid: { display: chartSettings.showGrid } }
-                    },
-                    plugins: {
-                      legend: {
-                        position: 'top' as const,
-                      },
-                      title: {
-                        display: true,
-                        text: `Évolution des compartiments (Modèle ${activeModel})` + (isComparing ? ' avec Comparaison' : '')
-                      },
-                      annotation: {
-                        annotations: chartSettings.showAnnotations ? chartAnnotations : []
-                      }
-                    },
-                    elements: {
-                      line: {
-                        borderWidth: chartSettings.lineWidth
-                      }
-                    },
-                    layout: {
-                      padding: 20
-                    }
-                  }}
-                />
-              </div>
-              
-              <div className="h-64">
-                <Bar
-                  data={{
-                    labels: regions.map(r => r.name),
-                    datasets: [{
-                      label: 'Taux d\'infection (%)',
-                      data: regions.map(r => (r.I / r.population) * 100),
-                      backgroundColor: regions.map(r => r.color)
-                    }]
-                  }}
-                  options={{
-                    responsive: true,
-                    plugins: {
-                      legend: { display: false }
-                    },
-                    scales: {
-                      x: { grid: { display: chartSettings.showGrid } },
-                      y: { grid: { display: chartSettings.showGrid } }
-                    }
-                  }}
-                />
-              </div>
-              <button
-                onClick={() => setShowChartModal(true)}
-                className="absolute top-4 right-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
-              >
-                Paramètres Graphiques
-              </button>
-            </div>
-          )}
-          
-          {activeView === 'table' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-gray-500">
-                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3">Région</th>
-                    <th className="px-6 py-3">S</th>
-                    <th className="px-6 py-3">E</th>
-                    <th className="px-6 py-3">I</th>
-                    {models[activeModel].compartments.includes('Q') && <th className="px-6 py-3">Q</th>}
-                    <th className="px-6 py-3">R</th>
-                    {models[activeModel].compartments.includes('D') && <th className="px-6 py-3">D</th>}
-                    <th className="px-6 py-3">Population</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {regions.map(region => (
-                    <tr key={region.id} className="bg-white border-b">
-                      <td className="px-6 py-4 font-medium">{region.name}</td>
-                      <td className="px-6 py-4">{Math.round(region.S)}</td>
-                      <td className="px-6 py-4">{Math.round(region.E)}</td>
-                      <td className="px-6 py-4">{Math.round(region.I)}</td>
-                      {models[activeModel].compartments.includes('Q') && <td className="px-6 py-4">{Math.round(region.Q || 0)}</td>}
-                      <td className="px-6 py-4">{Math.round(region.R)}</td>
-                      {models[activeModel].compartments.includes('D') && <td className="px-6 py-4">{Math.round(region.D || 0)}</td>}
-                      <td className="px-6 py-4">{region.population.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          
-          {activeView === 'network' && (
-            <div className="h-[500px] relative">
-              <svg ref={svgRef} className="w-full h-full" />
-              <button
-                onClick={() => setShowNetworkModal(true)}
-                className="absolute top-4 right-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
-              >
-                Paramètres Réseau
-              </button>
-            </div>
-          )}
-        </div>
-        
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-bold mb-4">Détails du Modèle</h2>
-          
-          <div className="space-y-4">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-medium">Modèle {activeModel}</span>
-                <span className="text-sm px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                  {models[activeModel].compartments.join(' → ')}
-                </span>
-              </div>
-              <p className="text-sm text-gray-600">
-                {activeModel === 'SEIRD' && 'Susceptible → Exposé → Infecté → Guéri/Décédé'}
-                {activeModel === 'SEIQRD' && 'Avec quarantaine et décès'}
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-gray-50 rounded">
-                <div className="text-sm text-gray-500">β (Transmission)</div>
-                <div className="text-lg font-bold">{params.beta.toFixed(3)}</div>
-              </div>
-              <div className="p-3 bg-gray-50 rounded">
-                <div className="text-sm text-gray-500">γ (Guérison)</div>
-                <div className="text-lg font-bold">{params.gamma.toFixed(3)}</div>
-              </div>
-              <div className="p-3 bg-gray-50 rounded">
-                <div className="text-sm text-gray-500">σ (Incubation)</div>
-                <div className="text-lg font-bold">{params.sigma.toFixed(3)}</div>
-              </div>
-              <div className="p-3 bg-gray-50 rounded">
-                <div className="text-sm text-gray-500">μ (Mortalité)</div>
-                <div className="text-lg font-bold">{params.mu.toFixed(3)}</div>
-              </div>
-            </div>
-            
-            <div className="mt-6">
-              <h3 className="font-medium mb-3">Régions et Personnalisation</h3>
-              <div className="space-y-3 max-h-80 overflow-y-auto">
-                {regions.map(region => (
-                  <div key={region.id} className="p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex justify-between items-center mb-1">
-                      <input
-                        type="text"
-                        value={region.name}
-                        onChange={(e) => changeRegionName(region.id, e.target.value)}
-                        className="font-medium border-b"
-                      />
-                      <span className="text-sm px-2 py-1 rounded" style={{ backgroundColor: region.color + '20', color: region.color }}>
-                        {(region.I / region.population * 100).toFixed(2)}%
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Pop: {region.population.toLocaleString()} •
-                      Infectés: {Math.round(region.I)} •
-                      Décès: {Math.round(region.D || 0)}
-                    </div>
-                    <div className="mt-2 flex gap-2">
-                      <div>
-                        <button
-                          onClick={() => setSelectedRegionId(region.id === selectedRegionId ? null : region.id)}
-                          className="text-sm text-blue-600"
-                        >
-                          {selectedRegionId === region.id ? 'Fermer' : 'Couleur'}
-                        </button>
-                        {selectedRegionId === region.id && (
-                          <HexColorPicker
-                            color={region.color}
-                            onChange={(color) => changeRegionColor(region.id, color)}
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <label className="text-sm">Cluster:</label>
-                        <input
-                          type="number"
-                          value={region.cluster || 0}
-                          onChange={(e) => changeRegionCluster(region.id, Number(e.target.value))}
-                          className="w-16 ml-2 border rounded"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1966,7 +2206,7 @@ const EpidemiologicalSimulation: React.FC = () => {
                 <div>
                   <h3 className="font-bold">Contrôles de la Carte 3D</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li><strong>Boutons de rotation :</strong> Visibles en haut à gauche en mode 3D</li>
+                    <li><strong>Boutons de rotation :</strong> Visibles en bas à gauche en mode 3D</li>
                     <li><strong>Raccourcis clavier :</strong>
                       <ul className="list-circle pl-5">
                         <li><code>2</code> : Basculer en mode 2D</li>
@@ -2007,324 +2247,6 @@ const EpidemiologicalSimulation: React.FC = () => {
                   <button
                     onClick={() => setShowExplanationModal(false)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-                  >
-                    Fermer
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
-      <AnimatePresence>
-        {showNetworkModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-            onClick={() => setShowNetworkModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-6 border-b">
-                <h2 className="text-2xl font-bold">Paramètres du Réseau</h2>
-              </div>
-              
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Force de Répulsion</label>
-                  <input
-                    type="range"
-                    min="-500"
-                    max="0"
-                    value={networkSettings.chargeStrength}
-                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, chargeStrength: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <span>{networkSettings.chargeStrength}</span>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Distance des Liens</label>
-                  <input
-                    type="range"
-                    min="50"
-                    max="300"
-                    value={networkSettings.linkDistance}
-                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, linkDistance: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <span>{networkSettings.linkDistance}</span>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={networkSettings.enableClustering}
-                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, enableClustering: e.target.checked }))}
-                  />
-                  <label className="ml-2">Activer Clustering (basé sur cluster des régions)</label>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Forme des Nœuds</label>
-                  <select
-                    value={networkSettings.nodeShape}
-                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, nodeShape: e.target.value as 'circle' | 'square' | 'triangle' }))}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="circle">Cercle</option>
-                    <option value="square">Carré</option>
-                    <option value="triangle">Triangle</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Style des Liens</label>
-                  <select
-                    value={networkSettings.linkStyle}
-                    onChange={(e) => setNetworkSettings(prev => ({ ...prev, linkStyle: e.target.value as 'solid' | 'dashed' }))}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="solid">Solide</option>
-                    <option value="dashed">Pointillé</option>
-                  </select>
-                </div>
-                
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowNetworkModal(false)}
-                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                  >
-                    Fermer
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
-      <AnimatePresence>
-        {showMapModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-            onClick={() => setShowMapModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-6 border-b">
-                <h2 className="text-2xl font-bold">Paramètres de la Carte</h2>
-              </div>
-              
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Forme des Marqueurs</label>
-                  <select
-                    value={mapSettings.markerShape}
-                    onChange={(e) => setMapSettings(prev => ({ ...prev, markerShape: e.target.value as 'circle' | 'marker' }))}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="circle">Cercle</option>
-                    <option value="marker">Marqueur (icône)</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Opacité des Marqueurs</label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.1"
-                    value={mapSettings.markerOpacity}
-                    onChange={(e) => setMapSettings(prev => ({ ...prev, markerOpacity: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <span>{mapSettings.markerOpacity}</span>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Style des Lignes</label>
-                  <select
-                    value={mapSettings.lineStyle}
-                    onChange={(e) => setMapSettings(prev => ({ ...prev, lineStyle: e.target.value as 'solid' | 'dashed' }))}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="solid">Solide</option>
-                    <option value="dashed">Pointillé</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Opacité des Lignes</label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.1"
-                    value={mapSettings.lineOpacity}
-                    onChange={(e) => setMapSettings(prev => ({ ...prev, lineOpacity: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <span>{mapSettings.lineOpacity}</span>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Thème des Tuiles</label>
-                  <select
-                    value={mapSettings.tileTheme}
-                    onChange={(e) => setMapSettings(prev => ({ ...prev, tileTheme: e.target.value as 'light' | 'dark' | 'satellite' }))}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="light">Clair</option>
-                    <option value="dark">Sombre</option>
-                    <option value="satellite">Satellite</option>
-                  </select>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={mapSettings.showLabels}
-                    onChange={(e) => setMapSettings(prev => ({ ...prev, showLabels: e.target.checked }))}
-                  />
-                  <label className="ml-2">Afficher les Labels</label>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Niveau de Zoom Initial</label>
-                  <input
-                    type="range"
-                    min="3"
-                    max="10"
-                    value={mapSettings.zoomLevel}
-                    onChange={(e) => setMapSettings(prev => ({ ...prev, zoomLevel: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <span>{mapSettings.zoomLevel}</span>
-                </div>
-                
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowMapModal(false)}
-                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                  >
-                    Fermer
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
-      <AnimatePresence>
-        {showChartModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-            onClick={() => setShowChartModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-6 border-b">
-                <h2 className="text-2xl font-bold">Paramètres des Graphiques</h2>
-              </div>
-              
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Style des Lignes</label>
-                  <select
-                    value={chartSettings.lineStyle}
-                    onChange={(e) => setChartSettings(prev => ({ ...prev, lineStyle: e.target.value as 'solid' | 'dashed' }))}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="solid">Solide</option>
-                    <option value="dashed">Pointillé</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Épaisseur des Lignes</label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    value={chartSettings.lineWidth}
-                    onChange={(e) => setChartSettings(prev => ({ ...prev, lineWidth: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <span>{chartSettings.lineWidth}</span>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Opacité du Remplissage</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={chartSettings.fillOpacity}
-                    onChange={(e) => setChartSettings(prev => ({ ...prev, fillOpacity: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <span>{chartSettings.fillOpacity}</span>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={chartSettings.showGrid}
-                    onChange={(e) => setChartSettings(prev => ({ ...prev, showGrid: e.target.checked }))}
-                  />
-                  <label className="ml-2">Afficher la Grille</label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={chartSettings.showAnnotations}
-                    onChange={(e) => setChartSettings(prev => ({ ...prev, showAnnotations: e.target.checked }))}
-                  />
-                  <label className="ml-2">Afficher les Annotations</label>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Thème</label>
-                  <select
-                    value={chartSettings.theme}
-                    onChange={(e) => setChartSettings(prev => ({ ...prev, theme: e.target.value as 'light' | 'dark' }))}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="light">Clair</option>
-                    <option value="dark">Sombre</option>
-                  </select>
-                </div>
-                
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowChartModal(false)}
-                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                   >
                     Fermer
                   </button>
