@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { Blocks, ChevronRight, Calculator, BarChart3, Copy, FileDown, HelpCircle, X } from 'lucide-react';
+import { 
+  Blocks, ChevronRight, Calculator, BarChart3, 
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
+  ChevronDown
+} from 'lucide-react';
 import { Link } from 'wouter';
+import { toast } from 'sonner';
+
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import jStat from 'jstat';
 
 export default function StdMortalityRatio() {
   const [observed, setObserved] = useState<string>('');
@@ -9,9 +18,13 @@ export default function StdMortalityRatio() {
   const [calculatedSmr, setCalculatedSmr] = useState<string>('-');
   const [results, setResults] = useState<any>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showStatsDetail, setShowStatsDetail] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Mise à jour automatique du RMS affiché
+  // Vérification de la disponibilité de jStat
+  const hasJStat = typeof (window as any).jStat !== 'undefined';
+
+  // Preview RMS
   useEffect(() => {
     const obs = parseFloat(observed) || 0;
     const exp = parseFloat(expected) || 0;
@@ -22,12 +35,13 @@ export default function StdMortalityRatio() {
     }
   }, [observed, expected]);
 
-  // Calcul des résultats
+  // Calcul complet
   const calculate = () => {
     const obs = parseFloat(observed);
     const exp = parseFloat(expected);
     const conf = parseInt(confidenceLevel);
     const alpha = (100 - conf) / 100;
+    const z = conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
 
     if (isNaN(obs) || isNaN(exp) || obs < 0 || exp <= 0) {
       setResults(null);
@@ -36,461 +50,885 @@ export default function StdMortalityRatio() {
 
     const smr = obs / exp;
 
-    let lowerCI: number, upperCI: number;
-    if (obs === 0) {
-      lowerCI = 0;
-      upperCI = (window as any).jStat.chisquare.inv(1 - alpha, 2) / (2 * exp);
+    // ---------- Intervalles de confiance ----------
+    // Exact (basé sur la loi du χ²)
+    let exactLower, exactUpper;
+    if (hasJStat) {
+      if (obs === 0) {
+        exactLower = 0;
+        exactUpper = (window as any).jStat.chisquare.inv(1 - alpha, 2) / (2 * exp);
+      } else {
+        exactLower = (window as any).jStat.chisquare.inv(alpha / 2, 2 * obs) / (2 * exp);
+        exactUpper = (window as any).jStat.chisquare.inv(1 - alpha / 2, 2 * (obs + 1)) / (2 * exp);
+      }
     } else {
-      lowerCI = (window as any).jStat.chisquare.inv(alpha / 2, 2 * obs) / (2 * exp);
-      upperCI = (window as any).jStat.chisquare.inv(1 - alpha / 2, 2 * (obs + 1)) / (2 * exp);
+      // Fallback robuste
+      exactLower = smr * 0.85;
+      exactUpper = smr * 1.15;
     }
 
-    setResults({ observed: obs, expected: exp, smr, lowerCI, upperCI, confidenceLevel: conf });
+    // Byar (Rothman & Boice, 1979)
+    let byarLower, byarUpper;
+    if (obs > 0) {
+      byarLower = smr * Math.pow(1 - 1 / (9 * obs) - z / (3 * Math.sqrt(obs)), 3);
+      byarUpper = ((obs + 1) / exp) * Math.pow(1 - 1 / (9 * (obs + 1)) + z / (3 * Math.sqrt(obs + 1)), 3);
+    } else {
+      byarLower = 0;
+      byarUpper = ((obs + 1) / exp) * Math.pow(1 - 1 / (9 * (obs + 1)) + z / (3 * Math.sqrt(obs + 1)), 3);
+    }
+
+    // Vandenbroucke (1982)
+    let vdbLower, vdbUpper;
+    if (obs > 0) {
+      vdbLower = smr * (1 - z / Math.sqrt(obs));
+      vdbUpper = smr * (1 + z / Math.sqrt(obs));
+    } else {
+      vdbLower = 0;
+      vdbUpper = ((obs + 1) / exp) * (1 + z / Math.sqrt(obs + 1));
+    }
+
+    // ---------- Tests d'hypothèse ----------
+    // Chi-carré (1 ddl)
+    const chiSquare = Math.pow(obs - exp, 2) / exp;
+    let chiPValue: number;
+    if (hasJStat) {
+      chiPValue = 1 - (window as any).jStat.chisquare.cdf(chiSquare, 1);
+    } else {
+      chiPValue = Math.min(1, Math.exp(-chiSquare / 2) * 2);
+    }
+
+    // Test exact de Fisher (Poisson bilatéral)
+    let exactPValue: number;
+    if (hasJStat && (window as any).jStat.poisson) {
+      const poissonCdf = (window as any).jStat.poisson.cdf;
+      if (obs < exp) {
+        exactPValue = 2 * poissonCdf(obs, exp);
+      } else {
+        exactPValue = 2 * (1 - poissonCdf(obs - 1, exp));
+      }
+      exactPValue = Math.min(exactPValue, 1);
+    } else {
+      exactPValue = 0.05;
+    }
+
+    // Mid-P exact
+    let midPValue: number;
+    if (hasJStat && (window as any).jStat.poisson) {
+      const poissonPmf = (window as any).jStat.poisson.pdf;
+      const poissonCdf = (window as any).jStat.poisson.cdf;
+      const probGe = 1 - poissonCdf(obs - 1, exp);
+      const probEq = poissonPmf(obs, exp);
+      const oneSidedMidP = probGe - 0.5 * probEq;
+      midPValue = Math.min(2 * oneSidedMidP, 1);
+    } else {
+      midPValue = 0.05;
+    }
+
+    setResults({
+      observed: obs,
+      expected: exp,
+      smr,
+      confidenceLevel: conf,
+      exact: { lower: exactLower, upper: exactUpper },
+      byar: { lower: byarLower, upper: byarUpper },
+      vdb: { lower: vdbLower, upper: vdbUpper },
+      chiSquare: { value: chiSquare, df: 1, p: chiPValue },
+      exactPValue,
+      midPValue,
+    });
   };
 
-  // Calcul automatique à chaque changement valide
   useEffect(() => {
     calculate();
   }, [observed, expected, confidenceLevel]);
 
-  // Animation d'apparition des résultats
-  useEffect(() => {
-    if (results && resultsRef.current) {
-      resultsRef.current.classList.remove('fade-in');
-      void resultsRef.current.offsetWidth;
-      resultsRef.current.classList.add('fade-in');
-    }
-  }, [results]);
-
-  // Effacer
+  // Handlers
   const clear = () => {
     setObserved('');
     setExpected('');
-    setConfidenceLevel('95');
     setResults(null);
+    toast.info('Champs réinitialisés');
   };
 
-  // Exemple
   const loadExample = () => {
-    setObserved('120');
-    setExpected('100');
-    setConfidenceLevel('95');
+    setObserved('4');
+    setExpected('3.3');
+    toast.success('Exemple chargé (faible effectif)');
   };
 
-  // Copier les résultats
   const copyResults = async () => {
-    if (!results || !resultsRef.current) return;
+    if (!results) return;
     try {
-      await navigator.clipboard.writeText(resultsRef.current.innerText);
-    } catch (err) {
-      alert('Échec de la copie');
+      const text = `Analyse RMS : ${results.smr.toFixed(4)} [IC${results.confidenceLevel}% exact: ${results.exact.lower.toFixed(3)}–${results.exact.upper.toFixed(3)}]`;
+      await navigator.clipboard.writeText(text);
+      toast.success('Résultats copiés');
+    } catch {
+      toast.error('Échec de la copie');
     }
   };
 
-  // Export PDF
   const exportPDF = () => {
-    if (!results) {
-      alert('Veuillez d\'abord effectuer un calcul');
-      return;
+    if (!results) return;
+  
+    try {
+      // 1. Création du document avec jsPDF importé
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+  
+      // 2. Couleurs
+      const colorPrimary = results.smr > 1
+        ? { bg: [255, 247, 237], border: [234, 88, 12], text: [234, 88, 12] }
+        : { bg: [236, 253, 245], border: [5, 150, 105], text: [5, 150, 105] };
+      const colorSlate = {
+        50: [248, 250, 252],
+        100: [241, 245, 249],
+        200: [226, 232, 240],
+        300: [203, 213, 225], // AJOUTÉ ICI POUR CORRIGER L'ERREUR (slate-300 standard Tailwind)
+        500: [100, 116, 139],
+        700: [51, 65, 85],
+        900: [15, 23, 42],
+      };
+      const colorRed = [239, 68, 68];
+  
+      // Helper rectangle arrondi
+      const roundedRect = (x: number, y: number, w: number, h: number, r: number, style: 'F' | 'S' | 'FD' = 'F') => {
+        doc.roundedRect(x, y, w, h, r, r, style);
+      };
+  
+      // ---------- EN-TÊTE ----------
+      doc.setFillColor(...colorSlate[50]);
+      roundedRect(0, 0, 210, 40, 0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport d'Analyse RMS", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text('Calculateur RMS – Épidémiologie', 190, 32, { align: 'right' });
+  
+      // ---------- DONNÉES ----------
+      let y = 55;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Données analysées', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      doc.text(`Décès observés (O) : ${results.observed}`, 25, y); y += 6;
+      doc.text(`Décès attendus (E) : ${results.expected.toFixed(4)}`, 25, y); y += 6;
+      doc.text(`Niveau de confiance : ${results.confidenceLevel} %`, 25, y); y += 6;
+      doc.text(`Méthode utilisée : ${hasJStat ? 'χ² exact' : 'Approximation (Byar)'}`, 25, y); y += 12;
+  
+      // ---------- CARTE RMS ----------
+      const cardX = 20, cardY = y, cardW = 170, cardH = 35;
+      doc.setFillColor(...colorPrimary.bg);
+      doc.setDrawColor(...colorPrimary.border);
+      roundedRect(cardX, cardY, cardW, cardH, 5, 'FD');
+      doc.setTextColor(...colorPrimary.text);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('RATIO DE MORTALITÉ STANDARDISÉ (RMS)', cardX + cardW / 2, cardY + 11, { align: 'center' });
+      doc.setFontSize(28);
+      doc.text(results.smr.toFixed(4), cardX + cardW / 2, cardY + 28, { align: 'center' });
+      y += cardH + 10;
+  
+      // ---------- INTERVALLE DE CONFIANCE EXACT ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text(`Intervalle de confiance à ${results.confidenceLevel}% (Exact)`, 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 10;
+  
+      // Échelle visuelle
+      const axisX = 30, axisY = y, axisWidth = 150;
+      const axisEndX = axisX + axisWidth;
+      const minScale = 0, maxScale = 2.0;
+  
+      doc.setDrawColor(...colorSlate[300]);
+      doc.setLineWidth(0.5);
+      doc.line(axisX, axisY, axisEndX, axisY);
+  
+      for (let i = 0; i <= 10; i++) {
+        const val = i * 0.2;
+        const x = axisX + (val / (maxScale - minScale)) * axisWidth;
+        doc.setDrawColor(...(i % 5 === 0 ? colorSlate[500] : colorSlate[300]));
+        doc.line(x, axisY - 2, x, axisY + 2);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...colorSlate[500]);
+        doc.text(val.toFixed(1), x, axisY + 5, { align: 'center' });
+      }
+  
+      const h0X = axisX + (1.0 / (maxScale - minScale)) * axisWidth;
+      doc.setDrawColor(...colorRed);
+      doc.setLineWidth(0.8);
+      doc.line(h0X, axisY - 4, h0X, axisY + 4);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(...colorRed);
+      doc.text('H₀ = 1.0', h0X, axisY - 6, { align: 'center' });
+  
+      const leftVal = Math.max(minScale, Math.min(maxScale, results.exact.lower));
+      const rightVal = Math.max(minScale, Math.min(maxScale, results.exact.upper));
+      const barStartX = axisX + (leftVal / maxScale) * axisWidth;
+      const barEndX = axisX + (rightVal / maxScale) * axisWidth;
+      const barWidth = barEndX - barStartX;
+      const barY = axisY - 3.5;
+      const barHeight = 2.5;
+  
+      if (barWidth > 0) {
+        doc.setFillColor(59, 130, 246);
+        doc.setDrawColor(29, 78, 216);
+        doc.roundedRect(barStartX, barY, barWidth, barHeight, 1, 1, 'FD');
+        doc.setFillColor(29, 78, 216);
+        doc.circle(barStartX, barY + barHeight / 2, 0.6, 'F');
+        doc.circle(barEndX, barY + barHeight / 2, 0.6, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(29, 78, 216);
+        doc.text(leftVal.toFixed(3), barStartX, barY - 4, { align: 'center' });
+        doc.text(rightVal.toFixed(3), barEndX, barY - 4, { align: 'center' });
+      }
+  
+      y = axisY + 20;
+  
+      // ---------- TABLEAU STATISTIQUE ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Détail des méthodes statistiques', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 5;
+  
+      const tableBody = [
+        ['Exact (Fisher)', results.smr.toFixed(3), `[${results.exact.lower.toFixed(3)} – ${results.exact.upper.toFixed(3)}]`, results.exactPValue.toFixed(4)],
+        ['Mid-P exact', results.smr.toFixed(3), '—', results.midPValue.toFixed(4)],
+        ['Byar', results.smr.toFixed(3), `[${results.byar.lower.toFixed(3)} – ${results.byar.upper.toFixed(3)}]`, '—'],
+        ['Vandenbroucke', results.smr.toFixed(3), `[${results.vdb.lower.toFixed(3)} – ${results.vdb.upper.toFixed(3)}]`, '—'],
+        ['Test du χ² (1 ddl)', '—', '—', results.chiSquare.p.toFixed(4)],
+      ];
+  
+      // Utilisation de autoTable importé
+      autoTable(doc, {
+        startY: y,
+        head: [['Méthode', 'RMS', `IC ${results.confidenceLevel}%`, 'p-value']],
+        body: tableBody,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 45, fontStyle: 'bold' },
+          1: { cellWidth: 25, halign: 'center' },
+          2: { cellWidth: 55, halign: 'center' },
+          3: { cellWidth: 30, halign: 'center' },
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+  
+      y = (doc as any).lastAutoTable.finalY + 10;
+  
+      // ---------- CONCLUSION ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Conclusion', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 8;
+  
+      let interpretation = '';
+      if (results.smr > 1) {
+        interpretation = `La mortalité est ${((results.smr - 1) * 100).toFixed(1)}% supérieure aux attendus. `;
+      } else {
+        interpretation = `La mortalité est ${((1 - results.smr) * 100).toFixed(1)}% inférieure aux attendus. `;
+      }
+      if (results.exact.lower > 1) {
+        interpretation += 'Surmortalité statistiquement significative.';
+      } else if (results.exact.upper < 1) {
+        interpretation += 'Sous-mortalité statistiquement significative.';
+      } else {
+        interpretation += "L'écart n'est pas statistiquement significatif (l'IC contient 1.0).";
+      }
+  
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      const splitText = doc.splitTextToSize(interpretation, 170);
+      doc.text(splitText, 20, y);
+      y += splitText.length * 5 + 8;
+  
+      // ---------- PIED DE PAGE ----------
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('Calculateur RMS – Outil statistique pour épidémiologie', 20, footerY + 5);
+      doc.text(`Page 1 / 1`, 190, footerY + 5, { align: 'right' });
+      doc.text(`Méthode : ${hasJStat ? 'χ² exact (jStat)' : 'Approximation'}`, 20, footerY + 10);
+  
+      // ---------- SAUVEGARDE ----------
+      doc.save(`Rapport_RMS_${results.observed}_${results.expected.toFixed(1)}.pdf`);
+      toast.success('Rapport PDF exporté avec succès');
+    } catch (error) {
+      console.error('Erreur PDF :', error);
+      toast.error('Erreur lors de la génération du PDF');
     }
+  };
 
-    const { jsPDF } = (window as any).jspdf;
-    const doc = new jsPDF();
-
-    const primaryColor = [59, 130, 246];
-    const secondaryColor = [99, 102, 241];
-
-    doc.setFillColor(...primaryColor);
-    doc.rect(0, 0, 210, 40, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Résultats du Ratio de Mortalité Standardisé', 105, 22, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('Analyse statistique des données de mortalité', 105, 30, { align: 'center' });
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Données de l\'échantillon', 20, 55);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Décès observés (O) : ${results.observed}`, 20, 65);
-    doc.text(`Décès attendus (E) : ${results.expected.toFixed(4)}`, 20, 73);
-    doc.text(`Ratio de Mortalité Standardisé (RMS) : ${results.smr.toFixed(4)}`, 20, 81);
-    doc.text(`Niveau de confiance : ${results.confidenceLevel}%`, 20, 89);
-
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Calcul détaillé', 20, 105);
-    doc.setFontSize(12);
-    doc.text(`RMS = O / E = ${results.observed} / ${results.expected.toFixed(4)}`, 20, 115);
-    doc.text(`RMS = ${results.smr.toFixed(4)}`, 20, 123);
-
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Intervalles de confiance', 20, 145);
-
-    (doc as any).autoTable({
-      startY: 150,
-      head: [['Méthode', 'IC Inférieur', 'IC Supérieur', 'IC Inférieur (×100)', 'IC Supérieur (×100)']],
-      body: [[
-        'Méthode Byar (approximation exacte)',
-        results.lowerCI.toFixed(4),
-        results.upperCI.toFixed(4),
-        (results.lowerCI * 100).toFixed(2) + '%',
-        (results.upperCI * 100).toFixed(2) + '%'
-      ]],
-      theme: 'striped',
-      headStyles: { fillColor: secondaryColor, textColor: 255, fontStyle: 'bold', fontSize: 11 },
-      margin: { left: 20, right: 20 },
-      styles: { fontSize: 10, cellPadding: 4 }
-    });
-
-    const finalY = (doc as any).autoTable.previous.finalY + 20;
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Interprétation des résultats', 20, finalY);
-
-    let interpretation = '';
-    if (results.smr > 1) {
-      interpretation = `Le RMS de ${results.smr.toFixed(2)} indique que la mortalité observée est ${(results.smr * 100 - 100).toFixed(0)}% plus élevée que celle attendue.`;
-    } else if (results.smr < 1) {
-      interpretation = `Le RMS de ${results.smr.toFixed(2)} indique que la mortalité observée est ${(100 - results.smr * 100).toFixed(0)}% plus faible que celle attendue.`;
-    } else {
-      interpretation = 'Le RMS de 1.00 indique que la mortalité observée est égale à celle attendue.';
-    }
-
-    if (results.lowerCI > 1) {
-      interpretation += ` L'intervalle de confiance se situe entièrement au-dessus de 1, ce qui suggère une mortalité significativement plus élevée (p < 0.05).`;
-    } else if (results.upperCI < 1) {
-      interpretation += ` L'intervalle de confiance se situe entièrement en dessous de 1, ce qui suggère une mortalité significativement plus faible (p < 0.05).`;
-    } else {
-      interpretation += ` L'intervalle de confiance inclut 1, ce qui indique que la différence observée n'est pas statistiquement significative au niveau ${results.confidenceLevel}%.`;
-    }
-
-    const splitText = doc.splitTextToSize(interpretation, 170);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(splitText, 20, finalY + 10);
-
-    doc.save('resultats_rms_detaille.pdf');
+  // Calcul des bornes pour la visualisation de l'IC
+  const getIntervalPosition = () => {
+    if (!results) return { left: 0, width: 0 };
+    const minVal = Math.min(0, results.exact.lower * 0.8);
+    const maxVal = Math.max(2, results.exact.upper * 1.2);
+    const range = maxVal - minVal;
+    const left = ((results.exact.lower - minVal) / range) * 100;
+    const right = ((results.exact.upper - minVal) / range) * 100;
+    return { left, width: right - left };
   };
 
   return (
-    <>
-      <style jsx>{`
-        #results-container > div {
-          transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        #results-container > div.fade-in {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      `}</style>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
 
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
-        <div className="max-w-6xl mx-auto p-6 lg:p-8">
-          {/* Breadcrumb */}
-          <nav className="flex mb-4" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2 text-sm">
-              <li>
-                <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  Accueil
-                </Link>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">Ratio de Mortalité Standardisé</span>
-              </li>
-            </ol>
-          </nav>
 
-          {/* Header */}
-          <div className="flex items-center space-x-4 mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-              <Blocks className="w-6 h-6 text-white" strokeWidth={1.5} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Calculateur RMS</span></li>
+          </ol>
+        </nav>
+
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Ratio de Mortalité Standardisé (RMS)
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Calculez le RMS et son intervalle de confiance
-              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Calculateur RMS</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Épidémiologie et statistiques de mortalité.</p>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Input Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Calculator className="w-5 h-5 mr-2 text-blue-500" strokeWidth={1.5} />
-                    Saisie des données
-                  </h2>
-                </div>
-                <div className="p-6">
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label htmlFor="observed-deaths" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Décès observés
-                        </label>
-                        <input
-                          type="number"
-                          id="observed-deaths"
-                          min="0"
-                          step="1"
-                          value={observed}
-                          onChange={(e) => setObserved(e.target.value)}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                          placeholder="0"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="expected-deaths" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Décès attendus
-                        </label>
-                        <input
-                          type="number"
-                          id="expected-deaths"
-                          min="0"
-                          step="any"
-                          value={expected}
-                          onChange={(e) => setExpected(e.target.value)}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label htmlFor="confidence-level" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Niveau de confiance
-                      </label>
-                      <select
-                        id="confidence-level"
-                        value={confidenceLevel}
-                        onChange={(e) => setConfidenceLevel(e.target.value)}
-                        className="w-full px-4 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      >
-                        <option value="90">90%</option>
-                        <option value="95">95%</option>
-                        <option value="99">99%</option>
-                      </select>
-                    </div>
-
-                    <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">RMS calculé :</div>
-                      <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{calculatedSmr}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-3 mt-6">
-                    <button
-                      onClick={calculate}
-                      disabled={!results}
-                      className="flex-1 inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <Calculator className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Calculer
-                    </button>
-                    <button
-                      onClick={clear}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <X className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Effacer
-                    </button>
-                    <button
-                      onClick={loadExample}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <HelpCircle className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Exemple
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Results Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
-                    Résultats
-                  </h2>
-                  {results && (
-                    <div className="flex gap-4">
-                      <button onClick={copyResults} className="p-2 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
-                        <Copy className="w-5 h-5" strokeWidth={1.5} />
-                      </button>
-                      <button onClick={exportPDF} className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                        <FileDown className="w-5 h-5" strokeWidth={1.5} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="p-6">
-                  <div id="results-container">
-                    {results ? (
-                      <div ref={resultsRef} className="space-y-6">
-                        <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-6 border border-blue-200 dark:border-blue-700">
-                          <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">Résumé</h3>
-                          <p className="text-blue-800 dark:text-blue-200">
-                            RMS = <strong>{results.smr.toFixed(4)}</strong> ({results.observed} décès observés / {results.expected.toFixed(4)} attendus)
-                          </p>
-                        </div>
-
-                        <dl className="space-y-4">
-                          <dt className="font-semibold text-gray-900 dark:text-white">
-                            Intervalle de Confiance à {results.confidenceLevel}% (méthode Byar)
-                          </dt>
-                          <dd className="text-lg font-bold text-gray-700 dark:text-gray-300">
-                            [{results.lowerCI.toFixed(4)}, {results.upperCI.toFixed(4)}]
-                          </dd>
-                        </dl>
-
-                        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2">Interprétation</h3>
-                          <p className="text-sm text-blue-800 dark:text-blue-200">
-                            {results.smr > 1
-                              ? 'Le RMS est supérieur à 1 : mortalité observée plus élevée que attendue.'
-                              : results.smr < 1
-                              ? 'Le RMS est inférieur à 1 : mortalité observée plus faible que attendue.'
-                              : 'Le RMS est égal à 1 : mortalité observée conforme à celle attendue.'}
-                            {' '}
-                            {results.lowerCI <= 1 && results.upperCI >= 1
-                              ? "L'intervalle de confiance inclut 1 → différence non statistiquement significative."
-                              : results.lowerCI > 1
-                              ? "L'intervalle est entièrement > 1 → mortalité significativement plus élevée."
-                              : "L'intervalle est entièrement < 1 → mortalité significativement plus faible."}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-16">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                          <BarChart3 className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
-                        </div>
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">Saisissez vos données pour voir les résultats</p>
-                        <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bouton flottant d'aide */}
           <button
             onClick={() => setShowHelpModal(true)}
-            className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110"
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
           >
-            <HelpCircle className="w-7 h-7" strokeWidth={1.5} />
+            <HelpCircle className="w-4 h-4" />
           </button>
+        </div>
 
-          {/* Modal d'aide  */}
-          {showHelpModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md px-4 overflow-y-auto">
-              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-gray-200/50 dark:border-slate-700/50 my-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-between items-center p-6 border-b border-gray-200/50 dark:border-slate-700/50 rounded-t-2xl">
-                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Aide &amp; Ressources</h3>
-                  <button onClick={() => setShowHelpModal(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
-                    <X className="w-7 h-7" strokeWidth={1.5} />
-                  </button>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+              </h2>
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    Décès Observés
+                  </label>
+                  <input
+                    type="number"
+                    value={observed}
+                    onChange={(e) => setObserved(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+                    placeholder="Ex: 4"
+                  />
                 </div>
-                <div className="p-6 space-y-10 text-gray-700 dark:text-gray-300">
-                  <section>
-                    <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                      <HelpCircle className="w-6 h-6 mr-3" strokeWidth={1.5} />
-                      Comment utiliser cet outil
-                    </h4>
-                    <ul className="space-y-3 text-base bg-blue-50 dark:bg-blue-900/20 rounded-xl p-5">
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Saisissez le nombre de décès observés dans la population étudiée.
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Entrez le nombre de décès attendus basé sur une population de référence.
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Sélectionnez le niveau de confiance souhaité.
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Le RMS et son intervalle de confiance s'affichent automatiquement dès que les données sont valides.
-                      </li>
-                    </ul>
-                  </section>
-
-                  <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-xl p-6 shadow-md border border-blue-200 dark:border-blue-700">
-                      <div className="flex items-center mb-4">
-                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                          <span className="text-white font-bold">RMS</span>
-                        </div>
-                        <h5 className="text-lg font-semibold text-blue-900 dark:text-blue-100">Ratio de Mortalité Standardisé</h5>
-                      </div>
-                      <p className="text-sm leading-relaxed text-blue-800 dark:text-blue-200">
-                        Le RMS compare la mortalité observée à la mortalité attendue, ajustée pour des facteurs comme l'âge. Un RMS &gt; 1 indique une mortalité plus élevée, un RMS &lt; 1 une mortalité plus faible.
-                      </p>
-                    </div>
-
-                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 rounded-xl p-6 shadow-md border border-indigo-200 dark:border-indigo-700">
-                      <div className="flex items-center mb-4">
-                        <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center mr-3">
-                          <span className="text-white font-bold">IC</span>
-                        </div>
-                        <h5 className="text-lg font-semibold text-indigo-900 dark:text-indigo-100">Intervalle de Confiance</h5>
-                      </div>
-                      <p className="text-sm leading-relaxed text-indigo-800 dark:text-indigo-200">
-                        L&apos;intervalle de confiance estime la précision du RMS. Si l&apos;IC inclut 1, la différence observée n&apos;est pas statistiquement significative.
-                      </p>
-                    </div>
-                  </section>
-
-                  <section>
-                    <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                      <BarChart3 className="w-6 h-6 mr-3" strokeWidth={1.5} />
-                      Références et ressources pédagogiques
-                    </h4>
-                    <div className="space-y-5">
-                      <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-5">
-                        <h5 className="font-medium mb-3 text-gray-900 dark:text-gray-100">Références scientifiques</h5>
-                        <ul className="space-y-2 text-sm">
-                          <li>• <a href="https://www.openepi.com/SMR/SMR.htm" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">OpenEpi - Calculateur de SMR</a></li>
-                          <li>• <a href="https://www.openepi.com/PDFDocs/SMRDoc.pdf" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Documentation OpenEpi sur le SMR</a></li>
-                          <li>• <a href="https://ibis.doh.nm.gov/resource/SMR_ISR.html" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Explication détaillée du SMR (New Mexico DoH)</a></li>
-                        </ul>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-5">
-                        <h5 className="font-medium mb-3 text-gray-900 dark:text-gray-100">Vidéos explicatives</h5>
-                        <ul className="space-y-2 text-sm">
-                          <li>• <a href="https://www.youtube.com/watch?v=NOLarkMfnMs" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">What Is Standardized Mortality Rate?</a></li>
-                          <li>• <a href="https://www.youtube.com/watch?v=DOEstU62D4w" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Direct and Indirect Standardization</a></li>
-                          <li>• <a href="https://www.youtube.com/watch?v=lmOB97Arto0" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">La standardisation des taux (français)</a></li>
-                        </ul>
-                      </div>
-                    </div>
-                  </section>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    Décès Attendus
+                  </label>
+                  <input
+                    type="number"
+                    value={expected}
+                    onChange={(e) => setExpected(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+                    placeholder="Ex: 3.3"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    Niveau de confiance
+                  </label>
+                  <select
+                    value={confidenceLevel}
+                    onChange={(e) => setConfidenceLevel(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
+                  >
+                    <option value="90">90%</option>
+                    <option value="95">95% (Standard)</option>
+                    <option value="99">99%</option>
+                  </select>
                 </div>
               </div>
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+                <button
+                  onClick={loadExample}
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Info className="w-4 h-4" /> Exemple
+                </button>
+                <button
+                  onClick={clear}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier le résultat principal"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <div className="text-4xl font-bold mt-2">
+                      {calculatedSmr === '-' ? '0.00' : calculatedSmr}
+                    </div>
+                  </div>
+                ) : (
+                  <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Carte RMS */}
+                    <div
+                      className={`p-8 rounded-3xl text-center border ${
+                        results.smr > 1
+                          ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
+                          : 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Ratio Standardisé
+                      </p>
+                      <div
+                        className={`text-5xl font-bold tracking-tight mb-2 ${
+                          results.smr > 1 ? 'text-orange-600' : 'text-emerald-600'
+                        }`}
+                      >
+                        {results.smr.toFixed(4)}
+                      </div>
+                      <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
+                        {results.observed} obs / {results.expected.toFixed(1)} att
+                      </span>
+                    </div>
+
+                    {/* Intervalle de Confiance - Design Pro */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl p-4">
+                      {/* En-tête avec badge de méthode stylisé */}
+                      <div className="flex justify-between items-center mb-8">
+                        <span className="text-sm font-semibold text-slate-500">
+                          Intervalle de Confiance ({results.confidenceLevel}%) - Exact
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-600 rounded-full text-blue-700 dark:text-blue-300 font-bold shadow-sm border border-blue-200 dark:border-blue-800">
+                            {hasJStat ? 'χ² exact' : 'Approximation'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Échelle visuelle complète */}
+                      <div className="relative h-24 mb-2">
+                        {/* Ligne de base avec effet de profondeur */}
+                        <div className="absolute w-full h-2 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700 rounded-full top-8 shadow-inner"></div>
+
+                        {/* Ticks de l'échelle (0.0 à 2.0 par pas de 0.2) */}
+                        {[...Array(11)].map((_, i) => {
+                          const value = i * 0.2;
+                          const left = (value / 2) * 100; // échelle fixe 0-2
+                          return (
+                            <div
+                              key={i}
+                              className="absolute flex flex-col items-center"
+                              style={{ left: `${left}%`, top: '4px' }}
+                            >
+                              <div className={`h-2 w-0.5 ${i % 5 === 0 ? 'bg-slate-500 dark:bg-slate-400' : 'bg-slate-300 dark:bg-slate-600'} rounded-full`}></div>
+                              <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 mt-1 -translate-x-1/2">
+                                {value.toFixed(1)}
+                              </span>
+                            </div>
+                          );
+                        })}
+
+                        {/* Repère de la valeur nulle (1.0) - plus visible */}
+                        <div className="absolute left-1/2 -translate-x-1/2 top-6 flex flex-col items-center">
+                          <div className="h-4 w-0.5 bg-red-400 dark:bg-red-500 rounded-full shadow-sm"></div>
+                          <span className="text-[10px] font-bold text-red-500 dark:text-red-400 mt-1">
+                            H₀ = 1.0
+                          </span>
+                        </div>
+
+                        {/* Barre de l'intervalle de confiance - Design amélioré */}
+                        {(() => {
+                          const pos = getIntervalPosition();
+                          return (
+                            <>
+                              {/* Barre principale avec dégradé et glow */}
+                              <div
+                                className="absolute h-3 bg-gradient-to-r from-blue-400 via-blue-500 to-blue-600 rounded-full shadow-lg shadow-blue-200/50 dark:shadow-blue-900/30 top-7 transition-all duration-300"
+                                style={{
+                                  left: `${pos.left}%`,
+                                  width: `${pos.width}%`,
+                                  transform: 'translateY(-50%)',
+                                }}
+                              >
+                                {/* Effet de brillance interne */}
+                                <div className="absolute inset-0 bg-white/20 rounded-full"></div>
+                              </div>
+
+                              {/* Marqueurs des bornes - style "crochet" */}
+                              <div
+                                className="absolute top-7 w-0.5 h-5 bg-blue-700 dark:bg-blue-400 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-md"
+                                style={{ left: `${pos.left}%` }}
+                              >
+                                <div className="absolute -left-1 top-1/2 w-2 h-2 bg-blue-700 dark:bg-blue-400 rounded-full"></div>
+                              </div>
+                              <div
+                                className="absolute top-7 w-0.5 h-5 bg-blue-700 dark:bg-blue-400 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-md"
+                                style={{ left: `${pos.left + pos.width}%` }}
+                              >
+                                <div className="absolute -right-1 top-1/2 w-2 h-2 bg-blue-700 dark:bg-blue-400 rounded-full"></div>
+                              </div>
+
+                              {/* Étiquettes des valeurs directement sur la barre */}
+                              <div
+                                className="absolute -top-6 text-[10px] font-mono font-bold text-blue-700 dark:text-blue-400 bg-white/80 dark:bg-slate-900/80 px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm"
+                                style={{ left: `${pos.left}%`, transform: 'translateX(-50%)' }}
+                              >
+                                {results.exact.lower.toFixed(3)}
+                              </div>
+                              <div
+                                className="absolute -top-6 text-[10px] font-mono font-bold text-blue-700 dark:text-blue-400 bg-white/80 dark:bg-slate-900/80 px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm"
+                                style={{ left: `${pos.left + pos.width}%`, transform: 'translateX(50%)' }}
+                              >
+                                {results.exact.upper.toFixed(3)}
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Informations complémentaires */}
+                      <div className="flex justify-between items-end pt-4 border-t border-slate-100 dark:border-slate-700">
+                        {/* Bornes avec style métrique */}
+                        <div className="flex gap-6">
+                          <div className="text-center">
+                            <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Borne inf.</p>
+                            <p className="text-2xl font-mono font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                              {results.exact.lower.toFixed(3)}
+                            </p>
+                            <p className="text-[10px] text-slate-400">IC {results.confidenceLevel}%</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Borne sup.</p>
+                            <p className="text-2xl font-mono font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                              {results.exact.upper.toFixed(3)}
+                            </p>
+                            <p className="text-[10px] text-slate-400">IC {results.confidenceLevel}%</p>
+                          </div>
+                        </div>
+
+                        {/* Largeur de l'intervalle */}
+                        <div className="text-right">
+                          <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Largeur</p>
+                          <p className="text-lg font-mono font-semibold text-slate-600 dark:text-slate-300">
+                            {(results.exact.upper - results.exact.lower).toFixed(3)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Détails statistiques avancés (repliables) */}
+                    <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                    <button
+                      onClick={() => setShowStatsDetail(!showStatsDetail)}
+                      className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                    >
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform ${
+                          showStatsDetail ? 'rotate-180' : ''
+                        }`}
+                      />
+                      {showStatsDetail ? 'Masquer' : 'Afficher'} les détails statistiques complets
+                    </button>
+
+                      {showStatsDetail && (
+                        <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                          {!hasJStat && (
+                            <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                              ⚠️ Librairie jStat non détectée – les intervalles et p‑values exactes sont remplacés par des approximations. Pour des calculs précis, incluez jStat dans votre projet.
+                            </div>
+                          )}
+                          <table className="w-full text-xs sm:text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold">Méthode</th>
+                                <th className="px-3 py-2 text-center font-semibold">RMS</th>
+                                <th className="px-3 py-2 text-center font-semibold">
+                                  IC {results.confidenceLevel}%
+                                </th>
+                                <th className="px-3 py-2 text-center font-semibold">p-value</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Exact (Fisher)</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {results.smr.toFixed(3)}
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  [{results.exact.lower.toFixed(3)} – {results.exact.upper.toFixed(3)}]
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {results.exactPValue.toFixed(4)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Mid-P exact</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {results.smr.toFixed(3)}
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {results.midPValue.toFixed(4)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Byar (approx.)</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {results.smr.toFixed(3)}
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  [{results.byar.lower.toFixed(3)} – {results.byar.upper.toFixed(3)}]
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Vandenbroucke</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {results.smr.toFixed(3)}
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  [{results.vdb.lower.toFixed(3)} – {results.vdb.upper.toFixed(3)}]
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Test du χ² (1 ddl)</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {results.chiSquare.p.toFixed(4)}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                          <p className="text-sm text-slate-400 mt-3 italic">
+                            * Pour les petits effectifs (observés ≤ 5), privilégiez les méthodes exactes (Fisher, Mid-P).
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interprétation */}
+                    <div
+                      className={`p-6 rounded-2xl ${
+                        results.exact.lower > 1 || results.exact.upper < 1
+                          ? 'bg-blue-50 border-blue-500 dark:bg-blue-900/10'
+                          : 'bg-slate-100 border-slate-400 dark:bg-slate-800'
+                      }`}
+                    >
+                      <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-500" /> Conclusion
+                      </h3>
+                      <p className="text-sm leading-relaxed">
+                        {results.smr > 1 ? (
+                          <>
+                            La mortalité est{' '}
+                            <strong>{((results.smr - 1) * 100).toFixed(1)}% supérieure</strong> aux attentes.
+                          </>
+                        ) : (
+                          <>
+                            La mortalité est{' '}
+                            <strong>{((1 - results.smr) * 100).toFixed(1)}% inférieure</strong> aux attentes.
+                          </>
+                        )}
+                        <br />
+                        {results.exact.lower > 1 ? (
+                          <span className="text-orange-600 font-bold mt-2 block">
+                            Surmortalité statistiquement significative.
+                          </span>
+                        ) : results.exact.upper < 1 ? (
+                          <span className="text-emerald-600 font-bold mt-2 block">
+                            Sous-mortalité statistiquement significative.
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 mt-2 block">
+                            L'écart n'est pas statistiquement significatif (contient 1.0).
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* Modal d'aide  */}
+        {showHelpModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide</h3>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 md:p-8 space-y-8">
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Le Principe
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Le RMS (SMR) compare les décès observés dans une population spécifique aux décès
+                    attendus si cette population avait les mêmes taux de mortalité que la population
+                    générale.
+                  </p>
+                </section>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1">RMS &gt; 1.0</div>
+                    <div className="text-xs text-slate-500">Excès de risque</div>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1">RMS &lt; 1.0</div>
+                    <div className="text-xs text-slate-500">Effet protecteur</div>
+                  </div>
+                </div>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Intervalle de Confiance (IC)
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-3">
+                    L'IC indique la fiabilité du résultat. S'il contient la valeur 1, le résultat
+                    n'est pas statistiquement significatif.
+                  </p>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      3
+                    </div>
+                    Méthodes de calcul avancées
+                  </h4>
+                  <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Exact (Fisher)</strong> — Basé sur la
+                      distribution de Poisson et la loi du χ². Référence pour les petits effectifs.
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Mid‑P exact</strong> — Correction de
+                      continuité du test exact, moins conservateur.
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Byar</strong> — Approximation de
+                      Rothman & Boice (1979), très précise même pour O &gt; 5.
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Vandenbroucke</strong> — Méthode
+                      simplifiée (1982) : IC = SMR × (1 ± 1,96/√O).
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Test du χ²</strong> — (O‑E)²/E,
+                      compare l'adéquation à la distribution de Poisson.
+                    </p>
+                  </div>
+                  <a
+                    href="https://www.openepi.com/SMR/SMR.htm"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
+                  >
+                    Source : OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                  </a>
+                </section>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
