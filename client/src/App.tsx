@@ -59,7 +59,7 @@ function Router() {
       <Route path="/settings" component={Settings} />
       <Route path={"/404"} component={NotFound} />
       {/* Biostatistics Routes */}
-      <Route path="/biostatistics/std-mortality-ratio" component={standardized_mortality_ratio} />
+      <Route path="/biostatistics/std_mortality_ratio" component={standardized_mortality_ratio} />
       <Route path="/biostatistics/proportions" component={Proportions} />
       <Route path="/biostatistics/r_by_c" component={RxCTable} />
       <Route path="/biostatistics/screening" component={ScreeningTest} />

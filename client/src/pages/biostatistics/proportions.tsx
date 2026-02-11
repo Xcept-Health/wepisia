@@ -1,29 +1,15 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  Calculator, 
-  Trash2, 
-  HelpCircle, 
-  BarChart3, 
-  Copy, 
-  Download, 
-  X, 
-  ChevronRight,
-  Home,
-  Edit,
-  Check,
-  AlertTriangle,
-  Info,
-  BookOpen,
-  ExternalLink,
-  PlayCircle,
-  FileText,
-  Shield,
-  TrendingUp,
-  Percent,
-  Users,
-  Target
+  Blocks, ChevronRight, Calculator, BarChart3, 
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
+  ChevronDown
 } from 'lucide-react';
 import { Link } from 'wouter';
+import { toast } from 'sonner';
+
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import jStat from 'jstat';
 
 interface ConfidenceInterval {
   lower: number;
@@ -33,809 +19,867 @@ interface ConfidenceInterval {
 interface CalculationResults {
   numerator: number;
   denominator: number;
+  multiplier: number;
+  population: number | null;
+  compareTo: number;
   proportion: number;
   confidenceLevel: number;
   standardError: number;
   wilsonCI: ConfidenceInterval;
   exactCI: ConfidenceInterval;
+  midPCI: ConfidenceInterval;
   normalCI: ConfidenceInterval;
   agrestiCoullCI: ConfidenceInterval;
+  fleissCI: ConfidenceInterval;
+  npq: number;
+  zValue: number;
+  pValue: number;
+  fpc: number;
 }
 
 export default function Proportion() {
   const [numerator, setNumerator] = useState<string>('');
   const [denominator, setDenominator] = useState<string>('');
+  const [multiplier, setMultiplier] = useState<string>('100');
+  const [population, setPopulation] = useState<string>('');
+  const [compareTo, setCompareTo] = useState<string>('50.0');
   const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
+  const [calculatedProportion, setCalculatedProportion] = useState<string>('-');
   const [results, setResults] = useState<CalculationResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showStatsDetail, setShowStatsDetail] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load external scripts
+  // Vérification de la disponibilité de jStat
+  const hasJStat = typeof (window as any).jStat !== 'undefined';
+
+  // Preview Proportion
   useEffect(() => {
-    const loadScripts = async () => {
-      if (!(window as any).jStat) {
-        const jstatScript = document.createElement('script');
-        jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
-        document.body.appendChild(jstatScript);
-      }
-      if (!(window as any).jspdf) {
-        const jspdfScript = document.createElement('script');
-        jspdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        document.body.appendChild(jspdfScript);
-
-        const autotableScript = document.createElement('script');
-        autotableScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js';
-        document.body.appendChild(autotableScript);
-      }
-    };
-    loadScripts();
-  }, []);
-
-  const validateInputs = (): boolean => {
-    const num = parseInt(numerator);
-    const den = parseInt(denominator);
-    
-    return !isNaN(num) && !isNaN(den) && 
-           num >= 0 && den > 0 && num <= den;
-  };
-
-  const calculateProportion = (): number => {
-    const num = parseInt(numerator);
-    const den = parseInt(denominator);
-    return den > 0 ? num / den : 0;
-  };
-
-  const getZValue = (alpha: number): number => {
-    const p = 1 - alpha;
-    if (p <= 0 || p >= 1) return NaN;
-    
-    const c0 = 2.515517;
-    const c1 = 0.802853;
-    const c2 = 0.010328;
-    const d1 = 1.432788;
-    const d2 = 0.189269;
-    const d3 = 0.001308;
-
-    let x = p;
-    if (p > 0.5) x = 1 - p;
-
-    const t = Math.sqrt(-2 * Math.log(x));
-    const z = t - (c0 + c1 * t + c2 * t * t) / (1 + d1 * t + d2 * t * t + d3 * t * t * t);
-
-    return p > 0.5 ? z : -z;
-  };
-
-  const calculateWilsonCI = (x: number, n: number, alpha: number): ConfidenceInterval => {
-    const z = getZValue(alpha / 2);
-    const p = x / n;
-    const z2 = z * z;
-    
-    const center = (p + z2 / (2 * n)) / (1 + z2 / n);
-    const margin = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n) / (1 + z2 / n);
-    
-    return {
-      lower: Math.max(0, center - margin),
-      upper: Math.min(1, center + margin)
-    };
-  };
-
-  const calculateExactCI = (x: number, n: number, alpha: number): ConfidenceInterval => {
-    const alphaHalf = alpha / 2;
-    
-    if (x === 0) {
-      return { lower: 0, upper: 1 - Math.pow(alphaHalf, 1 / n) };
+    const num = parseFloat(numerator) || 0;
+    const den = parseFloat(denominator) || 0;
+    if (den > 0 && num <= den) {
+      setCalculatedProportion((num / den).toFixed(4));
+    } else {
+      setCalculatedProportion('-');
     }
-    if (x === n) {
-      return { lower: Math.pow(alphaHalf, 1 / n), upper: 1 };
+  }, [numerator, denominator]);
+
+  const getZValue = (conf: number): number => {
+    const alpha = (100 - conf) / 100;
+    return conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
+  };
+
+  // Fonction pour binomial PDF using jStat
+  const binomPdf = (k: number, n: number, p: number): number => {
+    if (hasJStat) {
+      return (window as any).jStat.binomial.pdf(k, n, p);
     }
-
-    const lower = (window as any).jStat.beta.inv(alphaHalf, x, n - x + 1);
-    const upper = (window as any).jStat.beta.inv(1 - alphaHalf, x + 1, n - x);
-    
-    return {
-      lower: isNaN(lower) ? 0 : lower,
-      upper: isNaN(upper) ? 1 : upper
-    };
+    return 0; // Fallback
   };
 
-  const calculateNormalCI = (p: number, se: number, alpha: number): ConfidenceInterval => {
-    const z = getZValue(alpha / 2);
-    const margin = z * se;
-    
-    return {
-      lower: Math.max(0, p - margin),
-      upper: Math.min(1, p + margin)
-    };
+  // Binomial CDF approx by sum
+  const binomCdf = (k: number, n: number, p: number): number => {
+    let sum = 0;
+    for (let i = 0; i <= k; i++) {
+      sum += binomPdf(i, n, p);
+    }
+    return sum;
   };
 
-  const calculateAgrestiCoullCI = (x: number, n: number, alpha: number): ConfidenceInterval => {
-    const z = getZValue(alpha / 2);
-    const z2 = z * z;
-    const nTilde = n + z2;
-    const xTilde = x + z2 / 2;
-    const pTilde = xTilde / nTilde;
-    const margin = z * Math.sqrt(pTilde * (1 - pTilde) / nTilde);
-    
-    return {
-      lower: Math.max(0, pTilde - margin),
-      upper: Math.min(1, pTilde + margin)
-    };
+  // Inversion for Mid-P lower CI using binary search
+  const findMidPLower = (x: number, n: number, alpha: number): number => {
+    let low = 0;
+    let high = 1;
+    for (let iter = 0; iter < 100; iter++) {
+      const mid = (low + high) / 2;
+      const cdf = binomCdf(x - 1, n, mid) + 0.5 * binomPdf(x, n, mid);
+      if (cdf < alpha / 2) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    return (low + high) / 2;
   };
 
-  const calculate = (e?: FormEvent) => {
-    if (e) e.preventDefault();
-    
-    if (!validateInputs()) {
-      alert('Veuillez entrer des valeurs valides. Le numérateur doit être ≤ dénominateur, et le dénominateur > 0.');
+  // For upper
+  const findMidPUpper = (x: number, n: number, alpha: number): number => {
+    let low = 0;
+    let high = 1;
+    for (let iter = 0; iter < 100; iter++) {
+      const mid = (low + high) / 2;
+      const cdf = binomCdf(x, n, mid) - 0.5 * binomPdf(x, n, mid);
+      if (cdf > 1 - alpha / 2) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    return (low + high) / 2;
+  };
+
+  // Calcul complet
+  const calculate = () => {
+    const num = parseFloat(numerator);
+    const den = parseFloat(denominator);
+    const mult = parseFloat(multiplier) || 1;
+    const pop = parseFloat(population) || null;
+    const comp = parseFloat(compareTo) || 50.0;
+    const conf = parseInt(confidenceLevel);
+    const alpha = (100 - conf) / 100;
+    const z = getZValue(conf);
+
+    if (isNaN(num) || isNaN(den) || num < 0 || den <= 0 || num > den) {
+      setResults(null);
       return;
     }
 
-    const num = parseInt(numerator);
-    const den = parseInt(denominator);
-    const confLevel = parseInt(confidenceLevel);
-    const alpha = (100 - confLevel) / 100;
-
     const proportion = num / den;
-    const standardError = Math.sqrt((proportion * (1 - proportion)) / den);
+    let fpc = 1;
+    if (pop && pop > den) {
+      fpc = Math.sqrt((pop - den) / (pop - 1));
+    }
+    let standardError = Math.sqrt((proportion * (1 - proportion)) / den) * fpc;
 
-    const wilsonCI = calculateWilsonCI(num, den, alpha);
-    const exactCI = calculateExactCI(num, den, alpha);
-    const normalCI = calculateNormalCI(proportion, standardError, alpha);
-    const agrestiCoullCI = calculateAgrestiCoullCI(num, den, alpha);
+    // Wilson CI
+    const z2 = z * z;
+    const center = (proportion + z2 / (2 * den)) / (1 + z2 / den);
+    const margin = z * Math.sqrt((proportion * (1 - proportion) + z2 / (4 * den)) / den) / (1 + z2 / den) * fpc;
+    const wilsonCI = {
+      lower: Math.max(0, center - margin),
+      upper: Math.min(1, center + margin)
+    };
+
+    // Exact CI (Clopper-Pearson)
+    let exactLower = 0, exactUpper = 1;
+    if (hasJStat) {
+      if (num === 0) {
+        exactLower = 0;
+        exactUpper = 1 - Math.pow(alpha / 2, 1 / den);
+      } else if (num === den) {
+        exactLower = Math.pow(alpha / 2, 1 / den);
+        exactUpper = 1;
+      } else {
+        exactLower = (window as any).jStat.beta.inv(alpha / 2, num, den - num + 1);
+        exactUpper = (window as any).jStat.beta.inv(1 - alpha / 2, num + 1, den - num);
+      }
+    } else {
+      exactLower = wilsonCI.lower;
+      exactUpper = wilsonCI.upper;
+    }
+    // No fpc for exact
+
+    // Mid-P Exact CI
+    let midPLower = 0, midPUpper = 1;
+    if (hasJStat && num > 0 && num < den) {
+      midPLower = findMidPLower(num, den, alpha);
+      midPUpper = findMidPUpper(num, den, alpha);
+    } else {
+      midPLower = exactLower;
+      midPUpper = exactUpper;
+    }
+
+    // Normal CI (Wald)
+    const normalLower = Math.max(0, proportion - z * standardError);
+    const normalUpper = Math.min(1, proportion + z * standardError);
+
+    // Agresti-Coull CI
+    const nTilde = den + z2;
+    const numTilde = num + z2 / 2;
+    const pTilde = numTilde / nTilde;
+    let seTilde = Math.sqrt(pTilde * (1 - pTilde) / nTilde);
+    if (fpc < 1) seTilde *= fpc; // Apply fpc
+    const acLower = Math.max(0, pTilde - z * seTilde);
+    const acUpper = Math.min(1, pTilde + z * seTilde);
+
+    // Fleiss Quadratic CI (CC Score)
+    const fleissLowerNum = 2 * num + z2 - 1 - z * Math.sqrt(z2 - 2 - 1/den + 4 * num * (den - num + 1)/den);
+    const fleissUpperNum = 2 * num + z2 + 1 + z * Math.sqrt(z2 + 2 - 1/den + 4 * num * (den - num - 1)/den);
+    const fleissDenom = 2 * (den + z2);
+    let fleissLower = fleissLowerNum / fleissDenom;
+    let fleissUpper = fleissUpperNum / fleissDenom;
+    if (isNaN(fleissLower) || fleissLower < 0) fleissLower = 0;
+    if (isNaN(fleissUpper) || fleissUpper > 1) fleissUpper = 1;
+    // No fpc for score methods typically, but approximate
+
+    const npq = den * proportion * (1 - proportion);
+
+    // Test vs compareTo / multi (since compareTo in scaled units)
+    const p0 = comp / mult;
+    const zValue = (proportion - p0) / Math.sqrt(p0 * (1 - p0) / den * fpc ** 2);
+    const pValue = 2 * (1 - jStat.normal.cdf(Math.abs(zValue), 0, 1));
 
     setResults({
       numerator: num,
       denominator: den,
+      multiplier: mult,
+      population: pop,
+      compareTo: comp,
       proportion,
-      confidenceLevel: confLevel,
+      confidenceLevel: conf,
       standardError,
       wilsonCI,
-      exactCI,
-      normalCI,
-      agrestiCoullCI
+      exactCI: { lower: exactLower, upper: exactUpper },
+      midPCI: { lower: midPLower, upper: midPUpper },
+      normalCI: { lower: normalLower, upper: normalUpper },
+      agrestiCoullCI: { lower: acLower, upper: acUpper },
+      fleissCI: { lower: fleissLower, upper: fleissUpper },
+      npq,
+      zValue,
+      pValue,
+      fpc,
     });
   };
 
-  // Auto calculate if valid
   useEffect(() => {
-    if (validateInputs() && (window as any).jStat) {
-      calculate();
-    }
-  }, [numerator, denominator, confidenceLevel]);
+    calculate();
+  }, [numerator, denominator, multiplier, population, compareTo, confidenceLevel]);
 
-  // Animation
-  useEffect(() => {
-    if (results && resultsRef.current) {
-      resultsRef.current.classList.remove('fade-in');
-      void resultsRef.current.offsetWidth;
-      resultsRef.current.classList.add('fade-in');
-    }
-  }, [results]);
-
-  const clearForm = () => {
+  // Handlers
+  const clear = () => {
     setNumerator('');
     setDenominator('');
-    setConfidenceLevel('95');
+    setMultiplier('100');
+    setPopulation('');
+    setCompareTo('50.0');
     setResults(null);
+    toast.info('Champs réinitialisés');
   };
 
   const loadExample = () => {
-    setNumerator('45');
-    setDenominator('200');
-    setConfidenceLevel('95');
+    setNumerator('10');
+    setDenominator('11');
+    setMultiplier('100');
+    setPopulation('1000000');
+    setCompareTo('50.0');
+    toast.success('Exemple chargé');
   };
 
   const copyResults = async () => {
     if (!results) return;
-    
-    const text = `Résultats du Calcul de Proportion\n` +
-                 `Numérateur: ${results.numerator}\n` +
-                 `Dénominateur: ${results.denominator}\n` +
-                 `Proportion: ${results.proportion.toFixed(4)} (${(results.proportion * 100).toFixed(2)}%)\n` +
-                 `Niveau de confiance: ${results.confidenceLevel}%\n` +
-                 `Erreur standard: ${results.standardError.toFixed(4)}\n\n` +
-                 `Intervalles de confiance:\n` +
-                 `Wilson: [${results.wilsonCI.lower.toFixed(4)}, ${results.wilsonCI.upper.toFixed(4)}]\n` +
-                 `Exact (Clopper-Pearson): [${results.exactCI.lower.toFixed(4)}, ${results.exactCI.upper.toFixed(4)}]\n` +
-                 `Normal (Wald): [${results.normalCI.lower.toFixed(4)}, ${results.normalCI.upper.toFixed(4)}]\n` +
-                 `Agresti-Coull: [${results.agrestiCoullCI.lower.toFixed(4)}, ${results.agrestiCoullCI.upper.toFixed(4)}]`;
-    
     try {
+      const mult = results.multiplier;
+      const text = `Analyse Proportion : ${(results.proportion * mult).toFixed(4)} [IC${results.confidenceLevel}% Wilson: ${(results.wilsonCI.lower * mult).toFixed(3)}–${(results.wilsonCI.upper * mult).toFixed(3)}]`;
       await navigator.clipboard.writeText(text);
-      alert('Résultats copiés dans le presse-papier !');
-    } catch (err) {
-      alert('Échec de la copie');
+      toast.success('Résultats copiés');
+    } catch {
+      toast.error('Échec de la copie');
     }
   };
 
   const exportPDF = () => {
-    if (!results) {
-      alert('Veuillez d\'abord effectuer un calcul');
-      return;
-    }
-
-    const { jsPDF } = (window as any).jspdf;
-    const doc = new jsPDF();
-    
-    const primaryColor = [59, 130, 246];
-    
-    // En-tête
-    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.rect(0, 0, 210, 40, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text('Résultats du Calcul de Proportion', 105, 22, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('Intervalle de confiance - Outil statistique', 105, 30, { align: 'center' });
-    
-    // Informations principales
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.text('Données de l\'échantillon', 20, 55);
-    
-    doc.setFontSize(12);
-    const dataYStart = 65;
-    doc.text(`Numérateur (événements) : ${results.numerator}`, 20, dataYStart);
-    doc.text(`Dénominateur (taille échantillon) : ${results.denominator}`, 20, dataYStart + 8);
-    doc.text(`Proportion : ${results.proportion.toFixed(4)}`, 20, dataYStart + 16);
-    doc.text(`Pourcentage : ${(results.proportion * 100).toFixed(2)}%`, 20, dataYStart + 24);
-    doc.text(`Niveau de confiance : ${results.confidenceLevel}%`, 20, dataYStart + 32);
-    doc.text(`Erreur standard : ${results.standardError.toFixed(4)}`, 20, dataYStart + 40);
-    
-    // Tableau des résultats
-    doc.setFontSize(16);
-    doc.text('Intervalles de confiance calculés', 20, 115);
-    
-    const tableData = [
-      [
-        'Wilson (recommandé)',
-        results.proportion.toFixed(4),
-        `[${results.wilsonCI.lower.toFixed(4)}, ${results.wilsonCI.upper.toFixed(4)}]`,
-        `[${(results.wilsonCI.lower * 100).toFixed(2)}%, ${(results.wilsonCI.upper * 100).toFixed(2)}%]`
-      ],
-      [
-        'Exact (Clopper-Pearson)',
-        results.proportion.toFixed(4),
-        `[${results.exactCI.lower.toFixed(4)}, ${results.exactCI.upper.toFixed(4)}]`,
-        `[${(results.exactCI.lower * 100).toFixed(2)}%, ${(results.exactCI.upper * 100).toFixed(2)}%]`
-      ],
-      [
-        'Normal (Wald)',
-        results.proportion.toFixed(4),
-        `[${results.normalCI.lower.toFixed(4)}, ${results.normalCI.upper.toFixed(4)}]`,
-        `[${(results.normalCI.lower * 100).toFixed(2)}%, ${(results.normalCI.upper * 100).toFixed(2)}%]`
-      ],
-      [
-        'Agresti-Coull',
-        results.proportion.toFixed(4),
-        `[${results.agrestiCoullCI.lower.toFixed(4)}, ${results.agrestiCoullCI.upper.toFixed(4)}]`,
-        `[${(results.agrestiCoullCI.lower * 100).toFixed(2)}%, ${(results.agrestiCoullCI.upper * 100).toFixed(2)}%]`
-      ]
-    ];
-    
-    // Création du tableau
-    (doc as any).autoTable({
-      startY: 120,
-      head: [['Méthode', 'Proportion', `IC ${results.confidenceLevel}%`, `IC ${results.confidenceLevel}% (×100)`]],
-      body: tableData,
-      theme: 'striped',
-      headStyles: {
-        fillColor: primaryColor,
-        textColor: 255,
-        fontStyle: 'bold'
-      },
-      alternateRowStyles: {
-        fillColor: [240, 240, 240]
-      },
-      margin: { left: 20, right: 20 },
-      styles: {
-        fontSize: 10,
-        cellPadding: 3,
-        overflow: 'linebreak'
-      },
-      columnStyles: {
-        0: { cellWidth: 40 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 45 },
-        3: { cellWidth: 45 }
+    if (!results) return;
+  
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+  
+      const mult = results.multiplier;
+      // Couleurs
+      const colorPrimary = (results.proportion * mult) > 50
+        ? { bg: [255, 247, 237], border: [234, 88, 12], text: [234, 88, 12] }
+        : { bg: [236, 253, 245], border: [5, 150, 105], text: [5, 150, 105] };
+      const colorSlate = {
+        50: [248, 250, 252],
+        100: [241, 245, 249],
+        200: [226, 232, 240],
+        300: [203, 213, 225],
+        500: [100, 116, 139],
+        700: [51, 65, 85],
+        900: [15, 23, 42],
+      };
+      const colorRed = [239, 68, 68];
+  
+      // Helper rectangle arrondi
+      const roundedRect = (x: number, y: number, w: number, h: number, r: number, style: 'F' | 'S' | 'FD' = 'F') => {
+        doc.roundedRect(x, y, w, h, r, r, style);
+      };
+  
+      // ---------- EN-TÊTE ----------
+      doc.setFillColor(...colorSlate[50]);
+      roundedRect(0, 0, 210, 40, 0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport d'Analyse Proportion", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text('Calculateur Proportion – OpenEpi Style', 190, 32, { align: 'right' });
+  
+      // ---------- DONNÉES ----------
+      let y = 55;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Données analysées', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      doc.text(`Numérateur : ${results.numerator}`, 25, y); y += 6;
+      doc.text(`Dénominateur : ${results.denominator}`, 25, y); y += 6;
+      doc.text(`Multiplier : ${results.multiplier}`, 25, y); y += 6;
+      doc.text(`Taille population : ${results.population ? results.population : 'Infini'}`, 25, y); y += 6;
+      doc.text(`Comparer à : ${results.compareTo}`, 25, y); y += 6;
+      doc.text(`Niveau de confiance : ${results.confidenceLevel} %`, 25, y); y += 6;
+      doc.text(`Méthode exacte : ${hasJStat ? 'Disponible' : 'Approximation'}`, 25, y); y += 12;
+  
+      // ---------- CARTE PROPORTION ----------
+      const cardX = 20, cardY = y, cardW = 170, cardH = 35;
+      doc.setFillColor(...colorPrimary.bg);
+      doc.setDrawColor(...colorPrimary.border);
+      roundedRect(cardX, cardY, cardW, cardH, 5, 'FD');
+      doc.setTextColor(...colorPrimary.text);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('PROPORTION ESTIMÉE', cardX + cardW / 2, cardY + 11, { align: 'center' });
+      doc.setFontSize(28);
+      doc.text((results.proportion * mult).toFixed(4), cardX + cardW / 2, cardY + 28, { align: 'center' });
+      y += cardH + 10;
+  
+  
+      // ---------- TABLEAU STATISTIQUE ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Détail des méthodes statistiques', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 5;
+  
+      const tableBody = [
+        ['Proportion en pourcentage', (results.proportion * mult).toFixed(4), '—', '—'],
+        ['Mid-P Exact', '—', `[${(results.midPCI.lower * mult).toFixed(2)} – ${(results.midPCI.upper * mult).toFixed(2)}]`, '—'],
+        ['Méthode exacte de Fisher (Clopper-Pearson)', '—', `[${(results.exactCI.lower * mult).toFixed(2)} – ${(results.exactCI.upper * mult).toFixed(2)}]`, '—'],
+        ['Test de Wald (approx. normale)', '—', `[${(results.normalCI.lower * mult).toFixed(2)} – ${(results.normalCI.upper * mult).toFixed(2)}]`, '—'],
+        ['Test de Wald modifié (Agresti-Coull)', '—', `[${(results.agrestiCoullCI.lower * mult).toFixed(2)} – ${(results.agrestiCoullCI.upper * mult).toFixed(2)}]`, '—'],
+        ['Résultat (Wilson)*', '—', `[${(results.wilsonCI.lower * mult).toFixed(2)} – ${(results.wilsonCI.upper * mult).toFixed(2)}]`, '—'],
+        ['Correction (quadratique de Fleiss)', '—', `[${(results.fleissCI.lower * mult).toFixed(2)} – ${(results.fleissCI.upper * mult).toFixed(2)}]`, '—'],
+      ];
+  
+      autoTable(doc, {
+        startY: y,
+        head: [['Méthode', 'Proportion', `IC ${results.confidenceLevel}%`, 'p-value']],
+        body: tableBody,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 45, fontStyle: 'bold' },
+          1: { cellWidth: 25, halign: 'center' },
+          2: { cellWidth: 55, halign: 'center' },
+          3: { cellWidth: 30, halign: 'center' },
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+  
+      y = (doc as any).lastAutoTable.finalY + 10;
+  
+      // Avertissement
+      if (results.npq < 5) {
+        doc.setTextColor(...colorRed);
+        doc.text('Le npq de ' + results.npq.toFixed(4) + ' est <5. La méthode de Wald n’est pas recommandée.', 20, y);
+        y += 10;
       }
-    });
-    
-    // Pied de page
-    const pageHeight = doc.internal.pageSize.height;
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Généré le ' + new Date().toLocaleDateString('fr-FR'), 20, pageHeight - 20);
-    doc.text('StatTool - Outil de calcul statistique', 105, pageHeight - 20, { align: 'center' });
-    doc.text('Page 1/1', 190, pageHeight - 20, { align: 'right' });
-    
-    doc.save('resultats_proportion_detaille.pdf');
+  
+      // Test
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Test à un échantillon pour proportion binomiale, méthode de la Loi normale', 20, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`La proportion ${(results.proportion * mult).toFixed(4)} diffère-t-elle de ${results.compareTo} ?`, 20, y);
+      y += 6;
+      doc.text(`z-value = ${results.zValue.toFixed(3)}`, 20, y);
+      y += 6;
+      doc.text(`Two-sided p-value = ${results.pValue.toFixed(6)}`, 20, y);
+      y += 12;
+  
+      // ---------- CONCLUSION ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Conclusion', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 8;
+  
+      let interpretation = '';
+      const scaledP = results.proportion * mult;
+      const scaledComp = results.compareTo;
+      if (scaledP > scaledComp) {
+        interpretation = `La proportion est ${((scaledP - scaledComp)).toFixed(1)} supérieure à ${scaledComp}. `;
+      } else {
+        interpretation = `La proportion est ${((scaledComp - scaledP)).toFixed(1)} inférieure à ${scaledComp}. `;
+      }
+      const scaledLower = results.wilsonCI.lower * mult;
+      const scaledUpper = results.wilsonCI.upper * mult;
+      if (scaledLower > scaledComp) {
+        interpretation += 'Significativement supérieure.';
+      } else if (scaledUpper < scaledComp) {
+        interpretation += 'Significativement inférieure.';
+      } else {
+        interpretation += "L'écart n'est pas statistiquement significatif.";
+      }
+  
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      const splitText = doc.splitTextToSize(interpretation, 170);
+      doc.text(splitText, 20, y);
+      y += splitText.length * 5 + 8;
+  
+      // ---------- PIED DE PAGE ----------
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('Calculateur Proportion – Fidèle à OpenEpi', 20, footerY + 5);
+      doc.text(`Page 1 / 1`, 190, footerY + 5, { align: 'right' });
+      doc.text(`Méthode : ${hasJStat ? 'Exact (jStat)' : 'Approximation'}`, 20, footerY + 10);
+  
+      doc.save(`Rapport_Proportion_${results.numerator}_${results.denominator}.pdf`);
+      toast.success('Rapport PDF exporté avec succès');
+    } catch (error) {
+      console.error('Erreur PDF :', error);
+      toast.error('Erreur lors de la génération du PDF');
+    }
   };
 
-  const proportion = calculateProportion();
+  // Calcul des bornes pour la visualisation de l'IC (scaled)
+  const getIntervalPosition = () => {
+    if (!results) return { left: 0, width: 0 };
+    const mult = results.multiplier;
+    const minVal = Math.min(0, results.wilsonCI.lower * mult * 0.8);
+    const maxVal = Math.max(mult, results.wilsonCI.upper * mult * 1.2);
+    const range = maxVal - minVal;
+    const left = ((results.wilsonCI.lower * mult - minVal) / range) * 100;
+    const right = ((results.wilsonCI.upper * mult - minVal) / range) * 100;
+    return { left, width: right - left };
+  };
 
   return (
-    <>
-      <style jsx>{`
-        #proportion-results > div {
-          transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        #proportion-results > div.fade-in {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      `}</style>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
 
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
-        <div className="max-w-6xl mx-auto p-6 lg:p-8">
-          {/* Breadcrumb */}
-          <nav className="flex mb-4" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2 text-sm">
-              <li>
-                <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  Accueil
-                </Link>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">Calcul de Proportion</span>
-              </li>
-            </ol>
-          </nav>
-          
-          {/* Header */}
-          <div className="flex items-center space-x-4 mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-              <Percent className="w-6 h-6 text-white" strokeWidth={1.5} />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Calculateur Proportion</span></li>
+          </ol>
+        </nav>
+
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Calcul de Proportion
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Intervalles de confiance avec méthodes Wilson, Exacte, Normale et Agresti-Coull
-              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Calculateur Proportion</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Intervalles de confiance pour proportion binomiale.</p>
             </div>
           </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Input Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Edit className="w-5 h-5 mr-2 text-blue-500" strokeWidth={1.5} />
-                    Saisie des données
-                  </h2>
-                </div>
-                
-                <div className="p-6">
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label htmlFor="numerator" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Numérateur (nombre d'événements)
-                        </label>
-                        <input
-                          type="number"
-                          id="numerator"
-                          min="0"
-                          step="1"
-                          value={numerator}
-                          onChange={(e) => setNumerator(e.target.value)}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                          placeholder="Entrez le numérateur"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="denominator" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Dénominateur (taille de l'échantillon)
-                        </label>
-                        <input
-                          type="number"
-                          id="denominator"
-                          min="1"
-                          step="1"
-                          value={denominator}
-                          onChange={(e) => setDenominator(e.target.value)}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                          placeholder="Entrez le dénominateur"
-                        />
-                      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+  <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+    <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+      <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+    </h2>
+    <div className="space-y-5">
+      {/* Groupe 1: Numérateur et Dénominateur côte à côte */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+            Numérateur
+          </label>
+          <input
+            type="number"
+            value={numerator}
+            onChange={(e) => setNumerator(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+            placeholder="Ex: 10"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+            Dénominateur
+          </label>
+          <input
+            type="number"
+            value={denominator}
+            onChange={(e) => setDenominator(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+            placeholder="Ex: 11"
+          />
+        </div>
+      </div>
+
+      {/* Groupe 2: Multiplier et Population côte à côte */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+            Multiplier (ex. 100 pour %)
+          </label>
+          <input
+            type="number"
+            value={multiplier}
+            onChange={(e) => setMultiplier(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+            placeholder="100"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+            Taille de la population
+          </label>
+          <input
+            type="number"
+            value={population}
+            onChange={(e) => setPopulation(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+            placeholder="Ex: 1000000"
+          />
+        </div>
+      </div>
+
+      {/* Groupe 3: Comparer à et Niveau de confiance côte à côte */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+            Comparer à (% ou unité)
+          </label>
+          <input
+            type="number"
+            value={compareTo}
+            onChange={(e) => setCompareTo(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+            placeholder="50.0"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+            Niveau de confiance
+          </label>
+          <select
+            value={confidenceLevel}
+            onChange={(e) => setConfidenceLevel(e.target.value)}
+            className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
+          >
+            <option value="90">90%</option>
+            <option value="95">95% (Standard)</option>
+            <option value="99">99%</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+      <button
+        onClick={loadExample}
+        className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+      >
+        <Info className="w-4 h-4" /> Exemple
+      </button>
+      <button
+        onClick={clear}
+        className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+      >
+        <RotateCcw className="w-5 h-5" />
+      </button>
+    </div>
+  </div>
+</div>
+
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier le résultat principal"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <div className="text-4xl font-bold mt-2">
+                      {calculatedProportion === '-' ? '0.00' : calculatedProportion}
                     </div>
-
-                    <div>
-                      <label htmlFor="confidence-level" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Niveau de confiance
-                      </label>
-                      <select
-                        id="confidence-level"
-                        value={confidenceLevel}
-                        onChange={(e) => setConfidenceLevel(e.target.value)}
-                        className="w-full px-4 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  </div>
+                ) : (
+                  <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Carte Proportion */}
+                    <div
+                      className={`p-8 rounded-3xl text-center border ${
+                        (results.proportion * results.multiplier) > results.compareTo
+                          ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
+                          : 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Proportion Estimée
+                      </p>
+                      <div
+                        className={`text-5xl font-bold tracking-tight mb-2 ${
+                          (results.proportion * results.multiplier) > results.compareTo ? 'text-orange-600' : 'text-emerald-600'
+                        }`}
                       >
-                        <option value="90">90%</option>
-                        <option value="95">95%</option>
-                        <option value="99">99%</option>
-                      </select>
+                        {(results.proportion * results.multiplier).toFixed(4)}
+                      </div>
+                      <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
+                        {results.numerator} / {results.denominator}
+                      </span>
                     </div>
 
-                    <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-2 flex items-center">
-                        <Target className="w-4 h-4 mr-2" />
-                        Proportion calculée :
-                      </div>
-                      <div id="calculated-proportion" className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                        {denominator && parseInt(denominator) > 0 ? proportion.toFixed(4) : '-'}
-                      </div>
-                      <div id="calculated-percentage" className="text-sm text-gray-500 dark:text-gray-400">
-                        {denominator && parseInt(denominator) > 0 ? `${(proportion * 100).toFixed(2)}%` : '-'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-3 mt-6">
+      
+                    {/* Détails statistiques avancés (repliables) */}
+                    <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
                     <button
-                      type="button"
-                      onClick={calculate}
-                      disabled={!validateInputs()}
-                      className="flex-1 min-w-0 inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200"
+                      onClick={() => setShowStatsDetail(!showStatsDetail)}
+                      className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
                     >
-                      <Calculator className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Calculer
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform ${
+                          showStatsDetail ? 'rotate-180' : ''
+                        }`}
+                      />
+                      {showStatsDetail ? 'Masquer' : 'Afficher'} les détails statistiques complets
                     </button>
-                    <button
-                      type="button"
-                      onClick={clearForm}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Effacer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={loadExample}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <HelpCircle className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Exemple
-                    </button>
-                  </div>
-                </div>
-              </div>
 
-              {/* Information Card */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-6 border border-blue-200 dark:border-blue-800">
-                <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0">
-                    <Info className="w-6 h-6 text-blue-600 dark:text-blue-400" strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                      Comment utiliser cet outil
-                    </h3>
-                    <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Saisissez le nombre d'événements observés (numérateur)
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Saisissez la taille totale de l'échantillon (dénominateur)
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Choisissez le niveau de confiance souhaité
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        Les intervalles de confiance sont calculés selon 4 méthodes
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-600 mr-2">•</span>
-                        La méthode de Wilson est recommandée pour la plupart des cas
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Results Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center justify-between">
-                    <div className="flex items-center">
-                      <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
-                      Résultats
-                    </div>
-                    {results && (
-                      <div id="export-buttons" className="flex gap-4">
-                        <button
-                          id="copy-btn"
-                          aria-label="Copier les résultats"
-                          onClick={copyResults}
-                          className="p-2 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                        >
-                          <Copy className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
-                        <button
-                          id="pdf-btn"
-                          aria-label="Exporter en PDF"
-                          onClick={exportPDF}
-                          className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          <Download className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
-                      </div>
-                    )}
-                  </h2>
-                </div>
-                
-                <div className="p-6">
-                  <div id="proportion-results" ref={resultsRef}>
-                    {results ? (
-                      <div className="space-y-6">
-                        <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-6 border border-blue-200 dark:border-blue-700">
-                          <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center">
-                            <Users className="w-5 h-5 mr-2" />
-                            Résumé
-                          </h3>
-                          <p className="text-blue-800 dark:text-blue-200">
-                            Sur <strong>{results.denominator}</strong> observations, <strong>{results.numerator}</strong> événements ont été observés, 
-                            soit une proportion de <strong>{(results.proportion * 100).toFixed(2)}%</strong>.
-                          </p>
-                          <p className="text-sm text-blue-700 dark:text-blue-300 mt-2 flex items-center">
-                            <TrendingUp className="w-4 h-4 mr-2" />
-                            Erreur standard : {results.standardError.toFixed(4)}
-                          </p>
-                        </div>
-
-                        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-600">
-                          <table className="min-w-full">
-                            <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
+                      {showStatsDetail && (
+                        <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                          {!hasJStat && (
+                            <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                              ⚠️ Librairie jStat non détectée – les intervalles exacts sont remplacés par des approximations. Pour des calculs précis, incluez jStat dans votre projet.
+                            </div>
+                          )}
+                          {results.npq < 5 && (
+                            <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
+                              Le npq de {results.npq.toFixed(4)} est {'<'} 5. La méthode de Wald n’est pas recommandée.
+                            </div>
+                          )}
+                          <table className="w-full text-xs sm:text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
                               <tr>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 dark:text-gray-200">Méthode</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">Proportion</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">IC {results.confidenceLevel}%</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">IC {results.confidenceLevel}% (×100)</th>
+                                <th className="px-3 py-2 text-left font-semibold">Méthode</th>
+                                <th className="px-3 py-2 text-center font-semibold">Proportion</th>
+                                <th className="px-3 py-2 text-center font-semibold">CL bas</th>
+                                <th className="px-3 py-2 text-center font-semibold">CL haut</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
-                              <tr className="bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 transition-colors">
-                                <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                                  <div className="flex items-center">
-                                    <Check className="w-4 h-4 text-green-600 dark:text-green-400 mr-2" strokeWidth={1.5} />
-                                    Wilson (recommandé)
-                                  </div>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Proportion en pourcentage</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.proportion * results.multiplier).toFixed(4)}
                                 </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">{results.proportion.toFixed(4)}</td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{results.wilsonCI.lower.toFixed(4)}, {results.wilsonCI.upper.toFixed(4)}]
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Mid-P Exact</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.midPCI.lower * results.multiplier).toFixed(2)}
                                 </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{(results.wilsonCI.lower * 100).toFixed(2)}%, {(results.wilsonCI.upper * 100).toFixed(2)}%]
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.midPCI.upper * results.multiplier).toFixed(2)}
                                 </td>
                               </tr>
-                              <tr className="bg-blue-50 dark:bg-blue-900/10 hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
-                                <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                                  <div className="flex items-center">
-                                    <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" strokeWidth={1.5} />
-                                    Exact (Clopper-Pearson)
-                                  </div>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Méthode exacte de Fisher (Clopper-Pearson)</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.exactCI.lower * results.multiplier).toFixed(2)}
                                 </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">{results.proportion.toFixed(4)}</td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{results.exactCI.lower.toFixed(4)}, {results.exactCI.upper.toFixed(4)}]
-                                </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{(results.exactCI.lower * 100).toFixed(2)}%, {(results.exactCI.upper * 100).toFixed(2)}%]
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.exactCI.upper * results.multiplier).toFixed(2)}
                                 </td>
                               </tr>
-                              <tr className="bg-yellow-50 dark:bg-yellow-900/10 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors">
-                                <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                                  <div className="flex items-center">
-                                    <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mr-2" strokeWidth={1.5} />
-                                    Normal (Wald)
-                                  </div>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Test de Wald (approx. normale)</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.normalCI.lower * results.multiplier).toFixed(2)}
                                 </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">{results.proportion.toFixed(4)}</td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{results.normalCI.lower.toFixed(4)}, {results.normalCI.upper.toFixed(4)}]
-                                </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{(results.normalCI.lower * 100).toFixed(2)}%, {(results.normalCI.upper * 100).toFixed(2)}%]
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.normalCI.upper * results.multiplier).toFixed(2)}
                                 </td>
                               </tr>
-                              <tr className="bg-indigo-50 dark:bg-indigo-900/10 hover:bg-indigo-100 dark:hover:bg-indigo-900/20 transition-colors">
-                                <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                                  <div className="flex items-center">
-                                    <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mr-2" strokeWidth={1.5} />
-                                    Agresti-Coull
-                                  </div>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Test de Wald modifié (Agresti-Coull)</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.agrestiCoullCI.lower * results.multiplier).toFixed(2)}
                                 </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">{results.proportion.toFixed(4)}</td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{results.agrestiCoullCI.lower.toFixed(4)}, {results.agrestiCoullCI.upper.toFixed(4)}]
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.agrestiCoullCI.upper * results.multiplier).toFixed(2)}
                                 </td>
-                                <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-gray-100">
-                                  [{(results.agrestiCoullCI.lower * 100).toFixed(2)}%, {(results.agrestiCoullCI.upper * 100).toFixed(2)}%]
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Résultat (Wilson)*</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.wilsonCI.lower * results.multiplier).toFixed(2)}
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.wilsonCI.upper * results.multiplier).toFixed(2)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Correction (quadratique de Fleiss)</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.fleissCI.lower * results.multiplier).toFixed(2)}
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {(results.fleissCI.upper * results.multiplier).toFixed(2)}
                                 </td>
                               </tr>
                             </tbody>
                           </table>
+                          <p className="text-sm text-slate-400 mt-3 italic">
+                            * Regarder en premier les éléments : sélection d’éléments de l’éditeur à examiner en premier.
+                          </p>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-16">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                          <BarChart3 className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
-                        </div>
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">Saisissez vos données pour voir les résultats</p>
-                        <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Les intervalles de confiance apparaîtront automatiquement</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                      )}
+                    </div>
 
-              {/* Information Sections */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg border border-gray-100 dark:border-slate-700">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mr-3">
-                      <Percent className="w-5 h-5 text-white" strokeWidth={1.5} />
+                    {/* Test et Interprétation */}
+                    <div
+                      className={`p-6 rounded-2xl ${
+                        results.pValue < 0.05
+                          ? 'bg-blue-50 border-blue-500 dark:bg-blue-900/10'
+                          : 'bg-slate-100 border-slate-400 dark:bg-slate-800'
+                      }`}
+                    >
+                      <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-500" /> Test et Conclusion
+                      </h3>
+                      <p className="text-sm leading-relaxed">
+                        La proportion {(results.proportion * results.multiplier).toFixed(4)} diffère-t-elle de {results.compareTo} ?
+                        <br />
+                        z-value = {results.zValue.toFixed(3)}
+                        <br />
+                        Two-sided p-value = {results.pValue.toFixed(6)}
+                        <br />
+                        {results.pValue < 0.05 ? (
+                          <span className="text-orange-600 font-bold mt-2 block">
+                            Différence significative (p {'<'} 0.05).
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 mt-2 block">
+                            Pas de différence significative.
+                          </span>
+                        )}
+                      </p>
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Intervalles de Confiance
-                    </h3>
+
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Estimation de la plage de valeurs dans laquelle se trouve la proportion réelle de la population avec un certain niveau de confiance.
-                  </p>
-                </div>
-                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg border border-gray-100 dark:border-slate-700">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mr-3">
-                      <Target className="w-5 h-5 text-white" strokeWidth={1.5} />
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Méthodes Comparées
-                    </h3>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Wilson (recommandée), Exacte (Clopper-Pearson), Normale (Wald) et Agresti-Coull pour une précision optimale.
-                  </p>
-                </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Floating Help Button */}
-        <button
-          onClick={() => setShowHelpModal(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110"
-        >
-          <HelpCircle className="w-7 h-7" strokeWidth={1.5} />
-        </button>
-
-        {/* Help Modal */}
+        {/* Modal d'aide  */}
         {showHelpModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md px-4 overflow-y-auto">
-            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/30 dark:border-slate-700/50 my-8 w-full max-w-3xl">
-              <div className="sticky top-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md flex justify-between items-center p-6 border-b border-gray-200/50 dark:border-slate-700/50 rounded-t-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Aide complète & Ressources</h3>
-                <button onClick={() => setShowHelpModal(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
-                  <X className="w-7 h-7" strokeWidth={1.5} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide (OpenEpi)</h3>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6 space-y-10 text-gray-700 dark:text-gray-300 overflow-y-auto max-h-[70vh]">
+
+              <div className="p-6 md:p-8 space-y-8">
                 <section>
-                  <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                    <Info className="w-6 h-6 mr-3" strokeWidth={1.5} />
-                    Comment utiliser cet outil
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Le Principe
                   </h4>
-                  <ul className="space-y-3 text-base bg-blue-50 dark:bg-blue-900/20 rounded-xl p-5">
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Saisissez le nombre d'événements observés (numérateur)
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Saisissez la taille totale de l'échantillon (dénominateur)
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Choisissez le niveau de confiance souhaité
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Les intervalles de confiance sont calculés selon 4 méthodes et s'affichent automatiquement
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      La méthode de Wilson est recommandée pour la plupart des cas
-                    </li>
-                  </ul>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Le calculateur fournit des intervalles de confiance pour une proportion binomiale, fidèle à OpenEpi.
+                  </p>
                 </section>
 
                 <section>
-                  <h4 className="text-xl font-semibold mb-6 text-blue-700 dark:text-blue-400">
-                    Méthodes d'intervalle de confiance
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Méthodes
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 rounded-xl p-6 shadow-md">
-                      <div className="flex items-center mb-4">
-                        <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center mr-3">
-                          <Check className="w-5 h-5 text-white" strokeWidth={1.5} />
-                        </div>
-                        <h5 className="text-lg font-semibold">Méthode de Wilson (recommandée)</h5>
-                      </div>
-                      <p className="text-sm leading-relaxed">
-                        Fournit des intervalles plus précis, particulièrement pour les petits échantillons ou proportions proches de 0 ou 1.
-                      </p>
-                      <p className="text-xs mt-3 opacity-80">
-                        Référence : Wilson, E.B. (1927). Journal of the American Statistical Association.
-                      </p>
-                    </div>
-
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-xl p-6 shadow-md">
-                      <div className="flex items-center mb-4">
-                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                          <Shield className="w-5 h-5 text-white" strokeWidth={1.5} />
-                        </div>
-                        <h5 className="text-lg font-semibold">Méthode Exacte (Clopper-Pearson)</h5>
-                      </div>
-                      <p className="text-sm leading-relaxed">
-                        Intervalles exacts basés sur la distribution binomiale. Conservatrice mais garantit le niveau de confiance.
-                      </p>
-                      <p className="text-xs mt-3 opacity-80">
-                        Référence : Clopper & Pearson (1934). Biometrika.
-                      </p>
-                    </div>
-
-                    <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/30 dark:to-yellow-800/30 rounded-xl p-6 shadow-md">
-                      <div className="flex items-center mb-4">
-                        <div className="w-10 h-10 bg-yellow-600 rounded-lg flex items-center justify-center mr-3">
-                          <AlertTriangle className="w-5 h-5 text-white" strokeWidth={1.5} />
-                        </div>
-                        <h5 className="text-lg font-semibold">Méthode Normale (Wald)</h5>
-                      </div>
-                      <p className="text-sm leading-relaxed">
-                        Approximation normale classique. Moins précise pour petits échantillons ou proportions extrêmes.
-                      </p>
-                      <p className="text-xs mt-3 opacity-80">
-                        Référence : Approximation normale standard.
-                      </p>
-                    </div>
-
-                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 rounded-xl p-6 shadow-md">
-                      <div className="flex items-center mb-4">
-                        <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center mr-3">
-                          <FileText className="w-5 h-5 text-white" strokeWidth={1.5} />
-                        </div>
-                        <h5 className="text-lg font-semibold">Méthode Agresti-Coull</h5>
-                      </div>
-                      <p className="text-sm leading-relaxed">
-                        Ajustement ajoutant des observations fictives pour améliorer la précision, surtout pour petits échantillons.
-                      </p>
-                      <p className="text-xs mt-3 opacity-80">
-                        Référence : Agresti & Coull (1998). The American Statistician.
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Wilson recommandé, Exact conservatrice, Mid-P moins conservatrice, Wald simple mais à éviter si npq {'<'}5, etc.
+                  </p>
                 </section>
+
               </div>
             </div>
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
