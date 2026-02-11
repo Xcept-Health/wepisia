@@ -309,7 +309,7 @@ export default function Proportion() {
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
       doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
-      doc.text('Calculateur Proportion – OpenEpi Style', 190, 32, { align: 'right' });
+      doc.text('Calculateur Proportion – OpenEpi', 190, 32, { align: 'right' });
   
       // ---------- DONNÉES ----------
       let y = 55;
