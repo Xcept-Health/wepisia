@@ -15,9 +15,12 @@ import {
   BarChart3,
   ArrowRight,
   Copy,
-  ChevronRight as SearchButtonIcon
+  ChevronRight as SearchButtonIcon,
+  Sparkles,
+  ListTree
 } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
 
 // --- CONSTANTES ---
 const RET_MAX = 10;
@@ -40,6 +43,7 @@ interface SearchResponse {
   esearchresult: {
     count: number;
     idlist: string[];
+    querytranslation?: string;
   };
 }
 
@@ -59,19 +63,17 @@ const apiCallWithRetry = async <T>(fn: () => Promise<T>, retries = API_RETRY_COU
   throw new Error('Max retries reached');
 };
 
-// --- GRAPHIQUE DE TENDANCE (MEMOÏSÉ) ---
+// --- GRAPHIQUE DE TENDANCE ---
 const TrendChart = React.memo(({ data }: { data: PubMedArticle[] }) => {
   const chartData = useMemo(() => {
     if (data.length === 0) return [];
     const years = data.map(d => parseInt(d.pubdate.substring(0, 4))).filter(y => !isNaN(y));
     if (years.length === 0) return [];
-
     const minYear = Math.min(...years);
     const maxYear = Math.max(...years);
     const counts: Record<number, number> = {};
     for (let y = minYear; y <= maxYear; y++) counts[y] = 0;
     years.forEach(y => counts[y] = (counts[y] || 0) + 1);
-
     return Object.entries(counts).map(([year, count]) => ({ year: parseInt(year), count }));
   }, [data]);
 
@@ -86,7 +88,7 @@ const TrendChart = React.memo(({ data }: { data: PubMedArticle[] }) => {
   }).join(' ');
 
   return (
-    <div role="region" aria-label="Graphique de distribution temporelle" className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 shadow-sm mb-6 animate-in fade-in zoom-in duration-500">
+    <div role="region" aria-label="Graphique de distribution temporelle" className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700  mb-6 animate-in fade-in zoom-in duration-500">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-indigo-500" />
@@ -112,7 +114,7 @@ const TrendChart = React.memo(({ data }: { data: PubMedArticle[] }) => {
   );
 });
 
-// --- FILTER PANEL (RÉUTILISABLE) ---
+// --- FILTER PANEL  ---
 const FilterPanel = React.memo(({
   filterYearFrom,
   setFilterYearFrom,
@@ -132,8 +134,9 @@ const FilterPanel = React.memo(({
   sortBy: string;
   setSortBy: (val: string) => void;
 }) => (
-  <div className="p-6 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-3xl border border-slate-200/60 dark:border-slate-700 shadow-xl animate-in slide-in-from-top-2">
+  <div className="p-6 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-3xl border border-slate-200/60 dark:border-slate-700 slide-in-from-top-2">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Période */}
       <div className="space-y-2">
         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Période</label>
         <div className="flex gap-2 items-center">
@@ -154,6 +157,7 @@ const FilterPanel = React.memo(({
           />
         </div>
       </div>
+      {/* Type d'article */}
       <div className="space-y-2">
         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Type</label>
         <select
@@ -169,6 +173,7 @@ const FilterPanel = React.memo(({
           <option value="case reports">Cas clinique</option>
         </select>
       </div>
+      {/* Tri */}
       <div className="space-y-2">
         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Trier par</label>
         <select
@@ -186,7 +191,7 @@ const FilterPanel = React.memo(({
 
 // --- COMPOSANT PRINCIPAL ---
 export default function Explorer() {
-  // --- États ---
+  // --- États existants ---
   const [view, setView] = useState<'search' | 'bookmarks'>('search');
   const [hasSearched, setHasSearched] = useState<boolean>(false);
 
@@ -214,6 +219,11 @@ export default function Explorer() {
   const [selectedArticle, setSelectedArticle] = useState<PubMedArticle | null>(null);
   const [fullAbstract, setFullAbstract] = useState<string | null>(null);
   const [abstractLoading, setAbstractLoading] = useState<boolean>(false);
+
+  // --- État pour le générateur MeSH (amélioré) ---
+  const [generatedQuery, setGeneratedQuery] = useState<string | null>(null);
+  const [loadingMesh, setLoadingMesh] = useState<boolean>(false);
+  const [showMeshPanel, setShowMeshPanel] = useState<boolean>(false);
 
   const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -260,7 +270,7 @@ export default function Explorer() {
     }
   }, [selectedArticle, fetchFullAbstract]);
 
-  // --- Appels API PubMed ---
+  // --- Appels API PubMed (recherche standard) ---
   const fetchPubmedIds = useCallback(async () => {
     if (!query.trim()) return [];
     setLoading(true);
@@ -419,6 +429,44 @@ export default function Explorer() {
     toast.success('Citation copiée !');
   };
 
+  // --- GÉNÉRATEUR DE TERMES MESH AMÉLIORÉ (utilise la traduction PubMed) ---
+  const fetchMeshTerms = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      toast.info("Veuillez saisir un thème de recherche.");
+      return;
+    }
+
+    setLoadingMesh(true);
+    setGeneratedQuery(null);
+    setShowMeshPanel(true);
+
+    try {
+      const fetchFn = async () => {
+        const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(searchQuery)}&retmax=0&retmode=json`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(searchUrl)}`;
+        const response = await axios.get<SearchResponse>(proxyUrl);
+        return response.data.esearchresult.querytranslation;
+      };
+
+      const translation = await apiCallWithRetry(fetchFn);
+      setGeneratedQuery(translation || searchQuery); // Fallback to original if no translation
+    } catch (error) {
+      console.error("Erreur lors de la génération MeSH:", error);
+      toast.error("Impossible de générer les suggestions MeSH.");
+    } finally {
+      setLoadingMesh(false);
+    }
+  }, []);
+
+  // Appliquer la requête générée
+  const applyGeneratedQuery = () => {
+    if (generatedQuery) {
+      setQuery(generatedQuery);
+      setShowMeshPanel(false);
+      toast.success(`Requête optimisée appliquée !`);
+    }
+  };
+
   // --- Carte d'un article ---
   const ArticleCard = React.memo(({ article, isSelected = false, onClick }: { article: PubMedArticle; isSelected?: boolean; onClick: () => void }) => {
     const isBookmarked = bookmarks.includes(article.pmid);
@@ -430,8 +478,8 @@ export default function Explorer() {
         onClick={onClick}
         className={`group cursor-pointer bg-white dark:bg-slate-800 p-5 rounded-2xl border transition-all duration-300 ${
           isSelected
-            ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md scale-[1.01]'
-            : 'border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-sm'
+            ? 'border-indigo-500 ring-1 ring-indigo-500 scale-[1.01]'
+            : 'border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 '
         }`}
       >
         <div className="flex justify-between items-start gap-4">
@@ -476,12 +524,13 @@ export default function Explorer() {
                 Epi <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-500">Explorer</span>
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-4 text-xl max-w-2xl mx-auto">
-                Recherchez directement sur PubMed
+                Recherchez parmi <span className="font-semibold text-indigo-600">+35 millions</span> d'articles biomédicaux
               </p>
             </div>
 
+            {/* Barre de recherche large */}
             <div className="relative group">
-              <div className="absolute -inset-1.5 rounded-full opacity-30 group-hover:opacity-50 blur-xl transition duration-700"></div>
+              <div className="absolute -inset-1.5 rounded-full opacity-30 group-hover:opacity-50 blur-xl transition duration-700" />
               <div className="relative flex items-center bg-white dark:bg-slate-800 rounded-full border border-slate-200/80 dark:border-slate-700/80 p-2">
                 <Search className="ml-5 w-7 h-7 text-slate-400" />
                 <input
@@ -490,19 +539,21 @@ export default function Explorer() {
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && performSearch()}
                   placeholder="Mots-clés, maladies, auteurs, DOI..."
-                  className="w-full bg-transparent border-none text-slate-800 dark:text-white placeholder:text-slate-400 text-xl py-5 px-4"
-             
+                  className="w-full bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 text-xl py-5 px-4"
+                  autoFocus
                 />
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`p-3.5 rounded-full transition-all ${showFilters ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
+                  className={`p-3.5 rounded-full transition-all ${
+                    showFilters ? 'bg-indigo-50 text-indigo-600 ' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                  }`}
                   aria-label="Filtres"
                 >
                   <Filter className="w-6 h-6" />
                 </button>
                 <button
                   onClick={performSearch}
-                  className="ml-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white p-4 rounded-full transition-transform active:scale-90 shadow-xl shadow-indigo-500/30"
+                  className="ml-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white p-4 rounded-full transition-transform active:scale-90 "
                   aria-label="Rechercher"
                 >
                   <SearchButtonIcon className="w-7 h-7" />
@@ -510,6 +561,18 @@ export default function Explorer() {
               </div>
             </div>
 
+            {/* Bouton Générer MeSH (amélioré) */}
+            <div className="flex justify-center mt-6">
+              <button
+                onClick={() => fetchMeshTerms(query)}
+                disabled={loadingMesh || !query.trim()}
+                className="flex items-center gap-2 px-6 py-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-sm font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed "
+              >
+               
+              </button>
+            </div>
+
+            {/* Panneau des filtres */}
             {showFilters && (
               <div className="mt-8">
                 <FilterPanel
@@ -525,6 +588,50 @@ export default function Explorer() {
               </div>
             )}
 
+            {/* Panneau MeSH amélioré */}
+            {showMeshPanel && (
+              <div className="mt-6 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700  overflow-hidden animate-in slide-in-from-top-2">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                  <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-500" />
+                    Requête MeSH optimisée pour "{query.length > 50 ? query.slice(0, 50)+'…' : query}"
+                  </h3>
+                  <button
+                    onClick={() => setShowMeshPanel(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-4">
+                  {loadingMesh ? (
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+                      <p className="text-slate-500 text-sm">Interrogation de PubMed pour optimisation MeSH...</p>
+                    </div>
+                  ) : generatedQuery ? (
+                    <div>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">Voici la requête traduite avec termes MeSH, types de publication et champs de recherche :</p>
+                      <pre className="bg-slate-50 dark:bg-slate-700 p-4 rounded-lg text-sm overflow-x-auto text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+                        {generatedQuery}
+                      </pre>
+                      <button
+                        onClick={applyGeneratedQuery}
+                        className="mt-4 w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        Appliquer cette requête
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-center text-slate-500 py-4">
+                      Aucune optimisation MeSH trouvée. Essayez une autre requête.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Lien vers les favoris */}
             <div className="mt-12 text-sm text-slate-400">
               <button
                 onClick={() => setView('bookmarks')}
@@ -540,9 +647,9 @@ export default function Explorer() {
         /* ========== MODE COMPACT (EN-TÊTE STICKY) ========== */
         <div className="sticky top-0 z-30 bg-white/80 dark:bg-[#0B0F19]/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
           <div className="max-w-6xl mx-auto px-4 h-auto py-3 flex flex-col gap-2">
+            {/* Ligne supérieure : titre + toggles */}
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 flex-shrink-0">
-             
                 <span className="font-bold text-lg text-slate-900 dark:text-white hidden sm:block">
                   Epi <span className="text-indigo-600 font-normal">Explorer</span>
                 </span>
@@ -552,7 +659,7 @@ export default function Explorer() {
                   onClick={() => setView('search')}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                     view === 'search'
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                      ? 'bg-indigo-600 text-white '
                       : 'bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
                   }`}
                 >
@@ -562,12 +669,12 @@ export default function Explorer() {
                   onClick={() => setView('bookmarks')}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
                     view === 'bookmarks'
-                      ? 'bg-indigo-600 text-white shadow-lg'
+                      ? 'bg-amber-500 text-white'
                       : 'bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   <Bookmark className="w-4 h-4" />
-                  <span className="hidden sm:inline"></span>
+                  <span className="hidden sm:inline">Favoris</span>
                   {bookmarks.length > 0 && (
                     <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-xs">{bookmarks.length}</span>
                   )}
@@ -575,8 +682,9 @@ export default function Explorer() {
               </div>
             </div>
 
+            {/* Barre de recherche compacte */}
             <div className="relative group">
-              <div className="relative flex items-center bg-white dark:bg-slate-800 rounded-full shadow-md border border-slate-100 dark:border-slate-700 p-1.5">
+              <div className="relative flex items-center bg-white dark:bg-slate-800 rounded-full border border-slate-100 dark:border-slate-700 p-1.5">
                 <Search className="ml-3 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
@@ -584,18 +692,20 @@ export default function Explorer() {
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && performSearch()}
                   placeholder="Rechercher dans PubMed..."
-                  className="w-full bg-transparent border-none text-slate-800 dark:text-white placeholder:text-slate-400 text-sm py-2 px-2"
+                  className="w-full bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 text-sm py-2 px-2"
                 />
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`p-1.5 rounded-full transition-colors ${showFilters ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
+                  className={`p-1.5 rounded-full transition-colors ${
+                    showFilters ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                  }`}
                   aria-label="Filtres"
                 >
                   <Filter className="w-4 h-4" />
                 </button>
                 <button
                   onClick={performSearch}
-                  className="ml-1 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-full transition-transform active:scale-95 shadow-md shadow-indigo-200"
+                  className="ml-1 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-full transition-transform active:scale-95 "
                   aria-label="Rechercher"
                 >
                   <SearchButtonIcon className="w-4 h-4" />
@@ -603,6 +713,23 @@ export default function Explorer() {
               </div>
             </div>
 
+            {/* Bouton Générer MeSH compact */}
+            <div className="flex justify-start">
+              <button
+                onClick={() => fetchMeshTerms(query)}
+                disabled={loadingMesh || !query.trim()}
+                className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50"
+              >
+                {loadingMesh ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <ListTree className="w-3 h-3" />
+                )}
+                {loadingMesh ? "Recherche..." : "Générer MeSH"}
+              </button>
+            </div>
+
+            {/* Panneau des filtres compact */}
             {showFilters && (
               <div className="mt-2">
                 <FilterPanel
@@ -617,6 +744,47 @@ export default function Explorer() {
                 />
               </div>
             )}
+
+            {/* Panneau MeSH compact */}
+            {showMeshPanel && (
+              <div className="mt-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700  overflow-hidden animate-in slide-in-from-top-2">
+                <div className="p-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                  <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2 text-sm">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                    MeSH optimisé
+                  </h3>
+                  <button
+                    onClick={() => setShowMeshPanel(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="p-3">
+                  {loadingMesh ? (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                    </div>
+                  ) : generatedQuery ? (
+                    <div>
+                      <pre className="bg-slate-50 dark:bg-slate-700 p-3 rounded text-xs overflow-x-auto text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+                        {generatedQuery}
+                      </pre>
+                      <button
+                        onClick={applyGeneratedQuery}
+                        className="mt-2 w-full px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-xs"
+                      >
+                        Appliquer
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-center text-slate-500 py-2 text-sm">
+                      Aucune optimisation trouvée.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -625,11 +793,13 @@ export default function Explorer() {
       {(hasSearched || view === 'bookmarks') && (
         <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col md:flex-row items-start gap-6 relative">
           {/* Colonne des résultats / favoris */}
-          <div className={`flex-1 transition-all duration-500 ${
-            selectedArticle
-              ? 'w-full md:w-1/2 lg:w-3/5 opacity-50 md:opacity-100 md:pointer-events-auto pointer-events-none md:pointer-events-auto'
-              : 'w-full'
-          }`}>
+          <div
+            className={`flex-1 transition-all duration-500 ${
+              selectedArticle
+                ? 'w-full md:w-1/2 lg:w-3/5 opacity-50 md:opacity-100 md:pointer-events-auto pointer-events-none md:pointer-events-auto'
+                : 'w-full'
+            }`}
+          >
             {/* MODE RECHERCHE */}
             {view === 'search' && (
               <>
@@ -667,8 +837,8 @@ export default function Explorer() {
                   <div role="status" aria-label="Chargement en cours" className="space-y-4 mt-4">
                     {[1, 2, 3].map(i => (
                       <div key={i} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 animate-pulse">
-                        <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-3"></div>
-                        <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2"></div>
+                        <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-3" />
+                        <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2" />
                       </div>
                     ))}
                   </div>
@@ -696,7 +866,7 @@ export default function Explorer() {
                       aria-label="Page précédente"
                       onClick={() => setPage(p => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="p-3 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                      className="p-3 rounded-full bg-white dark:bg-slate-800  border border-slate-200 dark:border-slate-700 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                     >
                       <ChevronLeft className="w-5 h-5" />
                     </button>
@@ -706,7 +876,7 @@ export default function Explorer() {
                     <button
                       aria-label="Page suivante"
                       onClick={() => setPage(p => p + 1)}
-                      className="p-3 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                      className="p-3 rounded-full bg-white dark:bg-slate-800  border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                     >
                       <ChevronRight className="w-5 h-5" />
                     </button>
@@ -715,12 +885,12 @@ export default function Explorer() {
               </>
             )}
 
-            {/* MODE FAVORIS (implémentation complète) */}
+            {/* MODE FAVORIS (inchangé) */}
             {view === 'bookmarks' && (
               <div className="animate-in slide-in-from-right-4 duration-300">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    <BookmarkCheck className="w-6 h-6" />
+                    <BookmarkCheck className="w-6 h-6 text-amber-500" />
                     Articles sauvegardés ({bookmarks.length})
                   </h2>
                   {savedArticles.length > 0 && (
@@ -765,12 +935,12 @@ export default function Explorer() {
             )}
           </div>
 
-          {/* PANEL LATÉRAL (DÉTAIL DE L'ARTICLE) */}
+          {/* PANEL LATÉRAL (DÉTAIL DE L'ARTICLE) - INCHANGÉ */}
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Détails de l'article"
-            className={`fixed inset-y-0 right-0 w-full md:w-[480px] lg:w-[600px] bg-white dark:bg-[#0F172A] shadow-2xl z-40 transform transition-transform duration-500 ease-out border-l border-slate-200 dark:border-slate-700 flex flex-col ${
+            className={`fixed inset-y-0 right-0 w-full md:w-[480px] lg:w-[600px] bg-white dark:bg-[#0F172A]  z-40 transform transition-transform duration-500 ease-out border-l border-slate-200 dark:border-slate-700 flex flex-col ${
               selectedArticle ? 'translate-x-0' : 'translate-x-full'
             }`}
           >
@@ -788,7 +958,7 @@ export default function Explorer() {
                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
                     >
                       {bookmarks.includes(selectedArticle.pmid) ? (
-                        <BookmarkCheck className="w-5 h-5" />
+                        <BookmarkCheck className="w-5 h-5 text-amber-500" />
                       ) : (
                         <Bookmark className="w-5 h-5 text-slate-400" />
                       )}
@@ -832,7 +1002,10 @@ export default function Explorer() {
                     <Quote className="absolute top-4 left-4 w-8 h-8 text-indigo-200 dark:text-indigo-900/50 opacity-50" />
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3 relative z-10">Résumé</h3>
                     <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-sm md:text-base relative z-10">
-                      {abstractLoading ? 'Chargement du résumé...' : fullAbstract || 'Le résumé n\'est pas disponible dans l\'aperçu rapide. Cliquez sur le bouton ci-dessous pour consulter l\'article complet sur PubMed.'}
+                      {abstractLoading
+                        ? 'Chargement du résumé...'
+                        : fullAbstract ||
+                          'Le résumé n\'est pas disponible dans l\'aperçu rapide. Cliquez sur le bouton ci-dessous pour consulter l\'article complet sur PubMed.'}
                     </p>
                   </div>
 
@@ -869,7 +1042,7 @@ export default function Explorer() {
                       target="_blank"
                       rel="noreferrer"
                       aria-label="Lire l'article complet sur PubMed"
-                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20"
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors "
                     >
                       Lire sur PubMed
                       <ArrowRight className="w-4 h-4" />
