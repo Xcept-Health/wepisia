@@ -7,7 +7,7 @@ import {
   CirclePercent, SquarePercent, BetweenHorizontalStart, 
   BetweenVerticalEnd, AlignVerticalDistributeCenter,
   AlignHorizontalDistributeCenter, ChartPie, Link as LinkIcon,
-  AlignHorizontalSpaceAround, TestTubes, Shrink,
+  AlignHorizontalSpaceAround, Globe,
   ChartBarStacked, UnfoldHorizontal, Shuffle, Dices,
   MapPinHouse, Biohazard, HeartHandshake, Moon, Sun,
   ChevronRight, Code, UsersRound, ChevronsLeft
@@ -98,20 +98,17 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       id: 'puissance',
       title: 'Puissance',
       items: [
-        { id: 'cohort_rct_power', label: 'Cohorte RCT', icon: Users, href: '/biostatistics/cohort_rct_power' },
-        { id: 'clinical_trial', label: 'Essai Cliniques', icon: TestTubes, href: '/biostatistics/clinical_trial' },
-        { id: 'case_control', label: 'Coupe X', icon: Shrink, href: '/biostatistics/case_control' },
-        { id: 'mean_difference_power', label: 'Différence Moyenne', icon: ChartBarStacked, href: '/biostatistics/mean_difference_power' },
-        { id: 'matched_case_power', label: 'Cas-Témoins Appariés', icon: UnfoldHorizontal, href: '/biostatistics/matched_case_power' },
-      ]
-    },
-    {
-      id: 'autres',
-      title: 'Autres',
-      items: [
         { id: 'random_numbers', label: 'Nombres Aléatoires', icon: Dices, href: '/biostatistics/random_numbers' },
       ]
     },
+    {
+      id: 'Recherches',
+      title: 'Recherches',
+      items: [
+        { id: 'Explorer', label: 'Explorer', icon: Globe, href: '/explorer/search' },
+      ]
+    },
+
     {
       id: 'geospatial',
       title: 'GeoSpatial',
