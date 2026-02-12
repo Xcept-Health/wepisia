@@ -1,980 +1,867 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  ChevronRight,
   Calculator,
-  Trash2,
-  Info,
   BarChart3,
   Copy,
-  Download,
-  X,
+  FileDown,
   HelpCircle,
-  ChevronRight,
-  Home,
-  Edit,
-  TrendingUp,
-  Target,
-  AlertCircle,
-  BookOpen,
-  Shield,
-  CheckCircle,
-  FileText,
-  Database,
-  GitCompare,
-  BarChart,
-  TrendingDown,
-  Activity,
-  DivideCircle,
-  PieChart
+  X,
+  Trash2,
+  Info,
+  RotateCcw,
+  ArrowRight,
+  ChevronDown,
+  Layers,
+  Hash,
+  Gauge,
+  Sigma,
+  Divide,
+  TrendingUp
 } from 'lucide-react';
+import { Link } from 'wouter';
+import { toast } from 'sonner';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
-interface TTestResults {
-  tValue: number;
-  df: number;
-  pValue: number;
-  lowerCI: number;
-  upperCI: number;
-  alpha: number;
-}
-
-export default function TTestCalculator() {
-  const [testType, setTestType] = useState<string>('independent');
-  const [mean1, setMean1] = useState<string>('');
-  const [stddev1, setStddev1] = useState<string>('');
+export default function TwoSampleTTest() {
+  // Groupe 1
   const [n1, setN1] = useState<string>('');
-  const [mean2, setMean2] = useState<string>('');
-  const [stddev2, setStddev2] = useState<string>('');
+  const [mean1, setMean1] = useState<string>('');
+  const [sd1, setSd1] = useState<string>('');
+  // Groupe 2
   const [n2, setN2] = useState<string>('');
-  const [differences, setDifferences] = useState<string>('');
-  const [varianceAssumption, setVarianceAssumption] = useState<string>('equal');
+  const [mean2, setMean2] = useState<string>('');
+  const [sd2, setSd2] = useState<string>('');
+  // Niveau de confiance
   const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
-  const [hypothesisType, setHypothesisType] = useState<string>('two-tailed');
-  const [results, setResults] = useState<TTestResults | null>(null);
-  const [interpretationText, setInterpretationText] = useState<string>('');
+
+  const [results, setResults] = useState<any>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showMethodDetails, setShowMethodDetails] = useState<boolean>(false);
+  const [isJStatReady, setIsJStatReady] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load external scripts
+  // Chargement des scripts externes
   useEffect(() => {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
-        const jstatScript = document.createElement('script');
-        jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@1.9.4/dist/jstat.min.js';
-        document.body.appendChild(jstatScript);
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
+        script.onload = () => {
+          setIsJStatReady(true);
+        };
+        document.body.appendChild(script);
+      } else {
+        setIsJStatReady(true);
       }
     };
     loadScripts();
   }, []);
 
-  const updateFormState = (): boolean => {
-    let hasValidInput = false;
-
-    if (testType === 'independent') {
-      const m1 = parseFloat(mean1);
-      const s1 = parseFloat(stddev1);
-      const nn1 = parseInt(n1);
-      const m2 = parseFloat(mean2);
-      const s2 = parseFloat(stddev2);
-      const nn2 = parseInt(n2);
-      hasValidInput = !isNaN(m1) && !isNaN(s1) && s1 >= 0 && !isNaN(nn1) && nn1 >= 2 &&
-                      !isNaN(m2) && !isNaN(s2) && s2 >= 0 && !isNaN(nn2) && nn2 >= 2;
-    } else {
-      const diffs = differences.split(/[,\s]+/).filter(n => n).map(Number);
-      hasValidInput = diffs.length >= 2 && !diffs.some(isNaN);
-    }
-
-    return hasValidInput;
+  // Formatage des nombres
+  const formatNumber = (num: number, decimals: number = 4): string => {
+    if (num === Infinity || num === -Infinity) return '∞';
+    if (isNaN(num) || !isFinite(num)) return '-';
+    return num.toFixed(decimals);
   };
 
-  const calculateTTest = (e?: FormEvent) => {
-    if (e) e.preventDefault();
-    
-    if (!updateFormState()) {
-      alert('Veuillez remplir tous les champs requis avec des valeurs valides');
+  // Calcul principal – conforme à OpenEpi T-Test
+  const calculateTTest = useCallback(() => {
+    const a_n = parseFloat(n1) || 0;
+    const a_mean = parseFloat(mean1) || 0;
+    const a_sd = parseFloat(sd1) || 0;
+    const b_n = parseFloat(n2) || 0;
+    const b_mean = parseFloat(mean2) || 0;
+    const b_sd = parseFloat(sd2) || 0;
+    const conf = parseInt(confidenceLevel);
+    const alpha = 1 - conf / 100;
+
+    // Validations
+    if (a_n < 2 || b_n < 2 || a_sd <= 0 || b_sd <= 0) {
+      setResults(null);
       return;
     }
 
-    const conf = parseInt(confidenceLevel);
-    const alpha = (100 - conf) / 100;
+    // Erreurs-types
+    const se1 = a_sd / Math.sqrt(a_n);
+    const se2 = b_sd / Math.sqrt(b_n);
 
-    let tValue: number, df: number, pValue: number, lowerCI: number, upperCI: number;
-    let standardError: number = 0;
+    // Différence des moyennes
+    const meanDiff = a_mean - b_mean;
 
-    if (testType === 'independent') {
-      const m1 = parseFloat(mean1);
-      const s1 = parseFloat(stddev1);
-      const nn1 = parseInt(n1);
-      const m2 = parseFloat(mean2);
-      const s2 = parseFloat(stddev2);
-      const nn2 = parseInt(n2);
+    // --- Test t pour variances égales ---
+    const pooledVar = ((a_n - 1) * a_sd * a_sd + (b_n - 1) * b_sd * b_sd) / (a_n + b_n - 2);
+    const sePooled = Math.sqrt(pooledVar * (1 / a_n + 1 / b_n));
+    const tEqual = meanDiff / sePooled;
+    const dfEqual = a_n + b_n - 2;
 
-      if (isNaN(m1) || isNaN(s1) || s1 < 0 || isNaN(nn1) || nn1 < 2 ||
-          isNaN(m2) || isNaN(s2) || s2 < 0 || isNaN(nn2) || nn2 < 2) {
-        alert('Veuillez entrer des valeurs numériques valides et non négatives pour les écarts-types, et des tailles d\'échantillon d\'au moins 2.');
-        return;
-      }
-
-      if (varianceAssumption === 'equal') {
-        const pooledVariance = ((nn1 - 1) * Math.pow(s1, 2) + (nn2 - 1) * Math.pow(s2, 2)) / (nn1 + nn2 - 2);
-        standardError = Math.sqrt(pooledVariance * (1 / nn1 + 1 / nn2));
-        tValue = (m1 - m2) / standardError;
-        df = nn1 + nn2 - 2;
-      } else {
-        const se1_sq = Math.pow(s1, 2) / nn1;
-        const se2_sq = Math.pow(s2, 2) / nn2;
-        standardError = Math.sqrt(se1_sq + se2_sq);
-        tValue = (m1 - m2) / standardError;
-        df = Math.pow(se1_sq + se2_sq, 2) / (Math.pow(se1_sq, 2) / (nn1 - 1) + Math.pow(se2_sq, 2) / (nn2 - 1));
-      }
-
-      const tCritical = (window as any).jStat.studentt.inv(1 - alpha / 2, df);
-      const marginOfError = tCritical * standardError;
-      lowerCI = (m1 - m2) - marginOfError;
-      upperCI = (m1 - m2) + marginOfError;
-
+    let pEqual = 0;
+    let tCritEqual = 0;
+    if (isJStatReady && (window as any).jStat?.studentt?.cdf) {
+      pEqual = 2 * (1 - (window as any).jStat.studentt.cdf(Math.abs(tEqual), dfEqual));
+      tCritEqual = (window as any).jStat.studentt.inv(1 - alpha / 2, dfEqual);
     } else {
-      const diffs = differences.split(/[,\s]+/).filter(n => n).map(Number);
-
-      if (diffs.length < 2 || diffs.some(isNaN)) {
-        alert('Veuillez entrer au moins deux différences numériques valides.');
-        return;
-      }
-
-      const n_diff = diffs.length;
-      const mean_diff = (window as any).jStat.mean(diffs);
-      const stddev_diff = (window as any).jStat.stdev(diffs, true);
-      standardError = stddev_diff / Math.sqrt(n_diff);
-      tValue = mean_diff / standardError;
-      df = n_diff - 1;
-
-      const tCritical = (window as any).jStat.studentt.inv(1 - alpha / 2, df);
-      const marginOfError = tCritical * standardError;
-      lowerCI = mean_diff - marginOfError;
-      upperCI = mean_diff + marginOfError;
+      pEqual = 0.05; // fallback
+      tCritEqual = conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
     }
 
-    if (hypothesisType === 'two-tailed') {
-      pValue = 2 * (1 - (window as any).jStat.studentt.cdf(Math.abs(tValue), df));
-    } else if (hypothesisType === 'greater') {
-      pValue = 1 - (window as any).jStat.studentt.cdf(tValue, df);
+    const meEqual = tCritEqual * sePooled;
+    const ciEqualLower = meanDiff - meEqual;
+    const ciEqualUpper = meanDiff + meEqual;
+
+    // --- Test t pour variances inégales (Welch) ---
+    const seWelch = Math.sqrt(se1 * se1 + se2 * se2);
+    const tUnequal = meanDiff / seWelch;
+    const numerator = Math.pow(se1 * se1 + se2 * se2, 2);
+    const denominator = Math.pow(se1 * se1, 2) / (a_n - 1) + Math.pow(se2 * se2, 2) / (b_n - 1);
+    const dfUnequal = numerator / denominator;
+
+    let pUnequal = 0;
+    let tCritUnequal = 0;
+    if (isJStatReady && (window as any).jStat?.studentt?.cdf) {
+      pUnequal = 2 * (1 - (window as any).jStat.studentt.cdf(Math.abs(tUnequal), dfUnequal));
+      tCritUnequal = (window as any).jStat.studentt.inv(1 - alpha / 2, dfUnequal);
     } else {
-      pValue = (window as any).jStat.studentt.cdf(tValue, df);
+      pUnequal = 0.05;
+      tCritUnequal = tCritEqual;
     }
 
-    setResults({ tValue, df, pValue, lowerCI, upperCI, alpha });
+    const meUnequal = tCritUnequal * seWelch;
+    const ciUnequalLower = meanDiff - meUnequal;
+    const ciUnequalUpper = meanDiff + meUnequal;
 
-    const interp = pValue < alpha ?
-      `La valeur p (${pValue.toFixed(6)}) est inférieure au niveau de signification (α = ${alpha}), ce qui indique une différence statistiquement significative entre les moyennes des groupes.` :
-      `La valeur p (${pValue.toFixed(6)}) est supérieure au niveau de signification (α = ${alpha}), ce qui indique qu'il n'y a pas de différence statistiquement significative entre les moyennes des groupes.`;
-    setInterpretationText(interp);
-  };
+    // --- Test d'égalité des variances (F de Hartley) ---
+    let fValue = 0, dfNum = 0, dfDen = 0, pF = 0;
+    if (a_sd > b_sd) {
+      fValue = (a_sd * a_sd) / (b_sd * b_sd);
+      dfNum = a_n - 1;
+      dfDen = b_n - 1;
+    } else {
+      fValue = (b_sd * b_sd) / (a_sd * a_sd);
+      dfNum = b_n - 1;
+      dfDen = a_n - 1;
+    }
 
-  // Auto calculate if valid
+    if (isJStatReady && (window as any).jStat?.fft?.cdf) {
+      const pF_one = (window as any).jStat.fft.cdf(fValue, dfNum, dfDen);
+      pF = 2 * Math.min(pF_one, 1 - pF_one);
+    } else {
+      pF = 0.05;
+    }
+
+    setResults({
+      // Données saisies
+      n1: a_n, mean1: a_mean, sd1: a_sd, se1,
+      n2: b_n, mean2: b_mean, sd2: b_sd, se2,
+      meanDiff,
+      conf,
+      // Variance égale
+      tEqual, dfEqual, pEqual, ciEqualLower, ciEqualUpper,
+      // Variance inégale
+      tUnequal, dfUnequal, pUnequal, ciUnequalLower, ciUnequalUpper,
+      // Test F
+      fValue, dfNum, dfDen, pF,
+      isJStatReady
+    });
+  }, [n1, mean1, sd1, n2, mean2, sd2, confidenceLevel, isJStatReady]);
+
+  // Recalcul automatique
   useEffect(() => {
-    if (updateFormState() && (window as any).jStat) {
-      calculateTTest();
-    }
-  }, [testType, mean1, stddev1, n1, mean2, stddev2, n2, differences, varianceAssumption, confidenceLevel, hypothesisType]);
+    calculateTTest();
+  }, [calculateTTest]);
 
-  // Animation
-  useEffect(() => {
-    if (results && resultsRef.current) {
-      const children = resultsRef.current.children;
-      Array.from(children).forEach((el, index) => {
-        setTimeout(() => {
-          el.classList.add('opacity-100', 'translate-y-0');
-          el.classList.remove('opacity-0', 'translate-y-5');
-        }, index * 150);
-      });
-    }
-  }, [results]);
-
-  const clearForm = () => {
-    setTestType('independent');
-    setMean1('');
-    setStddev1('');
+  // Handlers
+  const clear = () => {
     setN1('');
-    setMean2('');
-    setStddev2('');
+    setMean1('');
+    setSd1('');
     setN2('');
-    setDifferences('');
-    setVarianceAssumption('equal');
+    setMean2('');
+    setSd2('');
     setConfidenceLevel('95');
-    setHypothesisType('two-tailed');
     setResults(null);
-    setInterpretationText('');
+    toast.info('Champs réinitialisés');
   };
 
   const loadExample = () => {
-    if (testType === 'independent') {
-      setMean1('50');
-      setStddev1('10');
-      setN1('30');
-      setMean2('55');
-      setStddev2('12');
-      setN2('25');
-    } else {
-      setDifferences('2.5, -1.2, 0.8, 3.1, -0.5');
-    }
+    setN1('7');
+    setMean1('11.57');
+    setSd1('8.81');
+    setN2('18');
+    setMean2('7.44');
+    setSd2('3.698');
+    toast.success('Exemple chargé (données OpenEpi)');
   };
 
   const copyResults = async () => {
     if (!results) return;
-    const text = `Test t - Résultats:
-Valeur t: ${results.tValue.toFixed(4)}
-Degrés de liberté: ${results.df.toFixed(2)}
-Valeur p: ${results.pValue.toFixed(6)}
-Intervalle de confiance: [${results.lowerCI.toFixed(4)}, ${results.upperCI.toFixed(4)}]
-Niveau de confiance: ${(100 - results.alpha * 100)}%
-Interprétation: ${interpretationText}`;
-    
+    const text = `Test t de deux échantillons indépendants – OpenEpi
+Groupe 1 : n=${results.n1}, moyenne=${formatNumber(results.mean1)}, écart-type=${formatNumber(results.sd1)}
+Groupe 2 : n=${results.n2}, moyenne=${formatNumber(results.mean2)}, écart-type=${formatNumber(results.sd2)}
+Différence des moyennes : ${formatNumber(results.meanDiff)}
+
+Variance égale :
+  t = ${formatNumber(results.tEqual)}, ddl = ${results.dfEqual}, p = ${formatNumber(results.pEqual)}
+  IC ${results.conf}% : [${formatNumber(results.ciEqualLower)} – ${formatNumber(results.ciEqualUpper)}]
+
+Variance inégale (Welch) :
+  t = ${formatNumber(results.tUnequal)}, ddl = ${formatNumber(results.dfUnequal, 2)}, p = ${formatNumber(results.pUnequal)}
+  IC ${results.conf}% : [${formatNumber(results.ciUnequalLower)} – ${formatNumber(results.ciUnequalUpper)}]
+
+Test d’égalité des variances (F de Hartley) :
+  F = ${formatNumber(results.fValue)}, ddl = ${results.dfNum}, ${results.dfDen}, p = ${formatNumber(results.pF)}`;
     try {
       await navigator.clipboard.writeText(text);
-      const btn = document.getElementById('copy-btn');
-      if (btn) {
-        const original = btn.innerHTML;
-        btn.innerHTML = `<CheckCircle className="w-5 h-5" />`;
-        setTimeout(() => {
-          btn.innerHTML = original;
-        }, 2000);
-      }
-    } catch (err) {
-      console.error('Échec de la copie:', err);
+      toast.success('Résultats copiés');
+    } catch {
+      toast.error('Échec de la copie');
+    }
+  };
+
+  const exportPDF = () => {
+    if (!results) {
+      toast.error('Veuillez d’abord effectuer un calcul');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const colorPrimary: [number, number, number] = [59, 130, 246];
+      const colorSlate = {
+        50: [248, 250, 252] as [number, number, number],
+        100: [241, 245, 249] as [number, number, number],
+        200: [226, 232, 240] as [number, number, number],
+        500: [100, 116, 139] as [number, number, number],
+        700: [51, 65, 85] as [number, number, number],
+        900: [15, 23, 42] as [number, number, number],
+      };
+
+      // En-tête
+      doc.setFillColor(...colorSlate[50]);
+      doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport du test t de deux échantillons", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
+      doc.text('TwoSampleTTest – OpenEpi', 190, 32, { align: 'right' });
+
+      // Données saisies
+      let y = 55;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Données analysées', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`Groupe 1 : n = ${results.n1}, moyenne = ${formatNumber(results.mean1)}, écart-type = ${formatNumber(results.sd1)}`, 25, y); y += 6;
+      doc.text(`Groupe 2 : n = ${results.n2}, moyenne = ${formatNumber(results.mean2)}, écart-type = ${formatNumber(results.sd2)}`, 25, y); y += 6;
+      doc.text(`Niveau de confiance : ${results.conf}%`, 25, y); y += 12;
+
+      // Carte de la différence moyenne
+      doc.setFillColor(236, 253, 245);
+      doc.setDrawColor(5, 150, 105);
+      doc.roundedRect(20, y, 170, 35, 3, 3, 'FD');
+      doc.setTextColor(5, 150, 105);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('DIFFÉRENCE DES MOYENNES', 105, y + 8, { align: 'center' });
+      doc.setFontSize(22);
+      doc.text(formatNumber(results.meanDiff), 105, y + 24, { align: 'center' });
+      y += 45;
+
+      // Tableau principal
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(`Résultats du test t – IC ${results.conf}%`, 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const tTestBody = [
+        ['Variance égale', formatNumber(results.tEqual), results.dfEqual.toString(), formatNumber(results.pEqual), formatNumber(results.meanDiff), formatNumber(results.ciEqualLower), formatNumber(results.ciEqualUpper)],
+        ['Variance inégale', formatNumber(results.tUnequal), formatNumber(results.dfUnequal, 2), formatNumber(results.pUnequal), formatNumber(results.meanDiff), formatNumber(results.ciUnequalLower), formatNumber(results.ciUnequalUpper)],
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Méthode', 'Statistique t', 'ddl', 'valeur-p', 'Différence', 'Limite inf.', 'Limite sup.']],
+        body: tTestBody,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 30, fontStyle: 'bold' },
+          1: { cellWidth: 25, halign: 'center' },
+          2: { cellWidth: 20, halign: 'center' },
+          3: { cellWidth: 25, halign: 'center' },
+          4: { cellWidth: 25, halign: 'center' },
+          5: { cellWidth: 25, halign: 'center' },
+          6: { cellWidth: 25, halign: 'center' },
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 15;
+
+      // Test d'égalité des variances
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text("Test d'égalité des variances (F de Hartley)", 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const fTestBody = [
+        [formatNumber(results.fValue), `${results.dfNum}, ${results.dfDen}`, formatNumber(results.pF)],
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Statistique F', 'ddl (num., dénom.)', 'valeur-p']],
+        body: fTestBody,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 40, halign: 'center' },
+          1: { cellWidth: 50, halign: 'center' },
+          2: { cellWidth: 40, halign: 'center' },
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 3, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 15;
+
+      // Interprétation
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Interprétation', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+
+      let interpretation = `À ${results.conf}% de confiance, la différence des moyennes est de ${formatNumber(results.meanDiff)}.\n`;
+      interpretation += `• Test de Student (variances égales) : t = ${formatNumber(results.tEqual)}, ddl = ${results.dfEqual}, p = ${formatNumber(results.pEqual)}. ${results.pEqual < 0.05 ? 'Différence significative.' : 'Non significatif.'}\n`;
+      interpretation += `• Test de Welch (variances inégales) : t = ${formatNumber(results.tUnequal)}, ddl = ${formatNumber(results.dfUnequal, 2)}, p = ${formatNumber(results.pUnequal)}. ${results.pUnequal < 0.05 ? 'Différence significative.' : 'Non significatif.'}\n`;
+      interpretation += `• Test d’égalité des variances : F = ${formatNumber(results.fValue)}, ddl = ${results.dfNum}, ${results.dfDen}, p = ${formatNumber(results.pF)}. ${results.pF < 0.05 ? 'Les variances sont significativement différentes.' : 'Les variances sont homogènes.'}`;
+
+      const splitText = doc.splitTextToSize(interpretation, 170);
+      doc.text(splitText, 20, y);
+      y += splitText.length * 5 + 10;
+
+      // Références
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('Test t de Student (égalité des variances) et test t de Welch (Satterthwaite).', 20, y); y += 4;
+      doc.text("Test d'égalité des variances : F de Hartley (ratio des variances).", 20, y); y += 4;
+      doc.text('Conforme à OpenEpi – Module Two Sample T-Test.', 20, y); y += 4;
+
+      // Pied de page
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('TwoSampleTTest – conforme OpenEpi', 20, footerY + 5);
+      doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
+
+      doc.save(`TwoSampleTTest_n1_${results.n1}_n2_${results.n2}.pdf`);
+      toast.success('Rapport PDF exporté');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erreur PDF');
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb */}
-        <nav className="flex mb-4" aria-label="Breadcrumb">
-          <ol className="flex items-center space-x-2 text-sm">
-            <li>
-              <a href="/" className="flex items-center text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                <Home className="w-4 h-4 mr-1" />
-                Accueil
-              </a>
-            </li>
-            <li>
-              <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-            </li>
-            <li>
-              <a href="/biostatistics/continuous" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                Variables continues
-              </a>
-            </li>
-            <li>
-              <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-            </li>
-            <li>
-              <span className="text-gray-900 dark:text-gray-100 font-medium">Test t</span>
-            </li>
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">TwoSampleTTest</span></li>
           </ol>
         </nav>
 
         {/* Header */}
-        <div className="flex items-center space-x-4 mb-8">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-            <BarChart3 className="w-7 h-7 text-white" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Divide className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                Test t de deux échantillons indépendants
+              </h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+                Comparaison de deux moyennes – Test t de Student, test de Welch, test d’égalité des variances (OpenEpi)
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Analyse par Test t
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Comparaison de moyennes entre deux groupes (indépendants ou appariés)
-            </p>
-          </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          {/* Input Panel */}
-          <div className="space-y-6">
-            {/* Configuration Card */}
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-slate-700/50 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                  <Edit className="w-5 h-5 mr-2 text-blue-500" />
-                  Configuration du test
-                </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+              </h2>
+              <div className="space-y-6">
+                {/* Groupe 1 */}
+                <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl">
+                  <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-blue-500" /> Groupe 1
+                  </h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Taille (n₁)</label>
+                      <input
+                        type="number"
+                        value={n1}
+                        onChange={(e) => setN1(e.target.value)}
+                        min="2"
+                        step="1"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="7"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Moyenne</label>
+                      <input
+                        type="number"
+                        value={mean1}
+                        onChange={(e) => setMean1(e.target.value)}
+                        step="any"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="11.57"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Écart-type</label>
+                      <input
+                        type="number"
+                        value={sd1}
+                        onChange={(e) => setSd1(e.target.value)}
+                        min="0"
+                        step="any"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="8.81"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Groupe 2 */}
+                <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl">
+                  <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-indigo-500" /> Groupe 2
+                  </h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Taille (n₂)</label>
+                      <input
+                        type="number"
+                        value={n2}
+                        onChange={(e) => setN2(e.target.value)}
+                        min="2"
+                        step="1"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="18"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Moyenne</label>
+                      <input
+                        type="number"
+                        value={mean2}
+                        onChange={(e) => setMean2(e.target.value)}
+                        step="any"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="7.44"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Écart-type</label>
+                      <input
+                        type="number"
+                        value={sd2}
+                        onChange={(e) => setSd2(e.target.value)}
+                        min="0"
+                        step="any"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="3.698"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    Intervalle de confiance bilatéral
+                  </label>
+                  <select
+                    value={confidenceLevel}
+                    onChange={(e) => setConfidenceLevel(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
+                  >
+                    <option value="90">90%</option>
+                    <option value="95">95% (Standard)</option>
+                    <option value="99">99%</option>
+                  </select>
+                </div>
               </div>
-              <div className="p-6">
-                <form id="t-test-form" className="space-y-6" onSubmit={calculateTTest}>
-                  {/* Test Type Selection */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setTestType('independent')}
-                      className={`p-4 rounded-xl border transition-all duration-300 ${
-                        testType === 'independent'
-                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                          : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-500'
-                      }`}
-                    >
-                      <div className="flex items-center justify-center mb-2">
-                        <Database className="w-5 h-5" />
-                      </div>
-                      <div className="text-sm font-semibold">Échantillons indépendants</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTestType('paired')}
-                      className={`p-4 rounded-xl border transition-all duration-300 ${
-                        testType === 'paired'
-                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                          : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-500'
-                      }`}
-                    >
-                      <div className="flex items-center justify-center mb-2">
-                        <GitCompare className="w-5 h-5" />
-                      </div>
-                      <div className="text-sm font-semibold">Échantillons appariés</div>
-                    </button>
-                  </div>
 
-                  {/* Independent Samples Input */}
-                  {testType === 'independent' && (
-                    <div className="space-y-6">
-                      {/* Group 1 */}
-                      <div className="bg-gradient-to-r from-blue-50/50 to-blue-100/50 dark:from-blue-900/10 dark:to-blue-800/10 rounded-xl p-5 border border-blue-200 dark:border-blue-700/30">
-                        <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-300 mb-4 flex items-center">
-                          <Target className="w-5 h-5 mr-2" />
-                          Groupe 1
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label htmlFor="mean1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Moyenne (x̄₁)
-                            </label>
-                            <input
-                              type="number"
-                              id="mean1"
-                              value={mean1}
-                              onChange={(e) => setMean1(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              step="any"
-                              required
-                              placeholder="50.0"
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="stddev1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Écart-type (s₁)
-                            </label>
-                            <input
-                              type="number"
-                              id="stddev1"
-                              value={stddev1}
-                              onChange={(e) => setStddev1(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              min="0"
-                              step="any"
-                              required
-                              placeholder="10.0"
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="n1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Taille (n₁)
-                            </label>
-                            <input
-                              type="number"
-                              id="n1"
-                              value={n1}
-                              onChange={(e) => setN1(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              min="2"
-                              step="1"
-                              required
-                              placeholder="30"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Group 2 */}
-                      <div className="bg-gradient-to-r from-purple-50/50 to-purple-100/50 dark:from-purple-900/10 dark:to-purple-800/10 rounded-xl p-5 border border-purple-200 dark:border-purple-700/30">
-                        <h3 className="text-lg font-semibold text-purple-900 dark:text-purple-300 mb-4 flex items-center">
-                          <Target className="w-5 h-5 mr-2" />
-                          Groupe 2
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label htmlFor="mean2" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Moyenne (x̄₂)
-                            </label>
-                            <input
-                              type="number"
-                              id="mean2"
-                              value={mean2}
-                              onChange={(e) => setMean2(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              step="any"
-                              required
-                              placeholder="55.0"
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="stddev2" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Écart-type (s₂)
-                            </label>
-                            <input
-                              type="number"
-                              id="stddev2"
-                              value={stddev2}
-                              onChange={(e) => setStddev2(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              min="0"
-                              step="any"
-                              required
-                              placeholder="12.0"
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="n2" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Taille (n₂)
-                            </label>
-                            <input
-                              type="number"
-                              id="n2"
-                              value={n2}
-                              onChange={(e) => setN2(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              min="2"
-                              step="1"
-                              required
-                              placeholder="25"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Variance Assumption */}
-                      <div>
-                        <label htmlFor="variance-assumption" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                          Hypothèse sur les variances
-                        </label>
-                        <div className="grid grid-cols-2 gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setVarianceAssumption('equal')}
-                            className={`p-3 rounded-lg border transition-all duration-300 ${
-                              varianceAssumption === 'equal'
-                                ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
-                                : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:border-green-400 dark:hover:border-green-500'
-                            }`}
-                          >
-                            <div className="text-sm font-semibold">Variances égales</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Test t standard</div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setVarianceAssumption('unequal')}
-                            className={`p-3 rounded-lg border transition-all duration-300 ${
-                              varianceAssumption === 'unequal'
-                                ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700 text-yellow-700 dark:text-yellow-300'
-                                : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:border-yellow-400 dark:hover:border-yellow-500'
-                            }`}
-                          >
-                            <div className="text-sm font-semibold">Variances inégales</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Test t de Welch</div>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Paired Samples Input */}
-                  {testType === 'paired' && (
-                    <div className="bg-gradient-to-r from-emerald-50/50 to-emerald-100/50 dark:from-emerald-900/10 dark:to-emerald-800/10 rounded-xl p-5 border border-emerald-200 dark:border-emerald-700/30">
-                      <h3 className="text-lg font-semibold text-emerald-900 dark:text-emerald-300 mb-4 flex items-center">
-                        <GitCompare className="w-5 h-5 mr-2" />
-                        Différences appariées
-                      </h3>
-                      <div>
-                        <label htmlFor="differences" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                          Entrez les différences (séparées par des virgules)
-                        </label>
-                        <textarea
-                          id="differences"
-                          rows={4}
-                          value={differences}
-                          onChange={(e) => setDifferences(e.target.value)}
-                          className="w-full px-3 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                          required
-                          placeholder="Exemple : 2.5, -1.2, 0.8, 3.1, -0.5, 1.7"
-                        />
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                          Entrez les différences entre les mesures appariées (mesure2 - mesure1)
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Confidence Level and Hypothesis Type */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="confidence-level" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                        Niveau de confiance
-                      </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {['90', '95', '99'].map((level) => (
-                          <button
-                            key={level}
-                            type="button"
-                            onClick={() => setConfidenceLevel(level)}
-                            className={`py-2 rounded-lg border transition-all duration-300 ${
-                              confidenceLevel === level
-                                ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                                : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-500'
-                            }`}
-                          >
-                            <div className="text-sm font-semibold">{level}%</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label htmlFor="hypothesis-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                        Type d'hypothèse
-                      </label>
-                      <div className="space-y-2">
-                        {[
-                          { value: 'two-tailed', label: 'Bilatéral (μ₁ ≠ μ₂)', icon: TrendingUp },
-                          { value: 'greater', label: 'Unilatéral (μ₁ > μ₂)', icon: TrendingUp },
-                          { value: 'less', label: 'Unilatéral (μ₁ < μ₂)', icon: TrendingDown }
-                        ].map(({ value, label, icon: Icon }) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setHypothesisType(value)}
-                            className={`w-full px-3 py-2 rounded-lg border flex items-center justify-between transition-all duration-300 ${
-                              hypothesisType === value
-                                ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300'
-                                : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:border-purple-400 dark:hover:border-purple-500'
-                            }`}
-                          >
-                            <div className="text-sm font-medium">{label}</div>
-                            <Icon className="w-4 h-4" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap gap-3 pt-4">
-                    <button
-                      type="submit"
-                      disabled={!updateFormState()}
-                      className="flex-1 min-w-[140px] inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg hover:shadow-xl hover:from-blue-700 hover:to-blue-800 transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Calculator className="w-4 h-4 mr-2" />
-                      Calculer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearForm}
-                      className="inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-[1.02] transition-all duration-200"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Effacer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={loadExample}
-                      className="inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-[1.02] transition-all duration-200"
-                    >
-                      <Info className="w-4 h-4 mr-2" />
-                      Exemple
-                    </button>
-                  </div>
-                </form>
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+                <button
+                  onClick={loadExample}
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Info className="w-4 h-4" /> Exemple
+                </button>
+                <button
+                  onClick={clear}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
               </div>
             </div>
 
-            {/* Contextual Help */}
-            <div className="bg-gradient-to-r from-blue-50/50 to-blue-100/50 dark:from-blue-900/10 dark:to-blue-800/10 rounded-2xl p-6 border border-blue-200 dark:border-blue-700/30">
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <Info className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
+            {/* Info complémentaire */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-2xl p-5 border border-blue-100 dark:border-blue-800/30">
+              <div className="flex items-start gap-3">
+                <Layers className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                    Guide d'utilisation
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+                    Test t de Student vs Welch
                   </h3>
-                  <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-2">
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Sélectionnez le type de test (indépendant ou apparié)
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Pour échantillons indépendants, entrez les statistiques des deux groupes
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Pour échantillons appariés, entrez les différences entre les mesures
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Choisissez le niveau de confiance et le type d'hypothèse
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Les calculs se font automatiquement lorsque les données sont valides
-                    </li>
-                  </ul>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Le test de Welch ne suppose pas l’égalité des variances et est plus robuste. Utilisez le test d’égalité des variances pour guider votre choix.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Results Panel */}
-          <div className="space-y-6">
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-slate-700/50 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <BarChart className="w-5 h-5 mr-2 text-purple-500" />
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      Résultats du test t
-                    </h2>
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier les résultats"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
                   </div>
-                  {results && (
-                    <div className="flex gap-2">
-                      <button
-                        id="copy-btn"
-                        onClick={copyResults}
-                        className="p-2.5 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all duration-200 hover:scale-105"
-                        title="Copier les résultats"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {/* PDF export functionality */}}
-                        className="p-2.5 text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 hover:scale-105 shadow-md"
-                        title="Exporter en PDF"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
-              
-              <div className="p-6">
-                {results ? (
-                  <div ref={resultsRef} className="space-y-6">
-                    {/* Main Statistics */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-700 transition-all duration-500 opacity-0 translate-y-5">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                              Valeur t
-                            </h3>
-                            <p className="text-xs text-blue-700/80 dark:text-blue-300/80">
-                              Statistique de test
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                              {results.tValue.toFixed(4)}
-                            </div>
-                            <div className={`text-xs font-medium mt-1 ${
-                              Math.abs(results.tValue) > 2 ? 'text-green-600' : 
-                              Math.abs(results.tValue) > 1 ? 'text-yellow-600' : 'text-red-600'
-                            }`}>
-                              {Math.abs(results.tValue) > 2 ? 'Élevée' : 
-                               Math.abs(results.tValue) > 1 ? 'Modérée' : 'Faible'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-5 border border-purple-200 dark:border-purple-700 transition-all duration-500 opacity-0 translate-y-5 delay-150">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-1">
-                              Degrés de liberté
-                            </h3>
-                            <p className="text-xs text-purple-700/80 dark:text-purple-300/80">
-                              Nombre de degrés
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                              {results.df.toFixed(1)}
-                            </div>
-                            <div className="text-xs text-purple-600/80 dark:text-purple-400/80 mt-1">
-                              d.f.
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 rounded-xl p-5 border border-emerald-200 dark:border-emerald-700 transition-all duration-500 opacity-0 translate-y-5 delay-300">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100 mb-1">
-                              Valeur p
-                            </h3>
-                            <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
-                              Signification statistique
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                              {results.pValue.toFixed(6)}
-                            </div>
-                            <div className={`text-xs font-medium mt-1 ${
-                              results.pValue < 0.001 ? 'text-green-600' : 
-                              results.pValue < 0.01 ? 'text-green-500' :
-                              results.pValue < 0.05 ? 'text-yellow-600' : 'text-red-600'
-                            }`}>
-                              {results.pValue < 0.001 ? 'Très significatif' : 
-                               results.pValue < 0.01 ? 'Significatif' :
-                               results.pValue < 0.05 ? 'Limite' : 'Non significatif'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-900/20 dark:to-cyan-800/20 rounded-xl p-5 border border-cyan-200 dark:border-cyan-700 transition-all duration-500 opacity-0 translate-y-5 delay-450">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-cyan-900 dark:text-cyan-100 mb-1">
-                              Niveau de confiance
-                            </h3>
-                            <p className="text-xs text-cyan-700/80 dark:text-cyan-300/80">
-                              Fiabilité de l'estimation
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-cyan-700 dark:text-cyan-300">
-                              {(100 - results.alpha * 100)}%
-                            </div>
-                            <div className="text-xs text-cyan-600/80 dark:text-cyan-400/80 mt-1">
-                              α = {results.alpha.toFixed(3)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Confidence Interval */}
-                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700/50 dark:to-slate-600/50 rounded-xl p-5 border border-gray-200/50 dark:border-slate-600/50 transition-all duration-700 opacity-0 translate-y-5 delay-600">
-                      <div className="flex items-center mb-3">
-                        <Activity className="w-5 h-5 mr-2 text-gray-600 dark:text-gray-400" />
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          Intervalle de confiance de la différence
-                        </h3>
-                      </div>
-                      <div className="text-center py-4">
-                        <div className="text-2xl font-bold text-gray-800 dark:text-gray-200">
-                          [{results.lowerCI.toFixed(4)}, {results.upperCI.toFixed(4)}]
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                          Avec {(100 - results.alpha * 100)}% de confiance, la différence réelle se situe dans cet intervalle
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Interpretation */}
-                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-700 transition-all duration-700 opacity-0 translate-y-5 delay-750">
-                      <div className="flex items-center mb-3">
-                        <BookOpen className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                        <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                          Interprétation statistique
-                        </h3>
-                      </div>
-                      <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
-                        {interpretationText}
-                      </p>
-                      <div className={`mt-3 p-3 rounded-lg ${
-                        results.pValue < results.alpha
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                          : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
-                      }`}>
-                        <div className="flex items-center">
-                          {results.pValue < results.alpha ? (
-                            <>
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              <span className="text-sm font-medium">Différence significative détectée</span>
-                            </>
-                          ) : (
-                            <>
-                              <AlertCircle className="w-4 h-4 mr-2" />
-                              <span className="text-sm font-medium">Différence non significative</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les deux groupes</p>
+                    <p className="text-slate-400 text-sm mt-2">n ≥ 2 et écart-type {'>'} 0</p>
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-600 rounded-full flex items-center justify-center shadow-lg">
-                      <BarChart3 className="w-10 h-10 text-gray-400 dark:text-gray-500" />
+                  <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    
+                       {/* Carte de la différence moyenne */}
+                       <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-5 text-center">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
+                        Différence des moyennes (groupe 1 – groupe 2)
+                      </p>
+                      <div className="text-3xl md:text-4xl font-bold text-emerald-600 dark:text-emerald-400 mb-1">
+                        {formatNumber(results.meanDiff)}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        IC {results.conf}% (var. égale) : [{formatNumber(results.ciEqualLower)} – {formatNumber(results.ciEqualUpper)}]
+                      </p>
                     </div>
-                    <p className="text-gray-500 dark:text-gray-400 text-lg font-medium mb-2">
-                      Configuration du test en cours
-                    </p>
-                    <p className="text-gray-400 dark:text-gray-500 text-sm">
-                      Entrez les données pour calculer le test t
-                    </p>
+
+                    {/* Cartes des statistiques descriptives */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+                        <p className="text-xs font-bold uppercase text-slate-400 mb-2">Groupe 1</p>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">n</span>
+                            <span className="font-mono font-medium">{results.n1}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Moyenne</span>
+                            <span className="font-mono font-medium">{formatNumber(results.mean1)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Écart-type</span>
+                            <span className="font-mono font-medium">{formatNumber(results.sd1)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Erreur-type</span>
+                            <span className="font-mono font-medium">{formatNumber(results.se1)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+                        <p className="text-xs font-bold uppercase text-slate-400 mb-2">Groupe 2</p>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">n</span>
+                            <span className="font-mono font-medium">{results.n2}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Moyenne</span>
+                            <span className="font-mono font-medium">{formatNumber(results.mean2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Écart-type</span>
+                            <span className="font-mono font-medium">{formatNumber(results.sd2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Erreur-type</span>
+                            <span className="font-mono font-medium">{formatNumber(results.se2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tableau du test t */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">
+                          Test t – IC {results.conf}%
+                        </h3>
+                        {!results.isJStatReady && (
+                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
+                            Approximation (jStat non chargé)
+                          </span>
+                        )}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-4 py-3 text-left">Méthode</th>
+                              <th className="px-4 py-3 text-center">Statistique t</th>
+                              <th className="px-4 py-3 text-center">ddl</th>
+                              <th className="px-4 py-3 text-center">valeur-p</th>
+                              <th className="px-4 py-3 text-center">Différence</th>
+                              <th className="px-4 py-3 text-center">Limite inf.</th>
+                              <th className="px-4 py-3 text-center">Limite sup.</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            <tr>
+                              <td className="px-4 py-3 font-medium">Variance égale</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.tEqual)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{results.dfEqual}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.pEqual)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.meanDiff)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-green-600 dark:text-green-400">{formatNumber(results.ciEqualLower)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-red-600 dark:text-red-400">{formatNumber(results.ciEqualUpper)}</td>
+                            </tr>
+                            <tr className="bg-slate-50/50 dark:bg-slate-700/20">
+                              <td className="px-4 py-3 font-medium">Variance inégale</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.tUnequal)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.dfUnequal, 2)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.pUnequal)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.meanDiff)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-green-600 dark:text-green-400">{formatNumber(results.ciUnequalLower)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-red-600 dark:text-red-400">{formatNumber(results.ciUnequalUpper)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Test d'égalité des variances */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                        <Sigma className="w-4 h-4 text-blue-500" />
+                        Test d'égalité des variances (F de Hartley)
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
+                          <p className="text-xs text-slate-500">Statistique F</p>
+                          <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.fValue)}</p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
+                          <p className="text-xs text-slate-500">ddl (num., dénom.)</p>
+                          <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{results.dfNum}, {results.dfDen}</p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
+                          <p className="text-xs text-slate-500">valeur-p</p>
+                          <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.pF)}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-3">
+                        {results.pF < 0.05
+                          ? '→ Les variances sont significativement différentes (p < 0.05). Privilégiez le test de Welch.'
+                          : '→ Les variances ne sont pas significativement différentes (p >= 0.05). Le test de Student est approprié.'}
+                      </p>
+                    </div>
+
+                    {/* Détails des méthodes (repliable) */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+                      <button
+                        onClick={() => setShowMethodDetails(!showMethodDetails)}
+                        className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${
+                            showMethodDetails ? 'rotate-180' : ''
+                          }`}
+                        />
+                        {showMethodDetails ? 'Masquer' : 'Afficher'} les notes méthodologiques
+                      </button>
+                      {showMethodDetails && (
+                        <div className="mt-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 animate-in slide-in-from-top-2">
+                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Test t de Student</span> – Suppose l’égalité des variances. La variance commune est pondérée par les degrés de liberté.</p>
+                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Test t de Welch</span> – Ne suppose pas l’égalité des variances. Les degrés de liberté sont calculés par la formule de Satterthwaite.</p>
+                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Test F de Hartley</span> – Ratio des variances. La p-value bilatérale est calculée à partir de la distribution F.</p>
+                          <p className="mt-2 text-blue-600 dark:text-blue-400 italic">
+                            Méthodes conformes à OpenEpi – Module Two Sample T-Test.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Information Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <Shield className="w-5 h-5 mr-2 text-blue-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    Test t indépendant
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Compare les moyennes de deux groupes indépendants. Vérifiez l'égalité des variances avant de choisir la méthode.
-                </p>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <GitCompare className="w-5 h-5 mr-2 text-purple-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    Test t apparié
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Pour mesures répétées sur les mêmes sujets. Teste si la moyenne des différences est significativement différente de zéro.
-                </p>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <DivideCircle className="w-5 h-5 mr-2 text-emerald-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    V de Cramér
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Mesure l'intensité de l'association entre deux variables nominales. Variante du chi² ajustée pour la taille de l'échantillon.
-                </p>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-lg border border-gray-200/50 dark:border-slate-700/50 hover:shadow-xl transition-shadow duration-300">
-                <div className="flex items-center mb-3">
-                  <PieChart className="w-5 h-5 mr-2 text-cyan-500" />
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    Interprétation des p-values
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  p &lt; 0.05 : significatif, p &lt; 0.01 : très significatif, p &lt; 0.001 : hautement significatif.
-                </p>
-              </div>
-            </div>
           </div>
         </div>
-      </div>
 
-      {/* Floating Help Button */}
-      <button
-        onClick={() => setShowHelpModal(true)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 hover:shadow-3xl active:scale-105 group"
-      >
-        <HelpCircle className="w-7 h-7" />
-        <span className="absolute -top-10 right-0 bg-gray-900 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-          Aide & Documentation
-        </span>
-      </button>
-
-      {/* Help Modal */}
-      {showHelpModal && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto"
-          onClick={() => setShowHelpModal(false)}
-        >
-          <div 
-            className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-white/30 dark:border-slate-700/50 my-8 w-full max-w-4xl max-h-[85vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-white dark:bg-slate-800 flex justify-between items-center p-6 border-b border-gray-200 dark:border-slate-700">
-              <div className="flex items-center">
-                <HelpCircle className="w-6 h-6 mr-3 text-blue-600 dark:text-blue-400" />
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Guide du test t
+        {/* Modal d'aide - style RMS */}
+        {showHelpModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Guide – TwoSampleTTest (Test t indépendant)
                 </h3>
-              </div>
-              <button 
-                onClick={() => setShowHelpModal(false)}
-                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-8 text-gray-700 dark:text-gray-300 overflow-y-auto max-h-[60vh]">
-              <section>
-                <h4 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400 flex items-center">
-                  <Info className="w-5 h-5 mr-2" />
-                  Types de test t
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700">
-                    <h5 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">Échantillons indépendants</h5>
-                    <p className="text-sm">Compare deux groupes différents (ex: hommes vs femmes).</p>
-                  </div>
-                  <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4 border border-purple-200 dark:border-purple-700">
-                    <h5 className="font-semibold text-purple-800 dark:text-purple-300 mb-2">Échantillons appariés</h5>
-                    <p className="text-sm">Compare les mêmes sujets dans deux conditions (avant/après).</p>
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <h4 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400 flex items-center">
-                  <AlertCircle className="w-5 h-5 mr-2" />
-                  Conditions d'application
-                </h4>
-                <ul className="space-y-2 text-sm bg-gray-50 dark:bg-slate-700/30 rounded-xl p-4">
-                  <li className="flex items-start">
-                    <span className="text-green-600 mr-2">✓</span>
-                    Normalité approximative des données (ou grands échantillons)
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-green-600 mr-2">✓</span>
-                    Homogénéité des variances (pour test t standard)
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-green-600 mr-2">✓</span>
-                    Indépendance des observations
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-green-600 mr-2">✓</span>
-                    Variables quantitatives continues
-                  </li>
-                </ul>
-              </section>
-            </div>
-            
-            <div className="sticky bottom-0 bg-gray-50 dark:bg-slate-700/50 p-4 border-t border-gray-200 dark:border-slate-700">
-              <div className="flex justify-end">
                 <button
                   onClick={() => setShowHelpModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
                 >
-                  J'ai compris
+                  <X className="w-5 h-5" />
                 </button>
+              </div>
+
+              <div className="p-6 md:p-8 space-y-8">
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Le principe
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Ce module reproduit l’outil <strong>Two Sample T-Test</strong> d’OpenEpi. Il compare les moyennes de deux groupes indépendants à partir de leurs tailles, moyennes et écarts-types. Deux versions du test t sont fournies : avec ou sans hypothèse d’égalité des variances. Le test d’égalité des variances (F de Hartley) permet de choisir la méthode appropriée.
+                  </p>
+                </section>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+                      Student
+                    </div>
+                    <div className="text-xs text-slate-500">Var. égales, ddl = n₁+n₂‑2</div>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+                      Welch
+                    </div>
+                    <div className="text-xs text-slate-500">Var. inégales, ddl de Satterthwaite</div>
+                  </div>
+                </div>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Méthodes de calcul
+                  </h4>
+                  <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                    <p><strong className="text-slate-900 dark:text-white">Variance égale</strong> – variance commune pondérée, intervalle de confiance basé sur la distribution t avec n₁+n₂‑2 ddl.</p>
+                    <p><strong className="text-slate-900 dark:text-white">Variance inégale (Welch)</strong> – erreur-type de Welch, ddl de Satterthwaite, intervalle de confiance correspondant.</p>
+                    <p><strong className="text-slate-900 dark:text-white">Test F (Hartley)</strong> – F = s₁²/s₂² (le plus grand au numérateur). p-value bilatérale.</p>
+                  </div>
+                  <a
+                    href="https://www.openepi.com/TwosampleTTest/TwosampleTTest.htm"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
+                  >
+                    Source : OpenEpi – Two Sample T-Test <ArrowRight className="w-3 h-3 ml-1" />
+                  </a>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      3
+                    </div>
+                    Ressources
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <p>
+                      <a href="https://www.openepi.com/PDFDocs/TwoSampleTTestDoc.pdf" target="_blank" className="text-blue-600 hover:underline">
+                        Documentation officielle OpenEpi (PDF)
+                      </a>
+                    </p>
+                    <p>
+                      Armitage P., Berry G., Matthews J.N.S. – <em>Statistical Methods in Medical Research</em>.
+                    </p>
+                  </div>
+                </section>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
