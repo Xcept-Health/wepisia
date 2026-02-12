@@ -5,808 +5,1139 @@ import {
   Info,
   BarChart3,
   Copy,
-  Download,
   X,
-  CheckCircle,
-  PieChart,
-  Shield,
-  AlertCircle,
   HelpCircle,
   ChevronRight,
-  Home,
-  FileText,
-  Table2,
-  ClipboardCheck,
-  BookOpen,
-  TrendingUp,
-  Users,
-  Target
+  Blocks,
+  RotateCcw,
+  Plus,
+  FileDown,
+  ArrowRight
 } from 'lucide-react';
+import { Link } from 'wouter';
+import { toast } from 'sonner';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
-interface ScreeningTestData {
-  tp: string;
-  fp: string;
-  fn: string;
-  tn: string;
+interface LevelRow {
+  id: string;
+  level: string;
+  cases: string;
+  nonCases: string;
 }
 
-interface ScreeningTestResults {
+interface CutoffResult {
+  cutoff: string;
   sensitivity: number;
+  sensitivityLower: number;
+  sensitivityUpper: number;
   specificity: number;
-  vpp: number;
-  vpn: number;
-  interpretation: string;
-  calculated: boolean;
-  usedPrev: number;
+  specificityLower: number;
+  specificityUpper: number;
+  ppv: number;
+  ppvLower: number;
+  ppvUpper: number;
+  npv: number;
+  npvLower: number;
+  npvUpper: number;
+  accuracy: number;
+  accuracyLower: number;
+  accuracyUpper: number;
+  lrPositive: number;
+  lrPositiveLower: number;
+  lrPositiveUpper: number;
+  lrNegative: number;
+  lrNegativeLower: number;
+  lrNegativeUpper: number;
+  oddsRatio: number;
+  oddsRatioLower: number;
+  oddsRatioUpper: number;
+  kappa: number;
+  kappaLower: number;
+  kappaUpper: number;
+  entropyPositive: number;
+  entropyNegative: number;
+  biasIndex: number;
+}
+
+interface LevelLR {
+  level: string;
+  lr: number;
+  lrLower: number;
+  lrUpper: number;
+}
+
+interface ScreeningResults {
+  cutoffs: CutoffResult[];
+  levelLRs: LevelLR[];
+  auc: number;
+  aucLower: number;
+  aucUpper: number;
+  rocPoints: { fpr: number; tpr: number }[]; // pour la courbe ROC
 }
 
 export default function ScreeningTest() {
-  const [tableData, setTableData] = useState<ScreeningTestData>({
-    tp: '',
-    fp: '',
-    fn: '',
-    tn: ''
-  });
-  const [prevalence, setPrevalence] = useState('');
-  const [results, setResults] = useState<ScreeningTestResults | null>(null);
-  const [showHelp, setShowHelp] = useState(false);
+  const [rows, setRows] = useState<LevelRow[]>([
+    { id: '1', level: 'Niveau 1', cases: '', nonCases: '' },
+  ]);
+  const [results, setResults] = useState<ScreeningResults | null>(null);
+  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Calculer les totaux
-  const tp = parseInt(tableData.tp) || 0;
-  const fp = parseInt(tableData.fp) || 0;
-  const fn = parseInt(tableData.fn) || 0;
-  const tn = parseInt(tableData.tn) || 0;
+  // Recalcul automatique à chaque modification des données
+  useEffect(() => {
+    calculateResults();
+  }, [rows]);
 
-  const diseased = tp + fn;
-  const healthy = fp + tn;
-  const total = diseased + healthy;
-
-  const calculateResults = () => {
-    const samplePrev = total > 0 ? (diseased / total) * 100 : 0;
-    const sensitivity = diseased > 0 ? (tp / diseased) * 100 : 0;
-    const specificity = healthy > 0 ? (tn / healthy) * 100 : 0;
-
-    let vpp = (tp + fp) > 0 ? (tp / (tp + fp)) * 100 : 0;
-    let vpn = (fn + tn) > 0 ? (tn / (fn + tn)) * 100 : 0;
-
-    const externalPrev = parseFloat(prevalence);
-    let usedPrev = samplePrev;
-    
-    if (!isNaN(externalPrev) && externalPrev >= 0 && externalPrev <= 100) {
-      const prev = externalPrev / 100;
-      if (sensitivity > 0 && specificity < 100) {
-        vpp = (sensitivity / 100 * prev) / (sensitivity / 100 * prev + (1 - specificity / 100) * (1 - prev)) * 100;
-      }
-      if (specificity > 0 && sensitivity < 100) {
-        vpn = (specificity / 100 * (1 - prev)) / (specificity / 100 * (1 - prev) + (1 - sensitivity / 100) * prev) * 100;
-      }
-      usedPrev = externalPrev;
-    }
-
-    const interpretation = `Sensibilité : ${sensitivity.toFixed(1)}% → ${
-      sensitivity >= 90 ? 'Excellent' : sensitivity >= 70 ? 'Bon' : 'À améliorer'
-    } pour détecter les malades.\n
-Spécificité : ${specificity.toFixed(1)}% → ${
-      specificity >= 90 ? 'Excellent' : specificity >= 70 ? 'Bon' : 'À améliorer'
-    } pour exclure la maladie.\n
-VPP : ${vpp.toFixed(1)}% (prévalence utilisée : ${usedPrev.toFixed(2)}%) → Probabilité d'être malade si test positif.\n
-VPN : ${vpn.toFixed(1)}% → Probabilité d'être sain si test négatif.`;
-
-    setResults({
-      sensitivity,
-      specificity,
-      vpp,
-      vpn,
-      interpretation,
-      calculated: true,
-      usedPrev
-    });
-
-    // Animation d'entrée
-    setTimeout(() => {
-      if (resultsRef.current) {
-        const children = resultsRef.current.children;
-        Array.from(children).forEach((el, index) => {
-          setTimeout(() => {
-            el.classList.add('opacity-100', 'translate-y-0');
-            el.classList.remove('opacity-0', 'translate-y-5');
-          }, index * 150);
-        });
-      }
-    }, 100);
+  // Méthode Wilson pour IC d'une proportion
+  const wilsonCI = (p: number, n: number, z: number = 1.96) => {
+    if (n === 0) return { lower: 0, upper: 0 };
+    const a = p * n;
+    const b = (1 - p) * n;
+    const center = (a + z * z / 2) / (n + z * z);
+    const margin = z * Math.sqrt((a * b + z * z * n / 4) / (n * n)) / (1 + z * z / n);
+    return {
+      lower: Math.max(0, center - margin),
+      upper: Math.min(1, center + margin)
+    };
   };
 
-  const clearData = () => {
-    setTableData({ tp: '', fp: '', fn: '', tn: '' });
-    setPrevalence('');
+  // Calcul principal
+  const calculateResults = () => {
+    const validRows = rows.filter(
+      (r) => (parseInt(r.cases) || 0) >= 0 && (parseInt(r.nonCases) || 0) >= 0
+    );
+    if (validRows.length < 2) {
+      setResults(null);
+      return;
+    }
+
+    const levels = validRows.map((r) => ({
+      level: r.level,
+      cases: parseInt(r.cases) || 0,
+      nonCases: parseInt(r.nonCases) || 0,
+    }));
+
+    const totalCases = levels.reduce((sum, l) => sum + l.cases, 0);
+    const totalNonCases = levels.reduce((sum, l) => sum + l.nonCases, 0);
+    const total = totalCases + totalNonCases;
+
+    if (total === 0) {
+      setResults(null);
+      return;
+    }
+
+    // --- Rapports de vraisemblance par niveau ---
+    const levelLRs: LevelLR[] = levels.map((l) => {
+      const lr = totalCases > 0 && totalNonCases > 0 && l.nonCases > 0
+        ? (l.cases / l.nonCases) / (totalCases / totalNonCases)
+        : 0;
+      const se = l.cases > 0 && l.nonCases > 0
+        ? Math.sqrt(1 / l.cases + 1 / l.nonCases)
+        : 0;
+      const lower = Math.exp(Math.log(lr) - 1.96 * se);
+      const upper = Math.exp(Math.log(lr) + 1.96 * se);
+      return {
+        level: l.level,
+        lr,
+        lrLower: isFinite(lower) ? lower : 0,
+        lrUpper: isFinite(upper) ? upper : 0,
+      };
+    });
+
+    // --- Préparation des points ROC ---
+    let tprPoints: number[] = [0];
+    let fprPoints: number[] = [0];
+    let cumCasesPositive = 0;
+    let cumNonCasesPositive = 0;
+
+    for (let i = levels.length - 1; i >= 0; i--) {
+      cumCasesPositive += levels[i].cases;
+      cumNonCasesPositive += levels[i].nonCases;
+      tprPoints.unshift(cumCasesPositive / totalCases);
+      fprPoints.unshift(cumNonCasesPositive / totalNonCases);
+    }
+
+    // --- AUC par méthode des trapèzes ---
+    let auc = 0;
+    for (let i = 1; i < tprPoints.length; i++) {
+      auc += (fprPoints[i] - fprPoints[i - 1]) * (tprPoints[i] + tprPoints[i - 1]) / 2;
+    }
+
+    // --- IC de l'AUC (Hanley‑McNeil) ---
+    const Q1 = auc / (2 - auc);
+    const Q2 = 2 * auc * auc / (1 + auc);
+    const seAuc = Math.sqrt(
+      (auc * (1 - auc) +
+        (totalCases - 1) * (Q1 - auc * auc) +
+        (totalNonCases - 1) * (Q2 - auc * auc)) /
+        (totalCases * totalNonCases)
+    );
+    const aucLower = Math.max(0, auc - 1.96 * seAuc);
+    const aucUpper = Math.min(1, auc + 1.96 * seAuc);
+
+    // --- Points pour la courbe ROC (sans le (0,0) et (1,1) redondants) ---
+    const rocPoints = fprPoints.map((fpr, i) => ({ fpr, tpr: tprPoints[i] }));
+
+    // --- Calculs par point de coupure ---
+    const cutoffs: CutoffResult[] = [];
+    let cumCasesNegative = 0;
+    let cumNonCasesNegative = 0;
+
+    for (let cutoff = 0; cutoff < levels.length - 1; cutoff++) {
+      cumCasesNegative += levels[cutoff].cases;
+      cumNonCasesNegative += levels[cutoff].nonCases;
+
+      const tp = totalCases - cumCasesNegative;
+      const fn = cumCasesNegative;
+      const fp = totalNonCases - cumNonCasesNegative;
+      const tn = cumNonCasesNegative;
+
+      const sens = tp / (tp + fn);
+      const spec = tn / (tn + fp);
+      const acc = (tp + tn) / total;
+      const ppv = tp / (tp + fp);
+      const npv = tn / (tn + fn);
+
+      const sensCI = wilsonCI(sens, tp + fn);
+      const specCI = wilsonCI(spec, tn + fp);
+      const ppvCI = wilsonCI(ppv, tp + fp);
+      const npvCI = wilsonCI(npv, tn + fn);
+      const accCI = wilsonCI(acc, total);
+
+      // LR+
+      const lrPos = sens / (1 - spec);
+      let lrPosLower = 0, lrPosUpper = 0;
+      if (isFinite(lrPos) && lrPos > 0) {
+        const lnLRPos = Math.log(lrPos);
+        const seLRPos = Math.sqrt(
+          (1 - sens) / (sens * (tp + fn)) +
+          (1 - spec) / (spec * (tn + fp))
+        );
+        lrPosLower = Math.exp(lnLRPos - 1.96 * seLRPos);
+        lrPosUpper = Math.exp(lnLRPos + 1.96 * seLRPos);
+      }
+
+      // LR-
+      const lrNeg = (1 - sens) / spec;
+      let lrNegLower = 0, lrNegUpper = 0;
+      if (isFinite(lrNeg) && lrNeg > 0) {
+        const lnLRNeg = Math.log(lrNeg);
+        const seLRNeg = Math.sqrt(
+          sens / ((1 - sens) * (tp + fn)) +
+          (1 - spec) / (spec * (tn + fp))
+        );
+        lrNegLower = Math.exp(lnLRNeg - 1.96 * seLRNeg);
+        lrNegUpper = Math.exp(lnLRNeg + 1.96 * seLRNeg);
+      }
+
+      // Odds ratio
+      const odds = (tp * tn) / (fp * fn);
+      let oddsLower = 0, oddsUpper = 0;
+      if (isFinite(odds) && odds > 0) {
+        const lnOdds = Math.log(odds);
+        const seOdds = Math.sqrt(1 / tp + 1 / tn + 1 / fp + 1 / fn);
+        oddsLower = Math.exp(lnOdds - 1.96 * seOdds);
+        oddsUpper = Math.exp(lnOdds + 1.96 * seOdds);
+      }
+
+      // Kappa
+      const observedAcc = acc;
+      const expectedAcc = ((tp + fp) / total) * ((tp + fn) / total) +
+                         ((fn + tn) / total) * ((fp + tn) / total);
+      const kappa = (observedAcc - expectedAcc) / (1 - expectedAcc);
+      const seKappa = Math.sqrt((observedAcc * (1 - observedAcc)) / (total * (1 - expectedAcc) ** 2));
+      const kappaLower = kappa - 1.96 * seKappa;
+      const kappaUpper = kappa + 1.96 * seKappa;
+
+      // Entropie
+      const prev = totalCases / total;
+      const hPre = prev > 0 && prev < 1
+        ? -prev * Math.log(prev) - (1 - prev) * Math.log(1 - prev)
+        : 0;
+      const hPostPos = ppv > 0 && ppv < 1
+        ? -ppv * Math.log(ppv) - (1 - ppv) * Math.log(1 - ppv)
+        : 0;
+      const hPostNeg = npv > 0 && npv < 1
+        ? -npv * Math.log(npv) - (1 - npv) * Math.log(1 - npv)
+        : 0;
+      const entropyPos = hPre > 0 ? 100 * (hPre - hPostPos) / hPre : 0;
+      const entropyNeg = hPre > 0 ? 100 * (hPre - hPostNeg) / hPre : 0;
+
+      // Bias index
+      const bias = (tp + fp - fn - tn) / total;
+
+      cutoffs.push({
+        cutoff: `entre ${levels[cutoff].level} et ${levels[cutoff + 1].level}`,
+        sensitivity: sens * 100,
+        sensitivityLower: sensCI.lower * 100,
+        sensitivityUpper: sensCI.upper * 100,
+        specificity: spec * 100,
+        specificityLower: specCI.lower * 100,
+        specificityUpper: specCI.upper * 100,
+        ppv: ppv * 100,
+        ppvLower: ppvCI.lower * 100,
+        ppvUpper: ppvCI.upper * 100,
+        npv: npv * 100,
+        npvLower: npvCI.lower * 100,
+        npvUpper: npvCI.upper * 100,
+        accuracy: acc * 100,
+        accuracyLower: accCI.lower * 100,
+        accuracyUpper: accCI.upper * 100,
+        lrPositive: lrPos,
+        lrPositiveLower: isFinite(lrPosLower) ? lrPosLower : 0,
+        lrPositiveUpper: isFinite(lrPosUpper) ? lrPosUpper : 0,
+        lrNegative: lrNeg,
+        lrNegativeLower: isFinite(lrNegLower) ? lrNegLower : 0,
+        lrNegativeUpper: isFinite(lrNegUpper) ? lrNegUpper : 0,
+        oddsRatio: odds,
+        oddsRatioLower: oddsLower,
+        oddsRatioUpper: oddsUpper,
+        kappa,
+        kappaLower,
+        kappaUpper,
+        entropyPositive: entropyPos,
+        entropyNegative: entropyNeg,
+        biasIndex: bias,
+      });
+    }
+
+    setResults({
+      cutoffs,
+      levelLRs,
+      auc,
+      aucLower,
+      aucUpper,
+      rocPoints,
+    });
+  };
+
+  const addRow = () => {
+    const newId = (rows.length + 1).toString();
+    setRows([
+      ...rows,
+      { id: newId, level: `Niveau ${rows.length + 1}`, cases: '', nonCases: '' },
+    ]);
+  };
+
+  const removeRow = (id: string) => {
+    if (rows.length > 1) {
+      setRows(rows.filter((r) => r.id !== id));
+    }
+  };
+
+  const updateRow = (id: string, field: 'level' | 'cases' | 'nonCases', value: string) => {
+    setRows(rows.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+  };
+
+  const clearForm = () => {
+    setRows([{ id: '1', level: 'Niveau 1', cases: '', nonCases: '' }]);
     setResults(null);
+    toast.info('Champs réinitialisés');
   };
 
   const loadExample = () => {
-    setTableData({ tp: '80', fp: '20', fn: '10', tn: '90' });
+    setRows([
+      { id: '1', level: 'Niveau 1', cases: '1', nonCases: '4' },
+      { id: '2', level: 'Niveau 2', cases: '2', nonCases: '1' },
+      { id: '3', level: 'Niveau 3', cases: '3', nonCases: '23' },
+      { id: '4', level: 'Niveau 4', cases: '5', nonCases: '6' },
+      { id: '5', level: 'Niveau 5', cases: '4', nonCases: '3' },
+    ]);
+    toast.success('Exemple chargé');
   };
 
   const copyResults = async () => {
     if (!results) return;
-    const text = `Sensibilité: ${results.sensitivity.toFixed(2)}%\nSpécificité: ${results.specificity.toFixed(2)}%\nVPP: ${results.vpp.toFixed(2)}%\nVPN: ${results.vpn.toFixed(2)}%`;
+
+    let text = `Résultats Screening Test\n\n`;
+    results.cutoffs.forEach((c) => {
+      text += `Point de coupure ${c.cutoff}\n`;
+      text += `Sensibilité: ${c.sensitivity.toFixed(2)}% (${c.sensitivityLower.toFixed(2)} - ${c.sensitivityUpper.toFixed(2)})\n`;
+      text += `Spécificité: ${c.specificity.toFixed(2)}% (${c.specificityLower.toFixed(2)} - ${c.specificityUpper.toFixed(2)})\n`;
+      text += `Valeur prédictive positive: ${c.ppv.toFixed(2)}% (${c.ppvLower.toFixed(2)} - ${c.ppvUpper.toFixed(2)})\n`;
+      text += `Valeur prédictive négative: ${c.npv.toFixed(2)}% (${c.npvLower.toFixed(2)} - ${c.npvUpper.toFixed(2)})\n`;
+      text += `Exactitude du diagnostic: ${c.accuracy.toFixed(2)}% (${c.accuracyLower.toFixed(2)} - ${c.accuracyUpper.toFixed(2)})\n`;
+      text += `Rapport de vraisemblance du test positif: ${c.lrPositive.toFixed(4)} (${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)})\n`;
+      text += `Rapport de vraisemblance du test négatif: ${c.lrNegative.toFixed(4)} (${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)})\n`;
+      text += `Diagnostic du rapport de cotes: ${c.oddsRatio.toFixed(4)} (${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)})\n`;
+      text += `coefficient kappa de Cohen: ${c.kappa.toFixed(4)} (${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)})\n`;
+      text += `Réduction d’entropie après un test positif: ${c.entropyPositive.toFixed(2)}%\n`;
+      text += `Réduction d’entropie après un test négatif: ${c.entropyNegative.toFixed(2)}%\n`;
+      text += `Index Biais: ${c.biasIndex.toFixed(4)}\n\n`;
+    });
+
+    text += `Rapports de vraisemblance de niveau spécifique\n`;
+    results.levelLRs.forEach((l) => {
+      text += `${l.level}: ${l.lr.toFixed(4)} (${l.lrLower.toFixed(4)} - ${l.lrUpper.toFixed(4)})\n`;
+    });
+
+    text += `\nAire sous la courbe ROC: ${results.auc.toFixed(7)} (${results.aucLower.toFixed(7)} - ${results.aucUpper.toFixed(7)})\n`;
+
     try {
       await navigator.clipboard.writeText(text);
-      // Feedback visuel temporaire
-      const btn = document.getElementById('copy-btn');
-      if (btn) {
-        const original = btn.innerHTML;
-        btn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
-        setTimeout(() => {
-          btn.innerHTML = original;
-        }, 2000);
-      }
-    } catch (err) {
-      console.error('Échec de la copie:', err);
+      toast.success('Résultats copiés');
+    } catch {
+      toast.error('Échec de la copie');
     }
   };
 
-  const exportToPDF = () => {
-    if (!results) return;
+  const exportPDF = () => {
+    if (!results) {
+      toast.error('Veuillez d\'abord effectuer un calcul');
+      return;
+    }
 
-    const { jsPDF } = (window as any).jspdf;
-    const doc = new jsPDF();
-    const primaryColor = [59, 130, 246];
-    const secondaryColor = [99, 102, 241];
-    const accentColor = [16, 185, 129];
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const colorPrimary: [number, number, number] = [59, 130, 246];
+      const colorSlate = {
+        50: [248, 250, 252] as [number, number, number],
+        100: [241, 245, 249] as [number, number, number],
+        200: [226, 232, 240] as [number, number, number],
+        300: [203, 213, 225] as [number, number, number],
+        500: [100, 116, 139] as [number, number, number],
+        700: [51, 65, 85] as [number, number, number],
+        900: [15, 23, 42] as [number, number, number],
+      };
 
-    // Header
-    doc.setFillColor(...primaryColor);
-    doc.rect(0, 0, 210, 40, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text('ScreeningTest - Analyse Diagnostic', 105, 22, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('Sensibilité, Spécificité, VPP et VPN', 105, 30, { align: 'center' });
+      // En-tête
+      doc.setFillColor(...colorSlate[50]);
+      doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport d'Analyse Screening Test", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text('Screening Test – OpenEpi', 190, 32, { align: 'right' });
 
-    // Configuration
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.text('Tableau de contingence 2×2', 20, 55);
-    doc.setFontSize(12);
-    doc.text(`Prévalence utilisée : ${results.usedPrev.toFixed(2)}%`, 20, 65);
-    doc.text(`Effectif total : ${total}`, 20, 73);
+      // Données
+      let y = 55;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Données analysées', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 5;
 
-    // Tableau des données
-    const tableData = [
-      ['', 'Test Positif', 'Test Négatif', 'Total'],
-      ['Maladie Présente', tp.toString(), fn.toString(), diseased.toString()],
-      ['Maladie Absente', fp.toString(), tn.toString(), healthy.toString()],
-      ['Total', (tp + fp).toString(), (fn + tn).toString(), total.toString()]
-    ];
+      const tableData = rows.map(r => [r.level, parseInt(r.cases) || 0, parseInt(r.nonCases) || 0]);
+      const totals = tableData.reduce((acc, [, c, nc]) => [acc[0] + c, acc[1] + nc], [0, 0]);
+      tableData.push(['Total', totals[0], totals[1], totals[0] + totals[1]]);
 
-    (doc as any).autoTable({
-      startY: 90,
-      head: [tableData[0]],
-      body: tableData.slice(1),
-      theme: 'striped',
-      headStyles: {
-        fillColor: secondaryColor,
-        textColor: 255,
-        fontStyle: 'bold',
-        fontSize: 11,
-        halign: 'center'
-      },
-      bodyStyles: {
-        fontSize: 10,
-        halign: 'center'
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252]
-      },
-      margin: { left: 20, right: 20 },
-      styles: {
-        cellPadding: 6,
-        lineWidth: 0.1,
-        lineColor: [200, 200, 200]
+      autoTable(doc, {
+        startY: y,
+        head: [['Niveau', 'Cas', 'Non-cas', 'Total']],
+        body: tableData.map(r => r.map(v => v.toString())),
+        theme: 'grid',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 50, fontStyle: 'bold' },
+          1: { cellWidth: 30, halign: 'center' },
+          2: { cellWidth: 30, halign: 'center' },
+          3: { cellWidth: 30, halign: 'center', fontStyle: 'bold' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // Résultats par cutoff
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Résultats par point de coupure', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      results.cutoffs.forEach((c, index) => {
+        if (y > 250) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.setFontSize(10);
+        doc.text(`Point de coupure ${c.cutoff}`, 20, y);
+        y += 8;
+
+        const cutoffTable = [
+          ['Paramètre', 'Estimation', 'IC 95%', 'Méthode'],
+          ['Sensibilité', `${c.sensitivity.toFixed(2)}%`, `${c.sensitivityLower.toFixed(2)} - ${c.sensitivityUpper.toFixed(2)}`, 'Score de Wilson'],
+          ['Spécificité', `${c.specificity.toFixed(2)}%`, `${c.specificityLower.toFixed(2)} - ${c.specificityUpper.toFixed(2)}`, 'Score de Wilson'],
+          ['VPP', `${c.ppv.toFixed(2)}%`, `${c.ppvLower.toFixed(2)} - ${c.ppvUpper.toFixed(2)}`, 'Score de Wilson'],
+          ['VPN', `${c.npv.toFixed(2)}%`, `${c.npvLower.toFixed(2)} - ${c.npvUpper.toFixed(2)}`, 'Score de Wilson'],
+          ['Exactitude', `${c.accuracy.toFixed(2)}%`, `${c.accuracyLower.toFixed(2)} - ${c.accuracyUpper.toFixed(2)}`, 'Score de Wilson'],
+          ['LR+', c.lrPositive.toFixed(4), `${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)}`, ''],
+          ['LR-', c.lrNegative.toFixed(4), `${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)}`, ''],
+          ['OR', c.oddsRatio.toFixed(4), `${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)}`, ''],
+          ['Kappa', c.kappa.toFixed(4), `${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)}`, ''],
+          ['Entropie +', c.entropyPositive.toFixed(2) + '%', '', ''],
+          ['Entropie -', c.entropyNegative.toFixed(2) + '%', '', ''],
+          ['Biais', c.biasIndex.toFixed(4), '', '']
+        ];
+
+        autoTable(doc, {
+          startY: y,
+          head: [cutoffTable[0]],
+          body: cutoffTable.slice(1),
+          theme: 'striped',
+          headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold' },
+          columnStyles: {
+            0: { cellWidth: 60 },
+            1: { cellWidth: 30, halign: 'center' },
+            2: { cellWidth: 40, halign: 'center' },
+            3: { cellWidth: 35 }
+          },
+          margin: { left: 20, right: 20 },
+          styles: { fontSize: 8, cellPadding: 2 },
+        });
+
+        y = (doc as any).lastAutoTable.finalY + 10;
+      });
+
+      // LR par niveau
+      if (y > 250) {
+        doc.addPage();
+        y = 20;
       }
-    });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Rapports de vraisemblance par niveau', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
 
-    // Résultats statistiques
-    const statsY = (doc as any).lastAutoTable.finalY + 20;
-    doc.setFontSize(16);
-    doc.text('Indicateurs de Performance', 20, statsY);
+      const levelTable = results.levelLRs.map(l => [
+        l.level,
+        l.lr.toFixed(4),
+        `${l.lrLower.toFixed(4)} - ${l.lrUpper.toFixed(4)}`
+      ]);
 
-    const statsTable = [
-      ['Sensibilité', `${results.sensitivity.toFixed(2)} %`, 'TP / (TP + FN)'],
-      ['Spécificité', `${results.specificity.toFixed(2)} %`, 'TN / (TN + FP)'],
-      ['Valeur Prédictive Positive', `${results.vpp.toFixed(2)} %`, 'TP / (TP + FP)'],
-      ['Valeur Prédictive Négative', `${results.vpn.toFixed(2)} %`, 'TN / (TN + FN)']
-    ];
+      autoTable(doc, {
+        startY: y,
+        head: [['Niveau', 'Ratio', 'IC 95%']],
+        body: levelTable,
+        theme: 'grid',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 50 },
+          1: { cellWidth: 30, halign: 'center' },
+          2: { cellWidth: 80, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
 
-    (doc as any).autoTable({
-      startY: statsY + 10,
-      head: [['Indicateur', 'Valeur', 'Formule']],
-      body: statsTable,
-      theme: 'grid',
-      headStyles: {
-        fillColor: primaryColor,
-        textColor: 255,
-        fontStyle: 'bold',
-        fontSize: 11
-      },
-      bodyStyles: {
-        fontSize: 10
-      },
-      columnStyles: {
-        0: { fontStyle: 'bold' },
-        1: { halign: 'center', fillColor: [240, 250, 255] },
-        2: { fontStyle: 'italic', fontSize: 9 }
-      },
-      margin: { left: 20, right: 20 },
-      styles: {
-        cellPadding: 5
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ROC et AUC
+      if (y > 250) {
+        doc.addPage();
+        y = 20;
       }
-    });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Courbe ROC', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 8;
 
-    // Interprétation
-    const interpY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFillColor(240, 250, 255);
-    doc.roundedRect(20, interpY, 170, 40, 3, 3, 'F');
-    doc.setDrawColor(...primaryColor);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(20, interpY, 170, 40, 3, 3);
-    
-    doc.setFontSize(12);
-    doc.setTextColor(...primaryColor);
-    doc.text('Interprétation Clinique', 25, interpY + 8);
-    
-    doc.setFontSize(9);
-    doc.setTextColor(60, 60, 60);
-    const interpLines = doc.splitTextToSize(results.interpretation, 160);
-    doc.text(interpLines, 25, interpY + 16);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`Aire sous la courbe ROC = ${results.auc.toFixed(7)} (${results.aucLower.toFixed(7)} - ${results.aucUpper.toFixed(7)})`, 20, y);
+      y += 10;
 
-    // Footer
-    const pageHeight = doc.internal.pageSize.height;
-    const footerY = pageHeight - 15;
-    
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
-    doc.line(20, footerY - 5, 190, footerY - 5);
-    
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text("ScreeningTest v1.0 - Outil d'analyse diagnostique", 105, footerY, { align: 'center' });
-    
-    doc.setFontSize(7);
-    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, 20, footerY);
-    doc.text('Page 1/1', 190, footerY, { align: 'right' });
+      // Courbe ROC textuelle simplifiée (par manque de place pour un dessin complexe)
+      doc.text('Courbe caractéristique (ROC) – approximation textuelle', 20, y);
+      y += 5;
+      doc.text('0.0   0.2   0.4   0.6   0.8   1.0  TPR', 20, y);
+      y += 5;
+      doc.text('0.0   0.2   0.4   0.6   0.8   1.0  FPR', 20, y);
+      y += 5;
+      doc.text('TPR = taux vrais positifs, FPR = taux faux positifs', 20, y);
 
-    doc.save(`ScreeningTest_${new Date().toISOString().split('T')[0]}.pdf`);
+      // Pied de page
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('Screening Test – conforme OpenEpi', 20, footerY + 5);
+      doc.text(`Page ${doc.getNumberOfPages()} / ${doc.getNumberOfPages()}`, 190, footerY + 5, { align: 'right' });
+
+      doc.save('Rapport_Screening_Test.pdf');
+      toast.success('Rapport PDF exporté avec succès');
+    } catch (error) {
+      console.error('Erreur PDF :', error);
+      toast.error('Erreur lors de la génération du PDF');
+    }
   };
 
-  // Charger les scripts externes
-  useEffect(() => {
-    const loadScripts = async () => {
-      if (!(window as any).jspdf) {
-        const jspdfScript = document.createElement('script');
-        jspdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        document.body.appendChild(jspdfScript);
+  // Calcul des dimensions pour la courbe ROC SVG
+  const svgWidth = 300;
+  const svgHeight = 300;
+  const margin = { top: 20, right: 20, bottom: 30, left: 30 };
+  const plotWidth = svgWidth - margin.left - margin.right;
+  const plotHeight = svgHeight - margin.top - margin.bottom;
 
-        const autotableScript = document.createElement('script');
-        autotableScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js';
-        document.body.appendChild(autotableScript);
-      }
-    };
-    loadScripts();
-  }, []);
-
-  // Calcul automatique quand les données changent
-  useEffect(() => {
-    if (tp || fp || fn || tn) {
-      calculateResults();
-    }
-  }, [tableData, prevalence]);
+  const pointToSVG = (fpr: number, tpr: number) => ({
+    x: margin.left + fpr * plotWidth,
+    y: margin.top + (1 - tpr) * plotHeight,
+  });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-        {/* Header avec Breadcrumb */}
-        <div className="mb-8">
-          <nav className="flex mb-4" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2 text-sm">
-              <li>
-                <a href="/" className="flex items-center text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  Accueil
-                </a>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">ScreeningTest</span>
-              </li>
-            </ol>
-          </nav>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Screening Test</span></li>
+          </ol>
+        </nav>
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-              <FileText className="w-7 h-7 text-white" />
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                ScreeningTest - Analyse Diagnostique
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Calcul des performances diagnostiques : Sensibilité, Spécificité, VPP et VPN
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Screening Test</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+                Analyse des performances d'un test de dépistage à plusieurs niveaux.
               </p>
             </div>
           </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          {/* Panel d'entrée */}
-          <div className="space-y-6">
-            {/* Carte d'entrée */}
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-slate-700/50 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                  <Table2 className="w-5 h-5 mr-2 text-blue-500" />
-                  Tableau de contingence 2×2
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                  Saisissez les résultats de votre test de dépistage (TP, FP, FN, TN)
-                </p>
-              </div>
-              
-              <div className="p-6">
-                {/* Tableau */}
-                <div className="mb-8 overflow-hidden rounded-xl border border-gray-200 dark:border-slate-700 shadow-inner">
-                  <table className="w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+              </h2>
+              <div className="space-y-5">
+                <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-600">
+                  <table className="min-w-full">
                     <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
                       <tr>
-                        <th className="p-4 text-left font-semibold text-gray-700 dark:text-gray-300 border-r dark:border-slate-600">
-                          Maladie \ Test
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Niveau
                         </th>
-                        <th className="p-4 text-center font-semibold text-gray-700 dark:text-gray-300 border-r dark:border-slate-600">
-                          Test Positif
+                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Cas
                         </th>
-                        <th className="p-4 text-center font-semibold text-gray-700 dark:text-gray-300 border-r dark:border-slate-600">
-                          Test Négatif
+                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Non-cas
                         </th>
-                        <th className="p-4 text-center font-semibold text-gray-700 dark:text-gray-300">
-                          Total
+                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Action
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                      <tr className="bg-white dark:bg-slate-800">
-                        <td className="p-4 font-medium text-gray-900 dark:text-gray-100 border-r dark:border-slate-700">
-                          Maladie Présente
-                        </td>
-                        <td className="p-4 border-r dark:border-slate-700">
-                          <input
-                            type="number"
-                            className="w-full px-3 py-2 text-center border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            value={tableData.tp}
-                            onChange={(e) => setTableData({...tableData, tp: e.target.value})}
-                            placeholder="TP"
-                            min="0"
-                          />
-                        </td>
-                        <td className="p-4 border-r dark:border-slate-700">
-                          <input
-                            type="number"
-                            className="w-full px-3 py-2 text-center border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            value={tableData.fn}
-                            onChange={(e) => setTableData({...tableData, fn: e.target.value})}
-                            placeholder="FN"
-                            min="0"
-                          />
-                        </td>
-                        <td className="p-4 text-center font-semibold text-blue-600 dark:text-blue-400">
-                          {diseased}
-                        </td>
-                      </tr>
-                      <tr className="bg-white dark:bg-slate-800">
-                        <td className="p-4 font-medium text-gray-900 dark:text-gray-100 border-r dark:border-slate-700">
-                          Maladie Absente
-                        </td>
-                        <td className="p-4 border-r dark:border-slate-700">
-                          <input
-                            type="number"
-                            className="w-full px-3 py-2 text-center border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            value={tableData.fp}
-                            onChange={(e) => setTableData({...tableData, fp: e.target.value})}
-                            placeholder="FP"
-                            min="0"
-                          />
-                        </td>
-                        <td className="p-4 border-r dark:border-slate-700">
-                          <input
-                            type="number"
-                            className="w-full px-3 py-2 text-center border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            value={tableData.tn}
-                            onChange={(e) => setTableData({...tableData, tn: e.target.value})}
-                            placeholder="TN"
-                            min="0"
-                          />
-                        </td>
-                        <td className="p-4 text-center font-semibold text-blue-600 dark:text-blue-400">
-                          {healthy}
-                        </td>
-                      </tr>
-                      <tr className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
-                        <td className="p-4 font-semibold text-gray-900 dark:text-gray-100 border-r dark:border-slate-600">
-                          Total
-                        </td>
-                        <td className="p-4 text-center font-semibold text-gray-900 dark:text-gray-100 border-r dark:border-slate-600">
-                          {tp + fp}
-                        </td>
-                        <td className="p-4 text-center font-semibold text-gray-900 dark:text-gray-100 border-r dark:border-slate-600">
-                          {fn + tn}
-                        </td>
-                        <td className="p-4 text-center font-bold text-lg text-gray-900 dark:text-gray-100">
-                          {total}
-                        </td>
-                      </tr>
+                    <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
+                      {rows.map((row) => (
+                        <tr key={row.id} className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
+                          <td className="px-6 py-4">
+                            <input
+                              type="text"
+                              value={row.level}
+                              onChange={(e) => updateRow(row.id, 'level', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              placeholder="Niveau"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.cases}
+                              onChange={(e) => updateRow(row.id, 'cases', e.target.value)}
+                              className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.nonCases}
+                              onChange={(e) => updateRow(row.id, 'nonCases', e.target.value)}
+                              className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={() => removeRow(row.id)}
+                              disabled={rows.length === 1}
+                              className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
-
-                {/* Prévalence */}
-                <div className="mb-8">
-                  <label htmlFor="prevalence" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                    <span className="flex items-center">
-                      <Info className="w-4 h-4 mr-2" />
-                      Prévalence de la maladie (optionnel)
-                    </span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      id="prevalence"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={prevalence}
-                      onChange={(e) => setPrevalence(e.target.value)}
-                      placeholder="Prévalence dans la population (%)"
-                      className="w-full pl-10 pr-4 py-3 text-sm border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
-                    />
-                    <span className="absolute left-3 top-3 text-gray-400 dark:text-gray-500">%</span>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 ml-1">
-                    Si différente de l'échantillon, les VPP et VPN seront ajustées automatiquement
-                  </p>
-                </div>
-
-                {/* Boutons d'action */}
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={calculateResults}
-                    className="flex-1 min-w-[140px] inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg hover:shadow-xl hover:from-blue-700 hover:to-blue-800 transform hover:scale-[1.02] transition-all duration-200"
-                  >
-                    <Calculator className="w-4 h-4 mr-2" />
-                    Calculer
-                  </button>
-                  <button
-                    onClick={clearData}
-                    className="inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-[1.02] transition-all duration-200"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Effacer
-                  </button>
-                  <button
-                    onClick={loadExample}
-                    className="inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-[1.02] transition-all duration-200"
-                  >
-                    <Info className="w-4 h-4 mr-2" />
-                    Exemple
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Panel des résultats */}
-          <div className="space-y-6">
-            {/* Carte des résultats */}
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-slate-700/50 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <PieChart className="w-5 h-5 mr-2 text-purple-500" />
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      Résultats du ScreeningTest
-                    </h2>
-                  </div>
-                  {results && (
-                    <div className="flex gap-2">
-                      <button
-                        id="copy-btn"
-                        onClick={copyResults}
-                        className="p-2.5 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all duration-200 hover:scale-105"
-                        title="Copier les résultats"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={exportToPDF}
-                        className="p-2.5 text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 hover:scale-105 shadow-md"
-                        title="Exporter en PDF"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="p-6">
-                {results ? (
-                  <div ref={resultsRef} className="space-y-6">
-                    {/* Indicateurs principaux */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-700 transition-all duration-500 opacity-0 translate-y-5">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                              Sensibilité
-                            </h3>
-                            <p className="text-xs text-blue-700/80 dark:text-blue-300/80">
-                              TP / (TP + FN)
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                              {results.sensitivity.toFixed(1)}%
-                            </div>
-                            <div className={`text-xs font-medium mt-1 ${
-                              results.sensitivity >= 90 ? 'text-green-600' : 
-                              results.sensitivity >= 70 ? 'text-yellow-600' : 'text-red-600'
-                            }`}>
-                              {results.sensitivity >= 90 ? 'Excellent' : 
-                               results.sensitivity >= 70 ? 'Bon' : 'À améliorer'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-5 border border-purple-200 dark:border-purple-700 transition-all duration-500 opacity-0 translate-y-5 delay-150">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-1">
-                              Spécificité
-                            </h3>
-                            <p className="text-xs text-purple-700/80 dark:text-purple-300/80">
-                              TN / (TN + FP)
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                              {results.specificity.toFixed(1)}%
-                            </div>
-                            <div className={`text-xs font-medium mt-1 ${
-                              results.specificity >= 90 ? 'text-green-600' : 
-                              results.specificity >= 70 ? 'text-yellow-600' : 'text-red-600'
-                            }`}>
-                              {results.specificity >= 90 ? 'Excellent' : 
-                               results.specificity >= 70 ? 'Bon' : 'À améliorer'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 rounded-xl p-5 border border-emerald-200 dark:border-emerald-700 transition-all duration-500 opacity-0 translate-y-5 delay-300">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100 mb-1">
-                              VPP
-                            </h3>
-                            <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
-                              TP / (TP + FP)
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                              {results.vpp.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-emerald-600/80 dark:text-emerald-400/80 mt-1">
-                              Prévalence: {results.usedPrev.toFixed(1)}%
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-900/20 dark:to-cyan-800/20 rounded-xl p-5 border border-cyan-200 dark:border-cyan-700 transition-all duration-500 opacity-0 translate-y-5 delay-450">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-sm font-semibold text-cyan-900 dark:text-cyan-100 mb-1">
-                              VPN
-                            </h3>
-                            <p className="text-xs text-cyan-700/80 dark:text-cyan-300/80">
-                              TN / (TN + FN)
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-cyan-700 dark:text-cyan-300">
-                              {results.vpn.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-cyan-600/80 dark:text-cyan-400/80 mt-1">
-                              Sécurité du test négatif
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Interprétation */}
-                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700/50 dark:to-slate-600/50 rounded-xl p-5 border border-gray-200/50 dark:border-slate-600/50 transition-all duration-700 opacity-0 translate-y-5 delay-600">
-                      <div className="flex items-center mb-3">
-                        <BarChart3 className="w-5 h-5 mr-2 text-gray-600 dark:text-gray-400" />
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          Interprétation Clinique
-                        </h3>
-                      </div>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">
-                        {results.interpretation}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-600 rounded-full flex items-center justify-center shadow-lg">
-                      <PieChart className="w-10 h-10 text-gray-400 dark:text-gray-500" />
-                    </div>
-                    <p className="text-gray-500 dark:text-gray-400 text-lg font-medium mb-2">
-                      En attente de données
-                    </p>
-                    <p className="text-gray-400 dark:text-gray-500 text-sm">
-                      Saisissez les valeurs TP, FP, FN, TN pour voir les résultats
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-
-          </div>
-        </div>
-      </div>
-
-      {/* Bouton d'aide flottant */}
-      <button
-        onClick={() => setShowHelp(true)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 hover:shadow-3xl active:scale-105 group"
-      >
-        <HelpCircle className="w-7 h-7" />
-        <span className="absolute -top-10 right-0 bg-gray-900 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-          Aide & Documentation
-        </span>
-      </button>
-
-      {/* Modale d'aide */}
-      {showHelp && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto"
-          onClick={() => setShowHelp(false)}
-        >
-          <div 
-            className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-white/30 dark:border-slate-700/50 my-8 w-full max-w-4xl max-h-[85vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-white dark:bg-slate-800 flex justify-between items-center p-6 border-b border-gray-200 dark:border-slate-700">
-              <div className="flex items-center">
-                <HelpCircle className="w-6 h-6 mr-3 text-blue-600 dark:text-blue-400" />
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Guide d'utilisation - ScreeningTest
-                </h3>
-              </div>
-              <button 
-                onClick={() => setShowHelp(false)}
-                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-8 text-gray-700 dark:text-gray-300 overflow-y-auto max-h-[60vh]">
-              <section>
-                <h4 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400 flex items-center">
-                  <Info className="w-5 h-5 mr-2" />
-                  Comment utiliser ScreeningTest
-                </h4>
-                <div className="space-y-3 text-sm bg-gray-50 dark:bg-slate-700/30 rounded-xl p-4">
-                  <div className="flex items-start">
-                    <div className="bg-blue-100 dark:bg-blue-900/30 rounded-lg p-2 mr-3">
-                      <span className="font-bold text-blue-700 dark:text-blue-400">1</span>
-                    </div>
-                    <div>
-                      <strong>Vrais Positifs (TP)</strong> : Personnes malades avec test positif
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="bg-blue-100 dark:bg-blue-900/30 rounded-lg p-2 mr-3">
-                      <span className="font-bold text-blue-700 dark:text-blue-400">2</span>
-                    </div>
-                    <div>
-                      <strong>Faux Positifs (FP)</strong> : Personnes non malades avec test positif
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="bg-blue-100 dark:bg-blue-900/30 rounded-lg p-2 mr-3">
-                      <span className="font-bold text-blue-700 dark:text-blue-400">3</span>
-                    </div>
-                    <div>
-                      <strong>Faux Négatifs (FN)</strong> : Personnes malades avec test négatif
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="bg-blue-100 dark:bg-blue-900/30 rounded-lg p-2 mr-3">
-                      <span className="font-bold text-blue-700 dark:text-blue-400">4</span>
-                    </div>
-                    <div>
-                      <strong>Vrais Négatifs (TN)</strong> : Personnes non malades avec test négatif
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <h4 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400 flex items-center">
-                  <BarChart3 className="w-5 h-5 mr-2" />
-                  Interprétation des indicateurs
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/10 dark:to-blue-800/10 rounded-xl p-4 border border-blue-200 dark:border-blue-700/30">
-                    <h5 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">
-                      Sensibilité
-                    </h5>
-                    <p className="text-sm">
-                      <strong>Idéal : &gt;90%</strong> pour les tests de dépistage<br/>
-                      Détecte les malades, minimise les faux négatifs
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/10 dark:to-purple-800/10 rounded-xl p-4 border border-purple-200 dark:border-purple-700/30">
-                    <h5 className="font-semibold text-purple-800 dark:text-purple-300 mb-2">
-                      Spécificité
-                    </h5>
-                    <p className="text-sm">
-                      <strong>Idéal : &gt;90%</strong> pour les tests de confirmation<br/>
-                      Exclut les non-malades, minimise les faux positifs
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/10 dark:to-emerald-800/10 rounded-xl p-4 border border-emerald-200 dark:border-emerald-700/30">
-                    <h5 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2">
-                      VPP (Valeur Prédictive Positive)
-                    </h5>
-                    <p className="text-sm">
-                      <strong>Dépend de la prévalence</strong><br/>
-                      Augmente quand la prévalence augmente
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-900/10 dark:to-cyan-800/10 rounded-xl p-4 border border-cyan-200 dark:border-cyan-700/30">
-                    <h5 className="font-semibold text-cyan-800 dark:text-cyan-300 mb-2">
-                      VPN (Valeur Prédictive Négative)
-                    </h5>
-                    <p className="text-sm">
-                      <strong>Dépend de la prévalence</strong><br/>
-                      Augmente quand la prévalence diminue
-                    </p>
-                  </div>
-                </div>
-              </section>
-            </div>
-            
-            <div className="sticky bottom-0 bg-gray-50 dark:bg-slate-700/50 p-4 border-t border-gray-200 dark:border-slate-700">
-              <div className="flex justify-end">
                 <button
-                  onClick={() => setShowHelp(false)}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  onClick={addRow}
+                  className="w-full px-5 py-4 bg-blue-600 text-white rounded-2xl font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  J'ai compris
+                  <Plus className="w-5 h-5" /> Ajouter un niveau
+                </button>
+              </div>
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+                <button
+                  onClick={loadExample}
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Info className="w-4 h-4" /> Exemple
+                </button>
+                <button
+                  onClick={clearForm}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                >
+                  <RotateCcw className="w-5 h-5" />
                 </button>
               </div>
             </div>
           </div>
+
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier le résultat principal"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10 overflow-y-auto">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez au moins deux niveaux</p>
+                    <p className="text-slate-400 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
+                  </div>
+                ) : (
+                  <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Carte AUC - style RMS */}
+                    <div
+                      className={`p-6 rounded-3xl text-center border ${
+                        results.auc > 0.7
+                          ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                          : 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-800/30'
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Aire sous la courbe ROC (AUC)
+                      </p>
+                      <div
+                        className={`text-4xl font-bold tracking-tight mb-2 ${
+                          results.auc > 0.7 ? 'text-emerald-600' : 'text-amber-600'
+                        }`}
+                      >
+                        {results.auc.toFixed(4)}
+                      </div>
+                      <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
+                        IC 95% : [{results.aucLower.toFixed(4)} – {results.aucUpper.toFixed(4)}]
+                      </span>
+                    </div>
+
+                    {/* Courbe ROC SVG */}
+<div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+  {/* Header avec Stats */}
+  <div className="flex justify-between items-start mb-8">
+    <div>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+        Analyse de Performance ROC
+      </h3>
+      <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+        Compromis Sensibilité vs Spécificité
+      </p>
+    </div>
+    <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
+      <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">AUC: 0.88</span>
+    </div>
+  </div>
+
+  <div className="relative flex justify-center">
+    <svg width={svgWidth} height={svgHeight} className="overflow-visible">
+      <defs>
+        {/* Dégradé sous la courbe pour l'aspect "Aire" */}
+        <linearGradient id="rocGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01} />
+        </linearGradient>
+      </defs>
+
+      {/* Grille de lecture ultra-légère */}
+      {[0.25, 0.5, 0.75, 1].map((tick) => (
+        <g key={tick}>
+          <line
+            x1={margin.left}
+            y1={pointToSVG(0, tick).y}
+            x2={margin.left + plotWidth}
+            y2={pointToSVG(0, tick).y}
+            stroke="currentColor"
+            className="text-slate-100 dark:text-slate-800"
+            strokeWidth={1}
+          />
+          <line
+            x1={pointToSVG(tick, 0).x}
+            y1={margin.top}
+            x2={pointToSVG(tick, 0).x}
+            y2={margin.top + plotHeight}
+            stroke="currentColor"
+            className="text-slate-100 dark:text-slate-800"
+            strokeWidth={1}
+          />
+        </g>
+      ))}
+
+      {/* Ligne de hasard (Diagonale) */}
+      <line
+        x1={margin.left}
+        y1={margin.top + plotHeight}
+        x2={margin.left + plotWidth}
+        y2={margin.top}
+        stroke="currentColor"
+        className="text-slate-300 dark:text-slate-700"
+        strokeWidth={1.5}
+        strokeDasharray="6 4"
+      />
+
+      {/* Aire sous la courbe (AUC Fill) */}
+      <path
+        d={`
+          M ${pointToSVG(0, 0).x} ${pointToSVG(0, 0).y}
+          ${results.rocPoints.map(p => `L ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`).join(' ')}
+          L ${pointToSVG(1, 0).x} ${pointToSVG(1, 0).y}
+          Z
+        `}
+        fill="url(#rocGradient)"
+      />
+
+      {/* Courbe ROC Principale */}
+      <path
+        d={results.rocPoints
+          .map((p, i) => `${i === 0 ? 'M' : 'L'} ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`)
+          .join(' ')}
+        fill="none"
+        stroke="#3b82f6"
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+
+      {/* Points de coupure (Interactifs visuellement) */}
+      {results.rocPoints.map((p, i) => (
+        <circle
+          key={i}
+          cx={pointToSVG(p.fpr, p.tpr).x}
+          cy={pointToSVG(p.fpr, p.tpr).y}
+          r={4}
+          className="fill-white stroke-blue-600 dark:fill-slate-900"
+          strokeWidth={2}
+        />
+      ))}
+
+      {/* Étiquettes des Axes */}
+      <text 
+        x={margin.left + plotWidth / 2} 
+        y={margin.top + plotHeight + 35} 
+        className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
+        textAnchor="middle"
+      >
+        TAUX DE FAUX POSITIFS (1 - SPÉCIFICITÉ)
+      </text>
+      <text 
+        x={margin.left - 35} 
+        y={margin.top + plotHeight / 2} 
+        className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
+        textAnchor="middle" 
+        transform={`rotate(-90, ${margin.left - 35}, ${margin.top + plotHeight / 2})`}
+      >
+        TAUX DE VRAIS POSITIFS (SENSIBILITÉ)
+      </text>
+    </svg>
+  </div>
+
+  {/* Légende épurée */}
+  <div className="flex justify-center gap-8 mt-10 border-t border-slate-50 dark:border-slate-800 pt-6">
+    <div className="flex items-center gap-2">
+      <div className="w-4 h-1 bg-blue-500 rounded-full"></div>
+      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">Modèle Actuel</span>
+    </div>
+    <div className="flex items-center gap-2">
+      <div className="w-4 h-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600"></div>
+      <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Hasard</span>
+    </div>
+  </div>
+</div>
+
+                    {/* Résultats par cutoff (résumés) */}
+                    {results.cutoffs.map((c, index) => (
+                      <div key={index} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
+                        <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs text-blue-700 dark:text-blue-300">
+                            {index + 1}
+                          </span>
+                          Point de coupure {c.cutoff}
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <p className="text-slate-400 text-xs">Sensibilité</p>
+                            <p className="font-mono font-medium">
+                              {c.sensitivity.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.sensitivityLower.toFixed(2)}–{c.sensitivityUpper.toFixed(2)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">Spécificité</p>
+                            <p className="font-mono font-medium">
+                              {c.specificity.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.specificityLower.toFixed(2)}–{c.specificityUpper.toFixed(2)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">VPP</p>
+                            <p className="font-mono font-medium">
+                              {c.ppv.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.ppvLower.toFixed(2)}–{c.ppvUpper.toFixed(2)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">VPN</p>
+                            <p className="font-mono font-medium">
+                              {c.npv.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.npvLower.toFixed(2)}–{c.npvUpper.toFixed(2)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">LR+</p>
+                            <p className="font-mono font-medium">
+                              {c.lrPositive.toFixed(2)} <span className="text-slate-400 text-[10px]">({c.lrPositiveLower.toFixed(2)}–{c.lrPositiveUpper.toFixed(2)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">LR-</p>
+                            <p className="font-mono font-medium">
+                              {c.lrNegative.toFixed(2)} <span className="text-slate-400 text-[10px]">({c.lrNegativeLower.toFixed(2)}–{c.lrNegativeUpper.toFixed(2)})</span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Rapports de vraisemblance par niveau */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
+                      <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4">Rapports de vraisemblance par niveau</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-4 py-2 text-left">Niveau</th>
+                              <th className="px-4 py-2 text-center">LR</th>
+                              <th className="px-4 py-2 text-center">IC 95%</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {results.levelLRs.map((l, idx) => (
+                              <tr key={idx}>
+                                <td className="px-4 py-2 font-medium">{l.level}</td>
+                                <td className="px-4 py-2 text-center font-mono">{l.lr.toFixed(4)}</td>
+                                <td className="px-4 py-2 text-center font-mono">
+                                  [{l.lrLower.toFixed(4)} – {l.lrUpper.toFixed(4)}]
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Modal d'aide */}
+        {showHelpModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+      onClick={() => setShowHelpModal(false)}
+    />
+    <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+      <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+          Guide rapide – Screening Test
+        </h3>
+        <button
+          onClick={() => setShowHelpModal(false)}
+          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="p-6 md:p-8 space-y-8">
+        {/* 1. PRINCIPE */}
+        <section>
+          <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+              1
+            </div>
+            Le principe
+          </h4>
+          <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+            Ce module reproduit fidèlement l’outil <strong>« Screening Test » d’OpenEpi</strong>. 
+            Il évalue les performances d’un test diagnostique ou de dépistage à plusieurs niveaux 
+            (ordinal ou continu) en calculant pour chaque seuil les indicateurs classiques 
+            (sensibilité, spécificité, valeurs prédictives, rapports de vraisemblance, 
+            odds ratio, kappa, réduction d’entropie) et l’aire sous la courbe ROC (AUC).
+          </p>
+        </section>
+
+        {/* Cartes d'interprétation rapide */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+            <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+              AUC &gt; 0,70
+            </div>
+            <div className="text-xs text-slate-500">Test performant – discrimination acceptable à excellente</div>
+          </div>
+          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+            <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+              AUC &lt; 0,60
+            </div>
+            <div className="text-xs text-slate-500">Test peu informatif – proche du hasard</div>
+          </div>
+        </div>
+
+        {/* 2. INTERVALLES DE CONFIANCE */}
+        <section>
+          <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+              2
+            </div>
+            Intervalles de confiance (IC 95 %)
+          </h4>
+          <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-3">
+            Tous les intervalles sont calculés selon des méthodes reconnues, identiques à OpenEpi.
+          </p>
+          <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-300 space-y-1">
+            <li>
+              <strong className="text-slate-900 dark:text-white">Wilson score</strong> – 
+              Proportions (sensibilité, spécificité, VPP, VPN, exactitude)
+            </li>
+            <li>
+              <strong className="text-slate-900 dark:text-white">Taylor (log‑LR)</strong> – 
+              Rapports de vraisemblance (LR+, LR–)
+            </li>
+            <li>
+              <strong className="text-slate-900 dark:text-white">Hanley & McNeil (1982)</strong> – 
+              Aire sous la courbe ROC (AUC)
+            </li>
+            <li>
+              <strong className="text-slate-900 dark:text-white">Approximation normale</strong> – 
+              Coefficient kappa de Cohen
+            </li>
+          </ul>
+        </section>
+
+        {/* 3. MÉTHODES DE CALCUL AVANCÉES */}
+        <section>
+          <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+              3
+            </div>
+            Détail des calculs
+          </h4>
+          <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+            <p>
+              <strong className="text-slate-900 dark:text-white">Courbe ROC & AUC</strong> – 
+              Les points sont générés en cumulant les effectifs des niveaux du plus pathologique 
+              au moins pathologique. L’AUC est calculée par la méthode des trapèzes.
+            </p>
+            <p>
+              <strong className="text-slate-900 dark:text-white">Rapports de vraisemblance par niveau</strong> – 
+              LR = (casᵢ / non‑casᵢ) / (total cas / total non‑cas). IC basé sur l’erreur‑type de log(LR).
+            </p>
+            <p>
+              <strong className="text-slate-900 dark:text-white">Diagnostic odds ratio (DOR)</strong> – 
+              (TP·TN)/(FP·FN). IC par transformation logarithmique.
+            </p>
+            <p>
+              <strong className="text-slate-900 dark:text-white">Kappa de Cohen</strong> – 
+              Mesure de l’accord au‑delà du hasard. IC = κ ± 1,96·SE(κ).
+            </p>
+            <p>
+              <strong className="text-slate-900 dark:text-white">Réduction d’entropie</strong> – 
+              Pourcentage de réduction de l’incertitude (entropie de Shannon) après un test positif ou négatif.
+            </p>
+            <p>
+              <strong className="text-slate-900 dark:text-white">Index de biais</strong> – 
+              (TP + FP – FN – TN) / N. Reflète le déséquilibre global de classification.
+            </p>
+          </div>
+
+          {/* Lien OpenEpi */}
+          <a
+            href="https://www.openepi.com/DiagnosticTest/DiagnosticTest.htm"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
+          >
+            Source officielle : OpenEpi – Screening Test
+            <ArrowRight className="w-3 h-3 ml-1" />
+          </a>
+        </section>
+
+        {/* Note sur l'ordre des niveaux */}
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-400">
+          <span className="font-bold">Ordre des niveaux</span> – Les niveaux doivent être saisis 
+          du <strong>moins pathologique</strong> (première ligne) au <strong>plus pathologique</strong> 
+          (dernière ligne). C’est essentiel pour une courbe ROC correcte.
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+      </div>
     </div>
   );
 }

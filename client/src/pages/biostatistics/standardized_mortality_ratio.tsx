@@ -689,21 +689,9 @@ export default function StdMortalityRatio() {
                         </div>
                       </div>
                     </div>
-                    {/* Détails statistiques avancés (repliables) */}
                     <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-                    <button
-                      onClick={() => setShowStatsDetail(!showStatsDetail)}
-                      className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
-                    >
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform ${
-                          showStatsDetail ? 'rotate-180' : ''
-                        }`}
-                      />
-                      {showStatsDetail ? 'Masquer' : 'Afficher'} les détails statistiques complets
-                    </button>
 
-                      {showStatsDetail && (
+                    
                         <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
                           {!hasJStat && (
                             <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
@@ -778,10 +766,9 @@ export default function StdMortalityRatio() {
                             * Pour les petits effectifs (observés ≤ 5), privilégiez les méthodes exactes (Fisher, Mid-P).
                           </p>
                         </div>
-                      )}
+                    
                     </div>
 
-                    {/* Interprétation */}
                     <div
                       className={`p-6 rounded-2xl ${
                         results.exact.lower > 1 || results.exact.upper < 1

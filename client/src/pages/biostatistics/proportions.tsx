@@ -684,19 +684,8 @@ export default function Proportion() {
       
                     {/* Détails statistiques avancés (repliables) */}
                     <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-                    <button
-                      onClick={() => setShowStatsDetail(!showStatsDetail)}
-                      className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
-                    >
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform ${
-                          showStatsDetail ? 'rotate-180' : ''
-                        }`}
-                      />
-                      {showStatsDetail ? 'Masquer' : 'Afficher'} les détails statistiques complets
-                    </button>
+                    
 
-                      {showStatsDetail && (
                         <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
                           {!hasJStat && (
                             <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
@@ -792,7 +781,7 @@ export default function Proportion() {
                             * Regarder en premier les éléments : sélection d’éléments de l’éditeur à examiner en premier.
                           </p>
                         </div>
-                      )}
+
                     </div>
 
                     {/* Test et Interprétation */}
