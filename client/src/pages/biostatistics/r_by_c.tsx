@@ -1,30 +1,14 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  Calculator,
-  Trash2,
-  HelpCircle,
-  BarChart3,
-  Copy,
-  Download,
-  X,
-  ChevronRight,
-  Home,
-  Edit,
-  Table,
-  Plus,
-  Minus,
-  AlertTriangle,
-  Info,
-  BookOpen,
-  ExternalLink,
-  FileText,
-  TrendingUp,
-  Users,
-  Target,
-  Grid3x3,
-  Columns
+  Blocks, ChevronRight, Calculator, BarChart3,
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
+  ChevronDown, Plus, Minus
 } from 'lucide-react';
 import { Link } from 'wouter';
+import { toast } from 'sonner';
+
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface TableData {
   rows: number;
@@ -57,6 +41,7 @@ export default function RxcTable() {
   });
   const [results, setResults] = useState<ChiSquareResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showStatsDetail, setShowStatsDetail] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
   const [hasData, setHasData] = useState<boolean>(false);
 
@@ -65,7 +50,7 @@ export default function RxcTable() {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
         const jstatScript = document.createElement('script');
-        jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@1.9.4/dist/jstat.min.js';
+        jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
         document.body.appendChild(jstatScript);
       }
       if (!(window as any).jspdf) {
@@ -80,6 +65,8 @@ export default function RxcTable() {
     };
     loadScripts();
   }, []);
+
+  const hasJStat = !!(window as any).jStat;
 
   // Generate initial table
   useEffect(() => {
@@ -139,15 +126,10 @@ export default function RxcTable() {
     // Check if we have any data for calculation
     const anyData = newData.some(row => row.some(cell => cell > 0));
     setHasData(anyData);
-    
-    // Auto-calculate if we have data
-    if (anyData && (window as any).jStat) {
-      calculateChiSquare();
-    }
   };
 
   const calculateChiSquare = () => {
-    if (!hasData || !(window as any).jStat) return;
+    if (!hasData || !hasJStat) return;
 
     const { rows, cols, data, rowTotals, colTotals, grandTotal } = tableData;
     
@@ -177,7 +159,8 @@ export default function RxcTable() {
     const degreesOfFreedom = (rows - 1) * (cols - 1);
     
     // Calculate p-value
-    const pValue = 1 - (window as any).jStat.chisquare.cdf(chiSquare, degreesOfFreedom);
+    const jStat = (window as any).jStat;
+    const pValue = 1 - jStat.chisquare.cdf(chiSquare, degreesOfFreedom);
     
     // Calculate Cramér's V
     const n = grandTotal;
@@ -211,10 +194,78 @@ export default function RxcTable() {
     }
   }, [results]);
 
+  // Auto calculate when data changes
+  useEffect(() => {
+    if (hasData && hasJStat) {
+      calculateChiSquare();
+    } else if (!hasJStat) {
+      toast.error('jStat non disponible - les calculs sont désactivés');
+    }
+  }, [tableData.data, hasData, hasJStat]);
+
+  const addRow = () => {
+    const newRows = tableData.rows + 1;
+    setNumRows(newRows.toString());
+    
+    const newData = [...tableData.data, Array(tableData.cols).fill(0)];
+    setTableData({
+      ...tableData,
+      rows: newRows,
+      data: newData,
+      rowTotals: [...tableData.rowTotals, 0]
+    });
+  };
+
+  const removeRow = () => {
+    if (tableData.rows <= 2) return;
+    const newRows = tableData.rows - 1;
+    setNumRows(newRows.toString());
+    
+    const newData = tableData.data.slice(0, -1);
+    const newRowTotals = tableData.rowTotals.slice(0, -1);
+    
+    setTableData({
+      ...tableData,
+      rows: newRows,
+      data: newData,
+      rowTotals: newRowTotals
+    });
+  };
+
+  const addColumn = () => {
+    const newCols = tableData.cols + 1;
+    setNumCols(newCols.toString());
+    
+    const newData = tableData.data.map(row => [...row, 0]);
+    setTableData({
+      ...tableData,
+      cols: newCols,
+      data: newData,
+      colTotals: [...tableData.colTotals, 0]
+    });
+  };
+
+  const removeColumn = () => {
+    if (tableData.cols <= 2) return;
+    const newCols = tableData.cols - 1;
+    setNumCols(newCols.toString());
+    
+    const newData = tableData.data.map(row => row.slice(0, -1));
+    const newColTotals = tableData.colTotals.slice(0, -1);
+    
+    setTableData({
+      ...tableData,
+      cols: newCols,
+      data: newData,
+      colTotals: newColTotals
+    });
+  };
+
   const clearForm = () => {
     setNumRows('2');
     setNumCols('2');
     generateTable();
+    toast.info('Champs réinitialisés');
   };
 
   const loadExample = () => {
@@ -240,6 +291,7 @@ export default function RxcTable() {
       });
       
       setHasData(true);
+      toast.success('Exemple chargé');
     }, 100);
   };
 
@@ -255,627 +307,617 @@ export default function RxcTable() {
     
     try {
       await navigator.clipboard.writeText(text);
-      alert('Résultats copiés dans le presse-papier !');
+      toast.success('Résultats copiés');
     } catch (err) {
-      alert('Échec de la copie');
+      toast.error('Échec de la copie');
     }
   };
 
   const exportPDF = () => {
     if (!results) {
-      alert('Veuillez d\'abord effectuer un calcul');
+      toast.error('Veuillez d\'abord effectuer un calcul');
       return;
     }
 
-    const { jsPDF } = (window as any).jspdf;
-    const doc = new jsPDF();
-    
-    const primaryColor = [59, 130, 246];
-    const secondaryColor = [99, 102, 241];
-    const accentColor = [16, 185, 129];
-    
-    // En-tête
-    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.rect(0, 0, 210, 40, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text('Analyse de Tableau R×C', 105, 22, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('Test du Chi-carré et mesure d\'association', 105, 30, { align: 'center' });
-    
-    // Informations principales
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.text('Configuration du tableau', 20, 55);
-    doc.setFontSize(12);
-    const dataYStart = 65;
-    doc.text(`Nombre de lignes: ${tableData.rows}`, 20, dataYStart);
-    doc.text(`Nombre de colonnes: ${tableData.cols}`, 20, dataYStart + 8);
-    doc.text(`Effectif total: ${tableData.grandTotal}`, 20, dataYStart + 16);
-    doc.text(`Degrés de liberté: ${results.degreesOfFreedom}`, 20, dataYStart + 24);
-    
-    // Tableau des données observées
-    doc.setFontSize(16);
-    doc.text('Données observées', 20, 95);
-    
-    const observedData = [];
-    for (let i = 0; i < tableData.rows; i++) {
-      const row = [`Ligne ${i + 1}`];
-      for (let j = 0; j < tableData.cols; j++) {
-        row.push(tableData.data[i][j].toString());
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      // Couleurs
+      const colorPrimary = Number(results.pValue) < 0.05
+        ? { bg: [255, 247, 237], border: [234, 88, 12], text: [234, 88, 12] }
+        : { bg: [236, 253, 245], border: [5, 150, 105], text: [5, 150, 105] };
+      const colorSlate = {
+        50: [248, 250, 252],
+        100: [241, 245, 249],
+        200: [226, 232, 240],
+        300: [203, 213, 225],
+        500: [100, 116, 139],
+        700: [51, 65, 85],
+        900: [15, 23, 42],
+      };
+
+      // Helper rectangle arrondi
+      const roundedRect = (x: number, y: number, w: number, h: number, r: number, style: 'F' | 'S' | 'FD' = 'F') => {
+        doc.roundedRect(x, y, w, h, r, r, style);
+      };
+
+      // ---------- EN-TÊTE ----------
+      doc.setFillColor(...colorSlate[50]);
+      roundedRect(0, 0, 210, 40, 0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport d'Analyse Tableau R×C", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text('Calculateur R×C – OpenEpi', 190, 32, { align: 'right' });
+
+      // ---------- CONFIGURATION ----------
+      let y = 55;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Configuration', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      doc.text(`Lignes: ${tableData.rows}`, 25, y); y += 6;
+      doc.text(`Colonnes: ${tableData.cols}`, 25, y); y += 6;
+      doc.text(`Effectif total: ${tableData.grandTotal}`, 25, y); y += 6;
+      doc.text(`Degrés de liberté: ${results.degreesOfFreedom}`, 25, y); y += 12;
+
+      // ---------- DONNÉES OBSERVÉES ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Données observées', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const observedData = [];
+      for (let i = 0; i < tableData.rows; i++) {
+        const row = [`Ligne ${i + 1}`];
+        for (let j = 0; j < tableData.cols; j++) {
+          row.push(tableData.data[i][j].toString());
+        }
+        row.push(tableData.rowTotals[i].toString());
+        observedData.push(row);
       }
-      row.push(tableData.rowTotals[i].toString());
-      observedData.push(row);
-    }
-    
-    const colTotalRow = ['Total'];
-    for (let j = 0; j < tableData.cols; j++) {
-      colTotalRow.push(tableData.colTotals[j].toString());
-    }
-    colTotalRow.push(tableData.grandTotal.toString());
-    observedData.push(colTotalRow);
-    
-    const head = ['Ligne/Col'];
-    for (let j = 1; j <= tableData.cols; j++) head.push(`Col ${j}`);
-    head.push('Total');
-    
-    (doc as any).autoTable({
-      startY: 100,
-      head: [head],
-      body: observedData,
-      theme: 'striped',
-      headStyles: { fillColor: secondaryColor, textColor: 255, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [240, 240, 240] },
-      margin: { left: 20, right: 20 },
-      styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' }
-    });
-    
-    // Tableau des effectifs théoriques
-    const expectedY = (doc as any).autoTable.previous.finalY + 20;
-    doc.setFontSize(16);
-    doc.text('Effectifs théoriques', 20, expectedY);
-    
-    const expectedData = [];
-    for (let i = 0; i < tableData.rows; i++) {
-      const row = [`Ligne ${i + 1}`];
+      
+      const colTotalRow = ['Total'];
       for (let j = 0; j < tableData.cols; j++) {
-        row.push(results.expected[i][j].toFixed(2));
+        colTotalRow.push(tableData.colTotals[j].toString());
       }
-      expectedData.push(row);
+      colTotalRow.push(tableData.grandTotal.toString());
+      observedData.push(colTotalRow);
+      
+      const head = ['Ligne/Col'];
+      for (let j = 1; j <= tableData.cols; j++) head.push(`Col ${j}`);
+      head.push('Total');
+      
+      autoTable(doc, {
+        startY: y,
+        head: [head],
+        body: observedData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- EFFECTIFS THÉORIQUES ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Effectifs théoriques', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const expectedData = [];
+      for (let i = 0; i < tableData.rows; i++) {
+        const row = [`Ligne ${i + 1}`];
+        for (let j = 0; j < tableData.cols; j++) {
+          row.push(results.expected[i][j].toFixed(2));
+        }
+        expectedData.push(row);
+      }
+
+      const expectedHead = ['Ligne/Col'];
+      for (let j = 1; j <= tableData.cols; j++) expectedHead.push(`Col ${j}`);
+
+      autoTable(doc, {
+        startY: y,
+        head: [expectedHead],
+        body: expectedData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- RÉSULTATS ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Résultats', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const resultsTable = [
+        ['Chi-carré de Pearson', results.chiSquare.toFixed(4)],
+        ['Degrés de liberté', results.degreesOfFreedom.toString()],
+        ['Valeur p', results.pValue.toFixed(6)],
+        ['V de Cramér', results.cramersV.toFixed(4)]
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Statistique', 'Valeur']],
+        body: resultsTable,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 60, fontStyle: 'bold' },
+          1: { cellWidth: 40, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- INTERPRÉTATION ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Interprétation', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 8;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      const splitText = doc.splitTextToSize(results.interpretation, 170);
+      doc.text(splitText, 20, y);
+
+      // ---------- PIED DE PAGE ----------
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('Calculateur R×C – Fidèle à OpenEpi', 20, footerY + 5);
+      doc.text(`Page 1 / 1`, 190, footerY + 5, { align: 'right' });
+
+      doc.save('Rapport_RxC.pdf');
+      toast.success('Rapport PDF exporté avec succès');
+    } catch (error) {
+      console.error('Erreur PDF :', error);
+      toast.error('Erreur lors de la génération du PDF');
     }
-    
-    (doc as any).autoTable({
-      startY: expectedY + 5,
-      head: [head.slice(0, -1)],
-      body: expectedData,
-      theme: 'grid',
-      headStyles: { fillColor: accentColor, textColor: 255, fontStyle: 'bold' },
-      margin: { left: 20, right: 20 },
-      styles: { fontSize: 9, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1 }
-    });
-    
-    // Résultats statistiques
-    const resultsY = (doc as any).autoTable.previous.finalY + 20;
-    doc.setFontSize(16);
-    doc.text('Résultats statistiques', 20, resultsY);
-    
-    const resultsTableData = [
-      ['Chi-carré de Pearson', results.chiSquare.toFixed(4)],
-      ['Degrés de liberté', results.degreesOfFreedom.toString()],
-      ['Valeur p', results.pValue.toFixed(6)],
-      ['V de Cramér', results.cramersV.toFixed(4)]
-    ];
-    
-    (doc as any).autoTable({
-      startY: resultsY + 5,
-      head: [['Statistique', 'Valeur']],
-      body: resultsTableData,
-      theme: 'plain',
-      headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold' },
-      margin: { left: 20, right: 20 },
-      styles: { fontSize: 10, cellPadding: 4 }
-    });
-    
-    // Interprétation
-    const interpretationY = (doc as any).autoTable.previous.finalY + 15;
-    doc.setFillColor(240, 240, 255);
-    doc.rect(20, interpretationY, 170, 25, 'F');
-    doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.setLineWidth(0.5);
-    doc.rect(20, interpretationY, 170, 25);
-    
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(100, 100, 100);
-    doc.text('Interprétation:', 25, interpretationY + 8);
-    doc.text(results.interpretation, 25, interpretationY + 16);
-    
-    // Pied de page
-    const pageHeight = doc.internal.pageSize.height;
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Généré le ' + new Date().toLocaleDateString('fr-FR'), 20, pageHeight - 20);
-    doc.text('StatTool - Analyse Tableau R×C', 105, pageHeight - 20, { align: 'center' });
-    doc.text('Page 1/1', 190, pageHeight - 20, { align: 'right' });
-    
-    doc.save('resultats_tableau_rxc_detaille.pdf');
-  };
-
-  // Auto calculate when data changes
-  useEffect(() => {
-    if (hasData && (window as any).jStat) {
-      calculateChiSquare();
-    }
-  }, [tableData.data, hasData]);
-
-  const addRow = () => {
-    const newRows = parseInt(numRows) + 1;
-    setNumRows(newRows.toString());
-    
-    const newData = [...tableData.data, Array(tableData.cols).fill(0)];
-    setTableData({
-      ...tableData,
-      rows: newRows,
-      data: newData,
-      rowTotals: [...tableData.rowTotals, 0]
-    });
-  };
-
-  const removeRow = () => {
-    if (parseInt(numRows) <= 2) return;
-    const newRows = parseInt(numRows) - 1;
-    setNumRows(newRows.toString());
-    
-    const newData = tableData.data.slice(0, -1);
-    const newRowTotals = tableData.rowTotals.slice(0, -1);
-    
-    setTableData({
-      ...tableData,
-      rows: newRows,
-      data: newData,
-      rowTotals: newRowTotals
-    });
-  };
-
-  const addColumn = () => {
-    const newCols = parseInt(numCols) + 1;
-    setNumCols(newCols.toString());
-    
-    const newData = tableData.data.map(row => [...row, 0]);
-    setTableData({
-      ...tableData,
-      cols: newCols,
-      data: newData,
-      colTotals: [...tableData.colTotals, 0]
-    });
-  };
-
-  const removeColumn = () => {
-    if (parseInt(numCols) <= 2) return;
-    const newCols = parseInt(numCols) - 1;
-    setNumCols(newCols.toString());
-    
-    const newData = tableData.data.map(row => row.slice(0, -1));
-    const newColTotals = tableData.colTotals.slice(0, -1);
-    
-    setTableData({
-      ...tableData,
-      cols: newCols,
-      data: newData,
-      colTotals: newColTotals
-    });
   };
 
   return (
-    <>
-      <style jsx>{`
-        #results > div {
-          transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        #results > div.fade-in {
-          opacity: 1;
-          transform: translateY(0);
-        }
-        .table-header {
-          padding: 1rem 0.5rem;
-          text-align: center;
-          font-weight: 600;
-          font-size: 0.875rem;
-          white-space: nowrap;
-        }
-        .table-cell {
-          padding: 0.75rem 0.5rem;
-          text-align: center;
-          vertical-align: middle;
-        }
-        .row-label {
-          text-align: left;
-          padding-left: 1rem;
-          font-weight: 500;
-        }
-      `}</style>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Tableaux R×C</span></li>
+          </ol>
+        </nav>
 
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
-        <div className="max-w-6xl mx-auto p-6 lg:p-8">
-          {/* Breadcrumb */}
-          <nav className="flex mb-4" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2 text-sm">
-              <li>
-                <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-Accueil
-                </Link>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">Tableaux R×C</span>
-              </li>
-            </ol>
-          </nav>
-
-          {/* Header */}
-          <div className="flex items-center space-x-4 mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-              <Grid3x3 className="w-6 h-6 text-white" strokeWidth={1.5} />
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Tableaux R×C
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Analyse des associations dans les tableaux de contingence de taille arbitraire.
-              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Analyse de Tableaux R×C</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Test du chi-carré pour tableaux de contingence.</p>
             </div>
           </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Input Panel */}
-            <div className="space-y-6">
-              {/* Configuration Card */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Columns className="w-5 h-5 mr-2 text-blue-500" strokeWidth={1.5} />
-                    Configuration du tableau
-                  </h2>
-                </div>
-                <div className="p-6">
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label htmlFor="num-rows" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Lignes
-                      </label>
-                      <input
-                        type="number"
-                        id="num-rows"
-                        value={numRows}
-                        onChange={(e) => setNumRows(e.target.value)}
-                        min="2"
-                        step="1"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      />
-                      <div className="flex space-x-2 mt-2">
-                        <button
-                          type="button"
-                          onClick={addRow}
-                          className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transform hover:scale-105 transition-all duration-200"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={removeRow}
-                          disabled={parseInt(numRows) <= 2}
-                          className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200 disabled:opacity-50"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label htmlFor="num-cols" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Colonnes
-                      </label>
-                      <input
-                        type="number"
-                        id="num-cols"
-                        value={numCols}
-                        onChange={(e) => setNumCols(e.target.value)}
-                        min="2"
-                        step="1"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      />
-                      <div className="flex space-x-2 mt-2">
-                        <button
-                          type="button"
-                          onClick={addColumn}
-                          className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transform hover:scale-105 transition-all duration-200"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={removeColumn}
-                          disabled={parseInt(numCols) <= 2}
-                          className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200 disabled:opacity-50"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+  <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+    
+    {/* En-tête */}
+    <div className="flex items-center justify-between mb-8">
+      <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center">
+        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg mr-3">
+          <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+        </div>
+        Paramètres du tableau
+      </h2>
+      <div className="text-xs font-medium px-3 py-1 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400">
+        {tableData.rows} x {tableData.cols}
+      </div>
+    </div>
+
+    <div className="space-y-6">
+      {/* Contrôles Lignes et Colonnes (Design Stepper) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Contrôle Lignes */}
+        <div className="space-y-3">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">
+            Lignes
+          </label>
+          <div className="flex items-center bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-1">
+            <button
+              onClick={removeRow}
+              disabled={tableData.rows <= 2}
+              className="p-3 text-slate-500 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <Minus className="w-5 h-5" />
+            </button>
+            <input
+              type="number"
+              value={numRows}
+              onChange={(e) => setNumRows(e.target.value)}
+              className="flex-1 bg-transparent text-center font-bold text-lg text-slate-800 dark:text-slate-100 focus:outline-none border-none p-0"
+              min="2"
+            />
+            <button
+              onClick={addRow}
+              className="p-3 text-slate-500 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Contrôle Colonnes */}
+        <div className="space-y-3">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">
+            Colonnes
+          </label>
+          <div className="flex items-center bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-1">
+            <button
+              onClick={removeColumn}
+              disabled={tableData.cols <= 2}
+              className="p-3 text-slate-500 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <Minus className="w-5 h-5" />
+            </button>
+            <input
+              type="number"
+              value={numCols}
+              onChange={(e) => setNumCols(e.target.value)}
+              className="flex-1 bg-transparent text-center font-bold text-lg text-slate-800 dark:text-slate-100 focus:outline-none border-none p-0"
+              min="2"
+            />
+            <button
+              onClick={addColumn}
+              className="p-3 text-slate-500 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={generateTable}
+        className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-bold text-sm uppercase tracking-wide shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-all transform active:scale-[0.98]"
+      >
+        Actualiser la structure
+      </button>
+    </div>
+
+    {/* Zone du Tableau avec Scroll Horizontal géré */}
+    <div className="mt-8 relative">
+      <div className="absolute inset-0 border border-slate-200 dark:border-slate-700 rounded-xl pointer-events-none z-10"></div>
+      
+      {/* overflow-x-auto permet le scroll horizontal */}
+      <div className="overflow-x-auto rounded-xl custom-scrollbar">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-100 dark:bg-slate-750 border-b border-slate-200 dark:border-slate-700">
+              <th className="px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider bg-slate-100 dark:bg-slate-800 sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                #
+              </th>
+              {Array.from({ length: tableData.cols }, (_, i) => (
+                <th key={i} className="px-4 py-3 text-center text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[100px]">
+                  Col {i + 1}
+                </th>
+              ))}
+              <th className="px-4 py-3 text-center text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider bg-slate-50 dark:bg-slate-800/50 min-w-[80px]">
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+            {tableData.data.map((row, rowIndex) => (
+              <tr key={rowIndex} className="group hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors">
+                {/* Première colonne (Label Ligne) Sticky pour rester visible au scroll */}
+                <td className="px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 group-hover:bg-blue-50/50 dark:group-hover:bg-slate-800/50 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] whitespace-nowrap">
+                  Ligne {rowIndex + 1}
+                </td>
+                
+                {/* Cellules Input */}
+                {row.map((cell, colIndex) => (
+                  <td key={colIndex} className="p-1">
+                    <input
+                      type="number"
+                      min="0"
+                      value={cell}
+                      onChange={(e) => updateCellValue(rowIndex, colIndex, e.target.value)}
+                      className="w-full text-center py-2 px-1 text-sm text-slate-700 dark:text-slate-200 bg-transparent border border-transparent hover:border-slate-200 dark:hover:border-slate-600 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20 rounded-lg transition-all outline-none font-medium placeholder:text-slate-300"
+                      placeholder="-"
+                    />
+                  </td>
+                ))}
+                
+                {/* Total Ligne */}
+                <td className="px-4 py-3 text-center text-sm font-bold text-blue-600 dark:text-blue-400 bg-slate-50/50 dark:bg-slate-800/30">
+                  {tableData.rowTotals[rowIndex]}
+                </td>
+              </tr>
+            ))}
+            
+            {/* Rangée Totaux Finaux */}
+            <tr className="bg-slate-50 dark:bg-slate-700/50 border-t-2 border-slate-200 dark:border-slate-600">
+              <td className="px-4 py-3 text-xs font-bold text-slate-900 dark:text-white uppercase sticky left-0 bg-slate-50 dark:bg-slate-700/50 z-10">
+                Total
+              </td>
+              {tableData.colTotals.map((total, i) => (
+                <td key={i} className="px-4 py-3 text-center text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {total}
+                </td>
+              ))}
+              <td className="px-4 py-3 text-center text-base font-black text-blue-700 dark:text-blue-400">
+                {tableData.grandTotal}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* Actions Bas de page */}
+    <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-4">
+      <button
+        onClick={loadExample}
+        className="flex-1 px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 transition-all flex items-center justify-center gap-2 shadow-sm"
+      >
+        <Info className="w-4 h-4 text-blue-500" /> Charger un exemple
+      </button>
+      <button
+        onClick={clearForm}
+        className="px-5 py-3 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl border border-transparent hover:border-red-100 dark:hover:border-red-900/30 transition-all flex items-center justify-center group"
+        title="Réinitialiser"
+      >
+        <RotateCcw className="w-5 h-5 group-hover:-rotate-180 transition-transform duration-500" />
+      </button>
+    </div>
+  </div>
+</div>
+
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier le résultat principal"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={generateTable}
-                    className="w-full inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg hover:shadow-xl hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200"
-                  >
-                    <Table className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                    Générer le tableau
-                  </button>
-                </div>
+                )}
               </div>
 
-              {/* Input Card */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Edit className="w-5 h-5 mr-2 text-blue-500" strokeWidth={1.5} />
-                    Saisie des données
-                  </h2>
-                </div>
-                <div className="p-6 overflow-x-auto">
-                  <div id="data-table-container">
-                    <div className="overflow-x-auto">
-                      <table className="w-full rounded-xl border border-gray-200 dark:border-slate-600">
-                        <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
-                          <tr>
-                            <th className="table-header row-label">Lignes/Colonnes</th>
-                            {Array.from({ length: tableData.cols }, (_, colIndex) => (
-                              <th key={colIndex} className="table-header">Col {colIndex + 1}</th>
-                            ))}
-                            <th className="table-header">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
-                          {Array.from({ length: tableData.rows }, (_, rowIndex) => (
-                            <tr key={rowIndex} className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
-                              <td className="table-cell row-label text-sm font-medium text-gray-900 dark:text-gray-100">
-                                Ligne {rowIndex + 1}
-                              </td>
-                              {Array.from({ length: tableData.cols }, (_, colIndex) => (
-                                <td key={colIndex} className="table-cell">
-                                  <input
-                                    type="number"
-                                    className="data-cell w-16 px-2 py-1.5 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                    min="0"
-                                    step="1"
-                                    placeholder="0"
-                                    value={tableData.data[rowIndex][colIndex] || ''}
-                                    onChange={(e) => updateCellValue(rowIndex, colIndex, e.target.value)}
-                                  />
-                                </td>
-                              ))}
-                              <td className="table-cell text-sm font-medium text-gray-600 dark:text-gray-400">
-                                <span className="row-total">{tableData.rowTotals[rowIndex]}</span>
-                              </td>
-                            </tr>
-                          ))}
-                          <tr className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
-                            <td className="table-cell row-label text-sm font-semibold text-gray-900 dark:text-gray-100">Total</td>
-                            {Array.from({ length: tableData.cols }, (_, colIndex) => (
-                              <td key={colIndex} className="table-cell text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                <span className="col-total">{tableData.colTotals[colIndex]}</span>
-                              </td>
-                            ))}
-                            <td className="table-cell text-sm font-bold text-gray-900 dark:text-gray-100">
-                              <span className="grand-total">{tableData.grandTotal}</span>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-slate-400 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
                   </div>
-                  <div className="flex flex-wrap gap-3 mt-6">
-                    <button
-                      type="button"
-                      onClick={calculateChiSquare}
-                      disabled={!hasData}
-                      className="flex-1 min-w-0 inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <Calculator className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Calculer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearForm}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Effacer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={loadExample}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <HelpCircle className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Exemple
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Results Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center justify-between">
-                    <div className="flex items-center">
-                      <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
-                      Résultats
-                    </div>
-                    {results && (
-                      <div id="export-buttons" className="flex gap-4">
-                        <button
-                          id="copy-btn"
-                          aria-label="Copier les résultats"
-                          onClick={copyResults}
-                          className="p-2 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                        >
-                          <Copy className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
-                        <button
-                          id="pdf-btn"
-                          aria-label="Exporter en PDF"
-                          onClick={exportPDF}
-                          className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          <Download className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
-                      </div>
-                    )}
-                  </h2>
-                </div>
-                <div className="p-6">
-                  <div id="results" ref={resultsRef}>
-                    {results ? (
-                      <div className="space-y-6">
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg border border-blue-200 dark:border-blue-700">
-                            <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">Chi-carré de Pearson</span>
-                            <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{results.chiSquare.toFixed(4)}</span>
+                ) : (
+                  <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Résultats principaux */}
+                    <div className="bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30 p-6 rounded-3xl border">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Résultats statistiques
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
+                            {results.chiSquare.toFixed(4)}
                           </div>
-                          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700/50 dark:to-slate-600/50 rounded-lg">
-                            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Degrés de liberté</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-300">{results.degreesOfFreedom}</span>
-                          </div>
-                          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg border border-green-200 dark:border-green-700">
-                            <span className="text-sm font-semibold text-green-900 dark:text-green-100">Valeur p</span>
-                            <span className="text-sm font-bold text-green-700 dark:text-green-300">{results.pValue.toFixed(6)}</span>
-                          </div>
-                          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 rounded-lg border border-indigo-200 dark:border-indigo-700">
-                            <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">V de Cramér</span>
-                            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{results.cramersV.toFixed(4)}</span>
-                          </div>
-                        </div>
-                        <div className="p-4 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg border border-blue-200 dark:border-blue-700">
-                          <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2">
-                            Interprétation
-                          </h3>
-                          <p className="text-sm text-blue-800 dark:text-blue-200">
-                            {results.interpretation}
-                          </p>
+                          <span className="text-xs">Chi-carré</span>
                         </div>
                         <div>
-                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                            Effectifs théoriques
-                          </h3>
-                          <div id="expected-table-container" className="overflow-x-auto">
-                            <table className="w-full rounded-xl border border-gray-200 dark:border-slate-600 text-sm">
-                              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
-                                <tr>
-                                  <th className="table-header row-label">Lignes/Colonnes</th>
-                                  {Array.from({ length: tableData.cols }, (_, colIndex) => (
-                                    <th key={colIndex} className="table-header">Col {colIndex + 1}</th>
+                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
+                            {results.pValue.toFixed(6)}
+                          </div>
+                          <span className="text-xs">p-value</span>
+                        </div>
+                        <div>
+                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
+                            {results.degreesOfFreedom}
+                          </div>
+                          <span className="text-xs">Degrés de liberté</span>
+                        </div>
+                        <div>
+                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
+                            {results.cramersV.toFixed(4)}
+                          </div>
+                          <span className="text-xs">V de Cramér</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Détails statistiques avancés (repliables) */}
+                    <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                      <button
+                        onClick={() => setShowStatsDetail(!showStatsDetail)}
+                        className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${
+                            showStatsDetail ? 'rotate-180' : ''
+                          }`}
+                        />
+                        {showStatsDetail ? 'Masquer' : 'Afficher'} les effectifs théoriques
+                      </button>
+
+                      {showStatsDetail && (
+                        <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                          <table className="w-full text-xs sm:text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold">Ligne / Colonne</th>
+                                {Array.from({ length: tableData.cols }, (_, i) => (
+                                  <th key={i} className="px-3 py-2 text-center font-semibold">Col {i + 1}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                              {results.expected.map((row, rowIndex) => (
+                                <tr key={rowIndex}>
+                                  <td className="px-3 py-2 font-medium">Ligne {rowIndex + 1}</td>
+                                  {row.map((cell, colIndex) => (
+                                    <td key={colIndex} className="px-3 py-2 text-center font-mono">{cell.toFixed(2)}</td>
                                   ))}
                                 </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
-                                {Array.from({ length: tableData.rows }, (_, rowIndex) => (
-                                  <tr key={rowIndex} className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
-                                    <td className="table-cell row-label text-sm font-medium text-gray-900 dark:text-gray-100">
-                                      Ligne {rowIndex + 1}
-                                    </td>
-                                    {Array.from({ length: tableData.cols }, (_, colIndex) => (
-                                      <td key={colIndex} className="table-cell text-sm text-gray-700 dark:text-gray-300">
-                                        {results.expected[rowIndex][colIndex].toFixed(2)}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                      </div>
-                    ) : (
-                      <div id="no-results" className="">
-                        <div className="text-center py-16">
-                          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                            <BarChart3 className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
-                          </div>
-                          <p className="text-gray-500 dark:text-gray-400 text-lg">Générez un tableau et entrez vos données pour voir les résultats</p>
-                          <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+
+                    {/* Test et Interprétation */}
+                    <div
+                      className={`p-6 rounded-2xl ${
+                        results.pValue < 0.05
+                          ? 'bg-blue-50 border-blue-500 dark:bg-blue-900/10'
+                          : 'bg-slate-100 border-slate-400 dark:bg-slate-800'
+                      }`}
+                    >
+                      <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-500" /> Interprétation
+                      </h3>
+                      <p className="text-sm leading-relaxed">
+                        {results.interpretation}
+                      </p>
+                    </div>
+
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Floating Help Button */}
-        <button
-          onClick={() => setShowHelpModal(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110"
-        >
-          <HelpCircle className="w-7 h-7" strokeWidth={1.5} />
-        </button>
-
-        {/* Help Modal */}
+        {/* Modal d'aide */}
         {showHelpModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md px-4 overflow-y-auto">
-            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/30 dark:border-slate-700/50 my-8 w-full max-w-3xl">
-              <div className="sticky top-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md flex justify-between items-center p-6 border-b border-gray-200/50 dark:border-slate-700/50 rounded-t-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Aide complète & Ressources</h3>
-                <button onClick={() => setShowHelpModal(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
-                  <X className="w-7 h-7" strokeWidth={1.5} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide (OpenEpi)</h3>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6 space-y-10 text-gray-700 dark:text-gray-300 overflow-y-auto max-h-[70vh]">
+
+              <div className="p-6 md:p-8 space-y-8">
                 <section>
-                  <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                    <Info className="w-6 h-6 mr-3" strokeWidth={1.5} />
-                    Comment utiliser cet outil
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Le Principe
                   </h4>
-                  <ul className="space-y-3 text-base bg-blue-50 dark:bg-blue-900/20 rounded-xl p-5">
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Entrez le nombre de lignes et de colonnes ou utilisez les boutons pour ajuster.
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Cliquez sur Générer pour créer le tableau.
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Entrez les effectifs dans chaque cellule.
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Les totaux sont calculés automatiquement.
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Les résultats se calculent automatiquement quand vous modifiez les données.
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Utilisez Exemple pour charger des données de démonstration.
-                    </li>
-                  </ul>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Test du chi-carré pour indépendance dans tableaux R×C, avec V de Cramér pour force d'association.
+                  </p>
                 </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Méthodes
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Chi² de Pearson, p-value exacte via jStat, V de Cramér. Vérifiez les effectifs théoriques {'>'}5 pour validité.
+                  </p>
+                </section>
+
               </div>
             </div>
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

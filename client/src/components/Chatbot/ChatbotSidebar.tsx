@@ -104,7 +104,7 @@ export function ChatbotSidebar({
     <>
       {/* Overlay Soft */}
       <div 
-        className="fixed inset-0 bg-black/5 backdrop-blur-[2px] z-40 transition-opacity"
+        // className="fixed inset-0 bg-black/5 backdrop-blur-[2px] z-40 transition-opacity"
         onClick={onClose}
       />
 
@@ -117,19 +117,7 @@ export function ChatbotSidebar({
         style={{ width: isExpanded ? expandedWidth : width }}
       >
         {/* Header Epuré */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-zinc-900">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-200">
-              <Bot size={18} />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Assistant IA</h3>
-              <p className="text-[10px] text-zinc-500 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> En ligne
-              </p>
-            </div>
-          </div>
-          
+        <div className="flex items-center justify-end px-5 py-4 border-b border-zinc-100 dark:border-zinc-900">
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" onClick={() => setIsExpanded(!isExpanded)} className="h-8 w-8 text-zinc-500">
               {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
