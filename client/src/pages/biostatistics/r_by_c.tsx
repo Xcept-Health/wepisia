@@ -564,175 +564,123 @@ export default function RxcTable() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Colonne gauche - saisie */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
-  <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+  {/* Carte Principale avec gestion des débordements */}
+  <div className="bg-white dark:bg-slate-800 rounded-[32px] shadow-xl shadow-slate-200/60 dark:shadow-none border border-slate-100 dark:border-slate-700 overflow-hidden">
     
-    {/* En-tête */}
-    <div className="flex items-center justify-between mb-8">
-      <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center">
-        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg mr-3">
-          <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+    {/* Header Section */}
+    <div className="p-6 lg:p-8 pb-4">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center tracking-tight">
+          <div className="p-2.5 bg-blue-500/10 dark:bg-blue-400/10 rounded-2xl mr-3">
+            <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          Paramètres
+        </h2>
+        <div className="flex gap-2">
+           <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-md text-slate-500 uppercase tracking-widest">
+            {tableData.rows} Lignes
+          </span>
+          <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-md text-slate-500 uppercase tracking-widest">
+            {tableData.cols} Cols
+          </span>
         </div>
-        Paramètres du tableau
-      </h2>
-      <div className="text-xs font-medium px-3 py-1 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400">
-        {tableData.rows} x {tableData.cols}
       </div>
-    </div>
 
-    <div className="space-y-6">
-      {/* Contrôles Lignes et Colonnes (Design Stepper) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Contrôle Lignes */}
-        <div className="space-y-3">
-          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">
-            Lignes
-          </label>
-          <div className="flex items-center bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-1">
-            <button
-              onClick={removeRow}
-              disabled={tableData.rows <= 2}
-              className="p-3 text-slate-500 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-transparent"
-            >
-              <Minus className="w-5 h-5" />
-            </button>
-            <input
-              type="number"
-              value={numRows}
-              onChange={(e) => setNumRows(e.target.value)}
-              className="flex-1 bg-transparent text-center font-bold text-lg text-slate-800 dark:text-slate-100 focus:outline-none border-none p-0"
-              min="2"
-            />
-            <button
-              onClick={addRow}
-              className="p-3 text-slate-500 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
+      {/* Steppers Modernes */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        {[
+          { label: 'Lignes', val: numRows, set: setNumRows, add: addRow, rem: removeRow, min: 2 },
+          { label: 'Colonnes', val: numCols, set: setNumCols, add: addColumn, rem: removeColumn, min: 2 }
+        ].map((ctrl, i) => (
+          <div key={i} className="space-y-2">
+            <label className="text-[11px] font-bold text-slate-400 uppercase ml-1 tracking-wide">{ctrl.label}</label>
+            <div className="flex items-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-700 p-1 group focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
+              <button onClick={ctrl.rem} disabled={ctrl.val <= ctrl.min} className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl disabled:opacity-20 transition-all">
+                <Minus className="w-4 h-4" />
+              </button>
+              <input 
+                type="number" 
+                value={ctrl.val} 
+                onChange={(e) => ctrl.set(e.target.value)}
+                className="w-full bg-transparent text-center font-bold text-slate-700 dark:text-slate-200 border-none focus:ring-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button onClick={ctrl.add} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </div>
-
-        {/* Contrôle Colonnes */}
-        <div className="space-y-3">
-          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">
-            Colonnes
-          </label>
-          <div className="flex items-center bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-1">
-            <button
-              onClick={removeColumn}
-              disabled={tableData.cols <= 2}
-              className="p-3 text-slate-500 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-transparent"
-            >
-              <Minus className="w-5 h-5" />
-            </button>
-            <input
-              type="number"
-              value={numCols}
-              onChange={(e) => setNumCols(e.target.value)}
-              className="flex-1 bg-transparent text-center font-bold text-lg text-slate-800 dark:text-slate-100 focus:outline-none border-none p-0"
-              min="2"
-            />
-            <button
-              onClick={addColumn}
-              className="p-3 text-slate-500 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+        ))}
       </div>
 
       <button
         onClick={generateTable}
-        className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-bold text-sm uppercase tracking-wide shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-all transform active:scale-[0.98]"
+        className="w-full py-3.5 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-slate-200 dark:shadow-blue-900/20 active:scale-[0.98]"
       >
-        Actualiser la structure
+        Mettre à jour la structure
       </button>
     </div>
 
-    {/* Zone du Tableau avec Scroll Horizontal géré */}
-    <div className="mt-8 relative">
-      <div className="absolute inset-0 border border-slate-200 dark:border-slate-700 rounded-xl pointer-events-none z-10"></div>
-      
-      {/* overflow-x-auto permet le scroll horizontal */}
-      <div className="overflow-x-auto rounded-xl custom-scrollbar">
-        <table className="w-full text-left border-collapse">
+    {/* Zone Tableau avec Dégradé de défilement */}
+    <div className="relative group/table">
+      {/* Ombre de scroll à droite (invisible si pas de scroll) */}
+      <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white dark:from-slate-800 to-transparent z-10 pointer-events-none opacity-0 group-hover/table:opacity-100 transition-opacity" />
+
+      <div className="overflow-x-auto scrollbar-hide select-none">
+        <table className="w-full border-separate border-spacing-0">
           <thead>
-            <tr className="bg-slate-100 dark:bg-slate-750 border-b border-slate-200 dark:border-slate-700">
-              <th className="px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider bg-slate-100 dark:bg-slate-800 sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                #
+            <tr className="bg-slate-50/50 dark:bg-slate-900/20">
+              <th className="sticky left-0 z-30 px-6 py-4 text-[11px] font-black text-slate-400 uppercase bg-white dark:bg-slate-800 border-b border-r border-slate-100 dark:border-slate-700">
+                Ref.
               </th>
               {Array.from({ length: tableData.cols }, (_, i) => (
-                <th key={i} className="px-4 py-3 text-center text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[100px]">
-                  Col {i + 1}
+                <th key={i} className="px-6 py-4 text-center text-[11px] font-black text-slate-400 uppercase border-b border-slate-100 dark:border-slate-700 min-w-[100px]">
+                  C{i + 1}
                 </th>
               ))}
-              <th className="px-4 py-3 text-center text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider bg-slate-50 dark:bg-slate-800/50 min-w-[80px]">
+              <th className="px-6 py-4 text-center text-[11px] font-black text-blue-600 dark:text-blue-400 uppercase border-b border-slate-100 dark:border-slate-700 bg-blue-50/30 dark:bg-blue-900/10">
                 Total
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+          <tbody className="divide-y divide-slate-50 dark:divide-slate-700/50">
             {tableData.data.map((row, rowIndex) => (
-              <tr key={rowIndex} className="group hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors">
-                {/* Première colonne (Label Ligne) Sticky pour rester visible au scroll */}
-                <td className="px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 group-hover:bg-blue-50/50 dark:group-hover:bg-slate-800/50 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] whitespace-nowrap">
-                  Ligne {rowIndex + 1}
+              <tr key={rowIndex} className="group/row hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                <td className="sticky left-0 z-20 px-6 py-4 text-[11px] font-bold text-slate-400 bg-white dark:bg-slate-800 border-r border-slate-100 dark:border-slate-700 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-700 transition-colors">
+                  L{rowIndex + 1}
                 </td>
-                
-                {/* Cellules Input */}
                 {row.map((cell, colIndex) => (
                   <td key={colIndex} className="p-1">
                     <input
                       type="number"
-                      min="0"
                       value={cell}
                       onChange={(e) => updateCellValue(rowIndex, colIndex, e.target.value)}
-                      className="w-full text-center py-2 px-1 text-sm text-slate-700 dark:text-slate-200 bg-transparent border border-transparent hover:border-slate-200 dark:hover:border-slate-600 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20 rounded-lg transition-all outline-none font-medium placeholder:text-slate-300"
-                      placeholder="-"
+                      className="w-full text-center py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-transparent rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
                     />
                   </td>
                 ))}
-                
-                {/* Total Ligne */}
-                <td className="px-4 py-3 text-center text-sm font-bold text-blue-600 dark:text-blue-400 bg-slate-50/50 dark:bg-slate-800/30">
+                <td className="px-6 py-4 text-center text-sm font-bold text-slate-900 dark:text-white bg-slate-50/30 dark:bg-slate-900/10">
                   {tableData.rowTotals[rowIndex]}
                 </td>
               </tr>
             ))}
-            
-            {/* Rangée Totaux Finaux */}
-            <tr className="bg-slate-50 dark:bg-slate-700/50 border-t-2 border-slate-200 dark:border-slate-600">
-              <td className="px-4 py-3 text-xs font-bold text-slate-900 dark:text-white uppercase sticky left-0 bg-slate-50 dark:bg-slate-700/50 z-10">
-                Total
-              </td>
-              {tableData.colTotals.map((total, i) => (
-                <td key={i} className="px-4 py-3 text-center text-sm font-bold text-slate-700 dark:text-slate-300">
-                  {total}
-                </td>
-              ))}
-              <td className="px-4 py-3 text-center text-base font-black text-blue-700 dark:text-blue-400">
-                {tableData.grandTotal}
-              </td>
-            </tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    {/* Actions Bas de page */}
-    <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-4">
+    {/* Footer Actions */}
+    <div className="p-6 bg-slate-50/50 dark:bg-slate-900/20 border-t border-slate-100 dark:border-slate-700 flex gap-3">
       <button
         onClick={loadExample}
-        className="flex-1 px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 transition-all flex items-center justify-center gap-2 shadow-sm"
+        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:shadow-sm transition-all active:scale-95"
       >
-        <Info className="w-4 h-4 text-blue-500" /> Charger un exemple
+        <Info className="w-4 h-4 text-blue-500" /> Charger Exemple
       </button>
       <button
         onClick={clearForm}
-        className="px-5 py-3 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl border border-transparent hover:border-red-100 dark:hover:border-red-900/30 transition-all flex items-center justify-center group"
-        title="Réinitialiser"
+        className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
       >
-        <RotateCcw className="w-5 h-5 group-hover:-rotate-180 transition-transform duration-500" />
+        <RotateCcw className="w-5 h-5" />
       </button>
     </div>
   </div>

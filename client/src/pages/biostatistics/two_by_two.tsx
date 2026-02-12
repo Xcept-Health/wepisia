@@ -53,24 +53,46 @@ export default function TwoByTwo() {
   const [results, setResults] = useState<TwoByTwoResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showStatsDetail, setShowStatsDetail] = useState<boolean>(false);
+  const [jStatReady, setJStatReady] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load jStat script
+  // Load jStat script and verify that required methods are available
   useEffect(() => {
     const loadScripts = async () => {
+      // If jStat already exists globally
+      if ((window as any).jStat) {
+        // Check if hypergeometric.pdf is present
+        if (typeof (window as any).jStat.hypergeometric?.pdf === 'function') {
+          setJStatReady(true);
+        } else {
+          console.warn('jStat hypergeometric not available, reloading...');
+          // Force reload by removing and re-adding script
+          delete (window as any).jStat;
+        }
+      }
+
+      // If still not ready, load the script
       if (!(window as any).jStat) {
-        const jstatScript = document.createElement('script');
-        jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
-        jstatScript.onload = () => {
-          console.log('jStat loaded');
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
+        script.onload = () => {
+          // After loading, check again
+          if (typeof (window as any).jStat?.hypergeometric?.pdf === 'function') {
+            setJStatReady(true);
+          } else {
+            console.error('jStat loaded but hypergeometric.pdf missing');
+            toast.error('jStat incomplet – calculs exacts désactivés');
+          }
         };
-        document.body.appendChild(jstatScript);
+        script.onerror = () => {
+          toast.error('Impossible de charger jStat – calculs exacts désactivés');
+        };
+        document.body.appendChild(script);
       }
     };
+
     loadScripts();
   }, []);
-
-  const hasJStat = !!(window as any).jStat;
 
   const validateInputs = (): boolean => {
     const aVal = parseInt(a);
@@ -97,8 +119,12 @@ export default function TwoByTwo() {
     };
   };
 
+  // Fisher exact test using jStat with safety check
   const getFisherP = (a: number, b: number, c: number, d: number) => {
-    if (!hasJStat) return { oneTail: 'N/A', twoTail: 'N/A' };
+    // Return default values if jStat or hypergeometric is not ready
+    if (!jStatReady) {
+      return { oneTail: 'N/A', twoTail: 'N/A' };
+    }
 
     const jStat = (window as any).jStat;
     const n = a + b + c + d;
@@ -106,6 +132,12 @@ export default function TwoByTwo() {
     const c1 = a + c;
     const minA = Math.max(0, r1 + c1 - n);
     const maxA = Math.min(r1, c1);
+    
+    // Additional safety: ensure pdf is a function
+    if (typeof jStat.hypergeometric.pdf !== 'function') {
+      return { oneTail: 'N/A', twoTail: 'N/A' };
+    }
+
     const observedProb = jStat.hypergeometric.pdf(a, n, c1, r1);
     const expected = r1 * c1 / n;
     let oneTail = 0;
@@ -199,7 +231,7 @@ export default function TwoByTwo() {
     let punc = 'N/A';
     let pmh = 'N/A';
     let pyates = 'N/A';
-    if (hasJStat) {
+    if (jStatReady) {
       const jStat = (window as any).jStat;
       punc = (1 - jStat.chisquare.cdf(chi2unc, 1)).toFixed(4);
       pmh = (1 - jStat.chisquare.cdf(chi2mh, 1)).toFixed(4);
@@ -208,7 +240,7 @@ export default function TwoByTwo() {
 
     let fisherOne = 'N/A';
     let fisherTwo = 'N/A';
-    if (hasJStat) {
+    if (jStatReady) {
       const { oneTail, twoTail } = getFisherP(aVal, bVal, cVal, dVal);
       fisherOne = oneTail.toFixed(4);
       fisherTwo = twoTail.toFixed(4);
@@ -256,12 +288,11 @@ export default function TwoByTwo() {
 
   // Auto calculate if valid
   useEffect(() => {
-    if (validateInputs() && hasJStat) {
+    if (validateInputs()) {
       calculateResults();
-    } else if (!hasJStat) {
-      toast.error('jStat non disponible - les calculs exacts sont désactivés');
     }
-  }, [a, b, c, d, hasJStat]);
+    // We don't depend on jStatReady here because calculateResults already checks it
+  }, [a, b, c, d, jStatReady]); // Add jStatReady to re-run when library becomes available
 
   // Animation
   useEffect(() => {
@@ -859,9 +890,9 @@ export default function TwoByTwo() {
 
                       {showStatsDetail && (
                         <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
-                          {!hasJStat && (
+                          {!jStatReady && (
                             <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
-                              ⚠️ jStat non disponible – les calculs exacts sont approximés.
+                              jStat non disponible – les calculs exacts sont approximés.
                             </div>
                           )}
                           <table className="w-full text-xs sm:text-sm">
