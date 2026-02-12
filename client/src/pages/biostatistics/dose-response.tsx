@@ -1,125 +1,210 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  TrendingUp,
-  ChevronRight,
-  Plus,
-  Trash2,
-  Copy,
-  FileDown,
-  HelpCircle,
-  X,
+  Blocks, ChevronRight, Calculator, BarChart3,
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
+  ChevronDown, Plus, Trash2
 } from 'lucide-react';
+import { Link } from 'wouter';
+import { toast } from 'sonner';
+
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface DoseRow {
   id: string;
   exposure: string;
+  dose: number;
   cases: number;
   controls: number;
 }
 
+interface LevelResult {
+  exposure: string;
+  dose: number;
+  proportion: number;
+  or: number | string;
+  orLower: number | string;
+  orUpper: number | string;
+  rr: number | string;
+  rrLower: number | string;
+  rrUpper: number | string;
+}
+
 interface DoseResults {
+  levels: LevelResult[];
   chiSquare: string;
   pValue: string;
   trend: string;
+  trendDirection: string;
 }
 
-const DoseResponse: React.FC = () => {
+export default function DoseResponse() {
   const [rows, setRows] = useState<DoseRow[]>([
-    { id: '1', exposure: 'Niveau 0', cases: 0, controls: 0 },
+    { id: '1', exposure: 'Niveau 0', dose: 0, cases: 0, controls: 0 },
   ]);
   const [results, setResults] = useState<DoseResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showStatsDetail, setShowStatsDetail] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Load external scripts
+  useEffect(() => {
+    const loadScripts = async () => {
+      if (!(window as any).jStat) {
+        const jstatScript = document.createElement('script');
+        jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
+        document.body.appendChild(jstatScript);
+      }
+      if (!(window as any).jspdf) {
+        const jspdfScript = document.createElement('script');
+        jspdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        document.body.appendChild(jspdfScript);
+
+        const autotableScript = document.createElement('script');
+        autotableScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js';
+        document.body.appendChild(autotableScript);
+      }
+    };
+    loadScripts();
+  }, []);
+
+  const hasJStat = !!(window as any).jStat;
 
   // Auto-calculate on any data change
   useEffect(() => {
     const hasData = rows.some((r) => r.cases > 0 || r.controls > 0);
-    if (hasData) {
+    if (hasData && hasJStat) {
       calculateDoseResponse();
     } else {
       setResults(null);
     }
-  }, [rows]);
+  }, [rows, hasJStat]);
 
   // Trigger animation when results change
   useEffect(() => {
     if (results && resultsRef.current) {
-      const child = resultsRef.current.querySelector(':scope > div');
-      if (child) {
-        (child as HTMLElement).classList.remove('fade-in');
-        void (child as HTMLElement).offsetWidth;
-        (child as HTMLElement).classList.add('fade-in');
-      }
+      resultsRef.current.classList.remove('fade-in');
+      void resultsRef.current.offsetWidth;
+      resultsRef.current.classList.add('fade-in');
     }
   }, [results]);
 
   const calculateDoseResponse = () => {
-    const validRows = rows.filter((r) => r.cases > 0 || r.controls > 0);
+    const validRows = rows.filter((r) => r.cases >= 0 && r.controls >= 0 && (r.cases > 0 || r.controls > 0));
     if (validRows.length < 2) {
       setResults(null);
       return;
     }
 
-    // Calculate linear trend test
+    // Sort by dose for calculation
+    const sortedRows = [...validRows].sort((a, b) => a.dose - b.dose);
+
+    // Reference is the first (lowest dose)
+    const ref = sortedRows[0];
+    const refProportion = ref.controls > 0 ? ref.cases / (ref.cases + ref.controls) : 0;
+    const refOr = ref.controls > 0 ? ref.cases / ref.controls : 0;
+
+    const levels: LevelResult[] = sortedRows.map((row) => {
+      const total = row.cases + row.controls;
+      const proportion = total > 0 ? row.cases / total : 0;
+
+      let or: number | string = 'N/A';
+      let orLower: number | string = 'N/A';
+      let orUpper: number | string = 'N/A';
+      if (row.controls > 0 && ref.controls > 0) {
+        or = (row.cases / row.controls) / refOr;
+        if (typeof or === 'number' && isFinite(or)) {
+          const lnor = Math.log(or);
+          const se = Math.sqrt(1/row.cases + 1/row.controls + 1/ref.cases + 1/ref.controls);
+          const z = 1.96;
+          orLower = Math.exp(lnor - z * se).toFixed(3);
+          orUpper = Math.exp(lnor + z * se).toFixed(3);
+          or = or.toFixed(3);
+        } else if (or === 0) {
+          or = '0';
+        } else {
+          or = '∞';
+        }
+      }
+
+      let rr: number | string = 'N/A';
+      let rrLower: number | string = 'N/A';
+      let rrUpper: number | string = 'N/A';
+      if (refProportion > 0) {
+        rr = proportion / refProportion;
+        if (typeof rr === 'number' && isFinite(rr)) {
+          const lnrr = Math.log(rr);
+          const se = Math.sqrt((1 - proportion)/ (row.cases) + (1 - refProportion)/ref.cases);
+          const z = 1.96;
+          rrLower = Math.exp(lnrr - z * se).toFixed(3);
+          rrUpper = Math.exp(lnrr + z * se).toFixed(3);
+          rr = rr.toFixed(3);
+        } else if (rr === 0) {
+          rr = '0';
+        } else {
+          rr = '∞';
+        }
+      }
+
+      return {
+        exposure: row.exposure,
+        dose: row.dose,
+        proportion,
+        or,
+        orLower,
+        orUpper,
+        rr,
+        rrLower,
+        rrUpper,
+      };
+    });
+
+    // Trend test
     let sumCases = 0;
-    let sumControls = 0;
+    let sumTotal = 0;
     let sumScore = 0;
     let sumScoreCases = 0;
     let sumScoreSquared = 0;
 
-    validRows.forEach((row, index) => {
-      const score = index;
+    sortedRows.forEach((row) => {
+      const score = row.dose;
       const total = row.cases + row.controls;
 
       sumCases += row.cases;
-      sumControls += row.controls;
+      sumTotal += total;
       sumScore += score * total;
       sumScoreCases += score * row.cases;
       sumScoreSquared += score * score * total;
     });
 
-    const totalN = sumCases + sumControls;
-    const expectedScoreCases =
-      (sumCases / totalN) * sumScore;
-    const variance =
-      (sumCases * sumControls * (sumScoreSquared - (sumScore * sumScore) / totalN)) /
-      (totalN * totalN * (totalN - 1));
+    const expectedScoreCases = (sumCases / sumTotal) * sumScore;
+    const variance = (sumCases * (sumTotal - sumCases) / sumTotal) * ((sumScoreSquared / sumTotal) - Math.pow(sumScore / sumTotal, 2));
+    let chiSquare = variance > 0 ? Math.pow(sumScoreCases - expectedScoreCases, 2) / variance : 0;
 
-    const chiSquare =
-      variance > 0
-        ? Math.pow(sumScoreCases - expectedScoreCases, 2) / variance
-        : 0;
+    let pValue = 'N/A';
+    if (hasJStat) {
+      const jStat = (window as any).jStat;
+      pValue = (1 - jStat.chisquare.cdf(chiSquare, 1)).toFixed(4);
+    }
 
-    const pValue = calculatePValue(chiSquare, 1);
-    const trend =
-      pValue < 0.05
-        ? 'Tendance significative'
-        : 'Aucune tendance significative';
+    const direction = (sumScoreCases - expectedScoreCases) > 0 ? 'positive' : 'negative';
+    const trend = Number(pValue) < 0.05 ? `Tendance significative ${direction}` : 'Aucune tendance significative';
 
     setResults({
+      levels,
       chiSquare: chiSquare.toFixed(3),
-      pValue: pValue.toFixed(4),
+      pValue,
       trend,
+      trendDirection: direction,
     });
   };
 
-  const calculatePValue = (chiSquare: number, df: number): number => {
-    if (typeof (window as any).jStat !== 'undefined') {
-      return 1 - (window as any).jStat.chisquare.cdf(chiSquare, df);
-    }
-    return Math.exp(-chiSquare / 2);
-  };
-
   const addRow = () => {
-    const newId = (Math.max(...rows.map((r) => parseInt(r.id))) + 1).toString();
+    const newId = (rows.length + 1).toString();
+    const newDose = rows.length;
     setRows([
       ...rows,
-      {
-        id: newId,
-        exposure: `Niveau ${rows.length}`,
-        cases: 0,
-        controls: 0,
-      },
+      { id: newId, exposure: `Niveau ${rows.length}`, dose: newDose, cases: 0, controls: 0 },
     ]);
   };
 
@@ -131,452 +216,543 @@ const DoseResponse: React.FC = () => {
 
   const updateRow = (
     id: string,
-    field: keyof DoseRow,
-    value: string | number
+    field: 'exposure' | 'dose' | 'cases' | 'controls',
+    value: string
   ) => {
+    let newValue: string | number = value;
+    if (field === 'dose' || field === 'cases' || field === 'controls') {
+      newValue = parseFloat(value) || 0;
+    }
     setRows(
       rows.map((r) =>
-        r.id === id ? { ...r, [field]: value } : r
+        r.id === id ? { ...r, [field]: newValue } : r
       )
     );
   };
 
-  const clear = () => {
-    setRows([{ id: '1', exposure: 'Niveau 0', cases: 0, controls: 0 }]);
+  const clearForm = () => {
+    setRows([{ id: '1', exposure: 'Niveau 0', dose: 0, cases: 0, controls: 0 }]);
     setResults(null);
+    toast.info('Champs réinitialisés');
   };
 
   const loadExample = () => {
     setRows([
-      { id: '1', exposure: 'Niveau 0', cases: 5, controls: 95 },
-      { id: '2', exposure: 'Niveau 1', cases: 15, controls: 85 },
-      { id: '3', exposure: 'Niveau 2', cases: 30, controls: 70 },
-      { id: '4', exposure: 'Niveau 3', cases: 50, controls: 50 },
+      { id: '1', exposure: '0 cig/j', dose: 0, cases: 5, controls: 95 },
+      { id: '2', exposure: '7.5 cig/j', dose: 7.5, cases: 15, controls: 85 },
+      { id: '3', exposure: '17.5 cig/j', dose: 17.5, cases: 30, controls: 70 },
+      { id: '4', exposure: '27.5 cig/j', dose: 27.5, cases: 50, controls: 50 },
     ]);
+    toast.success('Exemple chargé');
   };
 
   const copyResults = async () => {
-    if (!results || !resultsRef.current) return;
+    if (!results) return;
+    
+    let text = 'Résultats de l\'Analyse Dose-Réponse\n\n';
+    text += 'Niveaux:\n';
+    results.levels.forEach((level) => {
+      text += `${level.exposure} (dose ${level.dose}):\n`;
+      text += `Proportion: ${(level.proportion * 100).toFixed(1)}%\n`;
+      text += `OR: ${level.or} (95% CI: ${level.orLower} - ${level.orUpper})\n`;
+      text += `RR: ${level.rr} (95% CI: ${level.rrLower} - ${level.rrUpper})\n\n`;
+    });
+    text += `Chi-carré de tendance: ${results.chiSquare}\n`;
+    text += `Valeur p: ${results.pValue}\n`;
+    text += `Interprétation: ${results.trend}\n`;
+
     try {
-      const text = resultsRef.current.innerText;
       await navigator.clipboard.writeText(text);
-      const copyBtn = document.getElementById('copy-btn-dose');
-      if (copyBtn) {
-        const original = copyBtn.innerHTML;
-        copyBtn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-        setTimeout(() => {
-          copyBtn.innerHTML = original;
-        }, 2000);
-      }
+      toast.success('Résultats copiés');
     } catch (err) {
-      console.error('Copy failed:', err);
+      toast.error('Échec de la copie');
     }
   };
 
-  const exportPDF = async () => {
-    if (!results) return;
+  const exportPDF = () => {
+    if (!results) {
+      toast.error('Veuillez d\'abord effectuer un calcul');
+      return;
+    }
 
     try {
-      const { jsPDF } = (window as any).jspdf;
-      const doc = new jsPDF();
-
-      const primaryColor = [59, 130, 246];
-      const secondaryColor = [99, 102, 241];
-
-      // Header
-      doc.setFillColor(...primaryColor);
-      doc.rect(0, 0, 210, 40, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(24);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Analyse de la Réponse à la Dose', 105, 22, {
-        align: 'center',
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
       });
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'normal');
-      doc.text('Test de tendance linéaire', 105, 30, { align: 'center' });
 
-      // Data table
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(16);
+      // Couleurs
+      const colorPrimary = results.trendDirection === 'positive'
+        ? { bg: [255, 247, 237], border: [234, 88, 12], text: [234, 88, 12] }
+        : { bg: [236, 253, 245], border: [5, 150, 105], text: [5, 150, 105] };
+      const colorSlate = {
+        50: [248, 250, 252],
+        100: [241, 245, 249],
+        200: [226, 232, 240],
+        300: [203, 213, 225],
+        500: [100, 116, 139],
+        700: [51, 65, 85],
+        900: [15, 23, 42],
+      };
+
+      // Helper rectangle arrondi
+      const roundedRect = (x: number, y: number, w: number, h: number, r: number, style: 'F' | 'S' | 'FD' = 'F') => {
+        doc.roundedRect(x, y, w, h, r, r, style);
+      };
+
+      // ---------- EN-TÊTE ----------
+      doc.setFillColor(...colorSlate[50]);
+      roundedRect(0, 0, 210, 40, 0, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.text('Données d\'exposition', 20, 55);
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport d'Analyse Dose-Réponse", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text('Calculateur Dose-Réponse – OpenEpi', 190, 32, { align: 'right' });
 
-      const tableData: (string | number)[][] = rows.map((r) => [
+      // ---------- DONNÉES ----------
+      let y = 55;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Données analysées', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const tableData = rows.map((r) => [
         r.exposure,
+        r.dose,
         r.cases,
         r.controls,
         r.cases + r.controls,
       ]);
 
-      (doc as any).autoTable({
-        startY: 60,
-        head: [['Niveau d\'Exposition', 'Cas', 'Témoins', 'Total']],
+      autoTable(doc, {
+        startY: y,
+        head: [['Niveau d\'Exposition', 'Dose', 'Cas', 'Témoins', 'Total']],
         body: tableData,
         theme: 'grid',
         headStyles: {
-          fillColor: secondaryColor,
-          textColor: [255, 255, 255],
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
           fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 50 },
+          1: { cellWidth: 20, halign: 'center' },
+          2: { cellWidth: 20, halign: 'center' },
+          3: { cellWidth: 20, halign: 'center' },
+          4: { cellWidth: 20, halign: 'center' },
         },
         margin: { left: 20, right: 20 },
-        styles: { fontSize: 11, cellPadding: 5 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
       });
 
-      // Results
-      const resultsY = (doc as any).autoTable.previous.finalY + 20;
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Résultats du test de tendance', 20, resultsY);
+      y = (doc as any).lastAutoTable.finalY + 10;
 
-      const resultTable: (string | number)[][] = [
+      // ---------- RÉSULTATS PAR NIVEAU ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Résultats par niveau (vs référence)', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const levelTable = results.levels.map((l) => [
+        l.exposure,
+        l.dose,
+        (l.proportion * 100).toFixed(1) + '%',
+        l.or,
+        `${l.orLower} – ${l.orUpper}`,
+        l.rr,
+        `${l.rrLower} – ${l.rrUpper}`,
+      ]);
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Niveau', 'Dose', '% Cas', 'OR', 'IC 95% OR', 'RR', 'IC 95% RR']],
+        body: levelTable,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 35 },
+          1: { cellWidth: 15, halign: 'center' },
+          2: { cellWidth: 20, halign: 'center' },
+          3: { cellWidth: 15, halign: 'center' },
+          4: { cellWidth: 25, halign: 'center' },
+          5: { cellWidth: 15, halign: 'center' },
+          6: { cellWidth: 25, halign: 'center' },
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- TEST DE TENDANCE ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Test de tendance', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const trendTable = [
         ['Chi-carré de tendance', results.chiSquare],
         ['Valeur p', results.pValue],
         ['Interprétation', results.trend],
       ];
 
-      (doc as any).autoTable({
-        startY: resultsY + 10,
+      autoTable(doc, {
+        startY: y,
         head: [['Paramètre', 'Valeur']],
-        body: resultTable,
-        theme: 'striped',
+        body: trendTable,
+        theme: 'grid',
         headStyles: {
-          fillColor: primaryColor,
-          textColor: [255, 255, 255],
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
           fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 60, fontStyle: 'bold' },
+          1: { cellWidth: 60, halign: 'center' }
         },
         margin: { left: 20, right: 20 },
-        styles: { fontSize: 10, cellPadding: 4 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
       });
 
-      doc.save('resultats_dose_response.pdf');
-    } catch (err) {
-      console.error('PDF export failed:', err);
+      // ---------- PIED DE PAGE ----------
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('Calculateur Dose-Réponse – Fidèle à OpenEpi', 20, footerY + 5);
+      doc.text(`Page 1 / 1`, 190, footerY + 5, { align: 'right' });
+
+      doc.save('Rapport_Dose_Response.pdf');
+      toast.success('Rapport PDF exporté avec succès');
+    } catch (error) {
+      console.error('Erreur PDF :', error);
+      toast.error('Erreur lors de la génération du PDF');
     }
   };
 
   return (
-    <>
-      <style>{`
-        #results-container-dose > div {
-          transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        #results-container-dose > div.fade-in {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      `}</style>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Réponse à la Dose</span></li>
+          </ol>
+        </nav>
 
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
-        <div className="max-w-6xl mx-auto p-6 lg:p-8">
-          {/* Breadcrumb */}
-          <nav className="flex mb-4" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2 text-sm">
-              <li>
-                <a
-                  href="/"
-                  className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors"
-                >
-                  Accueil
-                </a>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">
-                  Réponse à la Dose
-                </span>
-              </li>
-            </ol>
-          </nav>
-
-          {/* Header */}
-          <div className="flex items-center space-x-4 mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-white" strokeWidth={1.5} />
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Analyse de la Réponse à la Dose
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Test de tendance linéaire pour différents niveaux d'exposition
-              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Analyse de la Réponse à la Dose</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Test de tendance linéaire pour différents niveaux d'exposition.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+              </h2>
+              <div className="space-y-5">
+                <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-600">
+                  <table className="min-w-full">
+                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Niveau d'Exposition
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Dose Score
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Cas
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Témoins
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
+                      {rows.map((row) => (
+                        <tr key={row.id} className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
+                          <td className="px-4 py-3">
+                            <input
+                              type="text"
+                              value={row.exposure}
+                              onChange={(e) => updateRow(row.id, 'exposure', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="number"
+                              value={row.dose}
+                              onChange={(e) => updateRow(row.id, 'dose', e.target.value)}
+                              className="w-20 px-2 py-1 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.cases}
+                              onChange={(e) => updateRow(row.id, 'cases', e.target.value)}
+                              className="w-16 px-2 py-1 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.controls}
+                              onChange={(e) => updateRow(row.id, 'controls', e.target.value)}
+                              className="w-16 px-2 py-1 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => removeRow(row.id)}
+                              disabled={rows.length === 1}
+                              className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  onClick={addRow}
+                  className="w-full inline-flex items-center justify-center px-4 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all flex gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Ajouter un niveau
+                </button>
+              </div>
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+                <button
+                  onClick={loadExample}
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Info className="w-4 h-4" /> Exemple
+                </button>
+                <button
+                  onClick={clearForm}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Input Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <TrendingUp className="w-5 h-5 mr-2 text-blue-500" strokeWidth={1.5} />
-                    Saisie des Données
-                  </h2>
-                </div>
-                <div className="p-6">
-                  {/* Data Table */}
-                  <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-slate-600 mb-6">
-                    <table className="w-full">
-                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Niveau d'Exposition
-                          </th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Cas
-                          </th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Témoins
-                          </th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Total
-                          </th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
-                        {rows.map((row) => (
-                          <tr
-                            key={row.id}
-                            className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors"
-                          >
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                value={row.exposure}
-                                onChange={(e) =>
-                                  updateRow(row.id, 'exposure', e.target.value)
-                                }
-                                className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <input
-                                type="number"
-                                min="0"
-                                value={row.cases}
-                                onChange={(e) =>
-                                  updateRow(
-                                    row.id,
-                                    'cases',
-                                    parseInt(e.target.value) || 0
-                                  )
-                                }
-                                className="w-16 px-2 py-1 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <input
-                                type="number"
-                                min="0"
-                                value={row.controls}
-                                onChange={(e) =>
-                                  updateRow(
-                                    row.id,
-                                    'controls',
-                                    parseInt(e.target.value) || 0
-                                  )
-                                }
-                                className="w-16 px-2 py-1 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm font-medium text-gray-600 dark:text-gray-400">
-                              {row.cases + row.controls}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <button
-                                onClick={() => removeRow(row.id)}
-                                disabled={rows.length === 1}
-                                className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Add Row Button */}
-                  <button
-                    onClick={addRow}
-                    className="w-full inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-105 transition-all duration-200 mb-6"
-                  >
-                    <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                    Ajouter un Niveau d'Exposition
-                  </button>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap gap-3">
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
                     <button
-                      onClick={clear}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200"
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier le résultat principal"
                     >
-                      <X className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Effacer
+                      <Copy className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={loadExample}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-105 transition-all duration-200"
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
                     >
-                      <HelpCircle className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Exemple
+                      <FileDown className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
+                )}
               </div>
-            </div>
 
-            {/* Results Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
-                    Résultats
-                  </h2>
-                  {results && (
-                    <div className="flex gap-4">
-                      <button
-                        id="copy-btn-dose"
-                        onClick={copyResults}
-                        className="p-2 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                        aria-label="Copier les résultats"
-                      >
-                        <Copy className="w-5 h-5" strokeWidth={1.5} />
-                      </button>
-                      <button
-                        onClick={exportPDF}
-                        className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                        aria-label="Exporter en PDF"
-                      >
-                        <FileDown className="w-5 h-5" strokeWidth={1.5} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="p-6">
-                  <div id="results-container-dose">
-                    {results ? (
-                      <div ref={resultsRef} className="space-y-6">
-                        <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-6 border border-blue-200 dark:border-blue-700">
-                          <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4">
-                            Test de Tendance Linéaire
-                          </h3>
-                          <div className="space-y-3">
-                            <div className="flex justify-between py-2 border-b border-blue-200 dark:border-blue-700">
-                              <dt className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                                Chi-carré de tendance
-                              </dt>
-                              <dd className="font-bold text-blue-700 dark:text-blue-300">
-                                {results.chiSquare}
-                              </dd>
-                            </div>
-                            <div className="flex justify-between py-2 border-b border-blue-200 dark:border-blue-700">
-                              <dt className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                                Valeur p
-                              </dt>
-                              <dd className="font-bold text-blue-700 dark:text-blue-300">
-                                {results.pValue}
-                              </dd>
-                            </div>
-                            <div className="flex justify-between py-2">
-                              <dt className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                                Interprétation
-                              </dt>
-                              <dd className="font-bold text-blue-700 dark:text-blue-300">
-                                {results.trend}
-                              </dd>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-16">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                          <TrendingUp className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
-                        </div>
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">
-                          Saisissez vos données pour voir les résultats
-                        </p>
-                        <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">
-                          Les calculs apparaîtront automatiquement
-                        </p>
-                      </div>
-                    )}
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-slate-400 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
                   </div>
-                </div>
+                ) : (
+                  <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Table per level */}
+                    <div className="bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30 p-6 rounded-3xl border">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Résultats par niveau (vs référence)
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs sm:text-sm">
+                          <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold">Niveau</th>
+                              <th className="px-3 py-2 text-center font-semibold">Dose</th>
+                              <th className="px-3 py-2 text-center font-semibold">% Cas</th>
+                              <th className="px-3 py-2 text-center font-semibold">OR</th>
+                              <th className="px-3 py-2 text-center font-semibold">IC 95% OR</th>
+                              <th className="px-3 py-2 text-center font-semibold">RR</th>
+                              <th className="px-3 py-2 text-center font-semibold">IC 95% RR</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            {results.levels.map((level, index) => (
+                              <tr key={index}>
+                                <td className="px-3 py-2 font-medium">{level.exposure}</td>
+                                <td className="px-3 py-2 text-center font-mono">{level.dose}</td>
+                                <td className="px-3 py-2 text-center font-mono">{(level.proportion * 100).toFixed(1)}%</td>
+                                <td className="px-3 py-2 text-center font-mono">{level.or}</td>
+                                <td className="px-3 py-2 text-center font-mono">{level.orLower} – {level.orUpper}</td>
+                                <td className="px-3 py-2 text-center font-mono">{level.rr}</td>
+                                <td className="px-3 py-2 text-center font-mono">{level.rrLower} – {level.rrUpper}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Trend test */}
+                    <div
+                      className={`p-8 rounded-3xl text-center border ${
+                        Number(results.pValue) < 0.05
+                          ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
+                          : 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Test de tendance linéaire
+                      </p>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <div className="text-3xl font-bold tracking-tight mb-2 text-orange-600">
+                            {results.chiSquare}
+                          </div>
+                          <span className="text-xs">Chi-carré</span>
+                        </div>
+                        <div>
+                          <div className="text-3xl font-bold tracking-tight mb-2 text-orange-600">
+                            {results.pValue}
+                          </div>
+                          <span className="text-xs">p-value</span>
+                        </div>
+                        <div>
+                          <div className="text-3xl font-bold tracking-tight mb-2 text-orange-600">
+                            {results.trend}
+                          </div>
+                          <span className="text-xs">Interprétation</span>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Floating Help Button */}
-        <button
-          onClick={() => setShowHelpModal(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110"
-          aria-label="Aide et ressources"
-        >
-          <HelpCircle className="w-7 h-7" strokeWidth={1.5} />
-        </button>
-
-        {/* Help Modal */}
+        {/* Modal d'aide */}
         {showHelpModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md px-4 overflow-y-auto">
-            <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-gray-200/50 dark:border-slate-700/50 my-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-between items-center p-6 border-b border-gray-200/50 dark:border-slate-700/50 rounded-t-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Aide &amp; Ressources
-                </h3>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide (OpenEpi)</h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
                 >
-                  <X className="w-7 h-7" strokeWidth={1.5} />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6 space-y-6 text-gray-700 dark:text-gray-300">
+
+              <div className="p-6 md:p-8 space-y-8">
                 <section>
-                  <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                    <HelpCircle className="w-6 h-6 mr-3" strokeWidth={1.5} />
-                    Comment utiliser cet outil
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Le Principe
                   </h4>
-                  <ul className="space-y-3 text-base bg-blue-50 dark:bg-blue-900/20 rounded-xl p-5">
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Entrez les niveaux d'exposition (ex: Faible, Moyen, Élevé)
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Saisissez le nombre de cas et témoins pour chaque niveau
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Utilisez le bouton + pour ajouter d'autres niveaux
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Les résultats se calculent automatiquement
-                    </li>
-                  </ul>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Test pour tendance lorsque plus de deux niveaux d'exposition. Utilisé pour études dose-réponse, tendances avec âge, temps, etc.
+                  </p>
                 </section>
 
                 <section>
-                  <h4 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400">
-                    Interprétation
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Méthodes
                   </h4>
-                  <p className="text-sm leading-relaxed">
-                    Le test de tendance linéaire évalue s'il existe une relation
-                    linéaire entre le niveau d'exposition et le risque de maladie.
-                    Une p-value &lt; 0.05 indique une tendance significative.
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Calcule OR et RR par niveau vs référence, avec IC 95%. Test chi² pour tendance linéaire (Mantel extension), p-value.
+                  </p>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      3
+                    </div>
+                    Entrées
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Pour chaque niveau: label, score dose (midpoint), cas, témoins.
                   </p>
                 </section>
               </div>
@@ -584,11 +760,6 @@ const DoseResponse: React.FC = () => {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
-};
-
-// Import BarChart3 icon (if not already imported)
-import { BarChart3 } from 'lucide-react';
-
-export default DoseResponse;
+}
