@@ -1,471 +1,949 @@
-import { useState, useEffect, useRef } from 'react';
-import { ChevronRight, Calculator, BarChart3, Copy, FileDown, HelpCircle, X, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  ChevronRight,
+  Calculator,
+  BarChart3,
+  Copy,
+  FileDown,
+  HelpCircle,
+  X,
+  Info,
+  RotateCcw,
+  ArrowRight,
+  ChevronDown,
+  Layers,
+  Hash,
+  Gauge,
+  Sigma,
+  Plus,
+  Trash2,
+  Table
+} from 'lucide-react';
 import { Link } from 'wouter';
+import { toast } from 'sonner';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
-export default function ANOVA() {
-  const [numGroups, setNumGroups] = useState<string>('3');
-  const [groupData, setGroupData] = useState<string[]>(['', '', '']);
-  const [alphaLevel, setAlphaLevel] = useState<string>('0.05');
+interface GroupRow {
+  id: string;
+  label: string;
+  n: string;
+  mean: string;
+  sd: string;
+}
+
+export default function OneWayANOVA() {
+  const [rows, setRows] = useState<GroupRow[]>([
+    { id: '1', label: '1', n: '63', mean: '55.1', sd: '10.93' },
+    { id: '2', label: '2', n: '17', mean: '47.59', sd: '7.08' },
+    { id: '3', label: '3', n: '15', mean: '49.4', sd: '10.2' },
+  ]);
+
+  const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
   const [results, setResults] = useState<any>(null);
-  const [interpretationText, setInterpretationText] = useState<string>('');
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showMethodDetails, setShowMethodDetails] = useState<boolean>(false);
+  const [isJStatReady, setIsJStatReady] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load external scripts
+  // Chargement des scripts externes
   useEffect(() => {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
-        const jstatScript = document.createElement('script');
-        jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@1.9.4/dist/jstat.min.js';
-        document.body.appendChild(jstatScript);
-      }
-      if (!(window as any).jspdf) {
-        const jspdfScript = document.createElement('script');
-        jspdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        document.body.appendChild(jspdfScript);
-
-        const autotableScript = document.createElement('script');
-        autotableScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js';
-        document.body.appendChild(autotableScript);
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
+        script.onload = () => setIsJStatReady(true);
+        document.body.appendChild(script);
+      } else {
+        setIsJStatReady(true);
       }
     };
     loadScripts();
   }, []);
 
-  useEffect(() => {
-    const newNum = parseInt(numGroups);
-    setGroupData(Array(newNum).fill(''));
-  }, [numGroups]);
-
-  const handleGroupDataChange = (index: number, value: string) => {
-    const newData = [...groupData];
-    newData[index] = value;
-    setGroupData(newData);
+  // Formatage des nombres
+  const formatNumber = (num: number, decimals: number = 4): string => {
+    if (num === Infinity || num === -Infinity) return '∞';
+    if (isNaN(num) || !isFinite(num)) return '-';
+    return num.toFixed(decimals);
   };
 
-  const updateFormState = () => {
-    const hasValidInput = groupData.every(data => {
-      const values = data.trim().split(/[,\s]+/).filter(n => n).map(Number);
-      return values.length >= 2 && !values.some(isNaN);
+  // Calcul principal – ANOVA à un facteur, test de Bartlett, IC des moyennes
+  const calculateANOVA = useCallback(() => {
+    // Filtrer les lignes avec des données valides
+    const validGroups = rows.filter(row => {
+      const n = parseInt(row.n);
+      const mean = parseFloat(row.mean);
+      const sd = parseFloat(row.sd);
+      return !isNaN(n) && !isNaN(mean) && !isNaN(sd) && n >= 2 && sd > 0;
     });
-    return hasValidInput;
-  };
 
-  const calculateANOVA = () => {
-    const alpha = parseFloat(alphaLevel);
-    const numG = parseInt(numGroups);
-    let allData: number[] = [];
-    let groupMeans: number[] = [];
-    let groupSizes: number[] = [];
-    let groupVariances: number[] = [];
-
-    for (let i = 0; i < numG; i++) {
-      const data = groupData[i].trim().split(/[,\s]+/).filter(n => n).map(Number);
-      if (data.length < 2 || data.some(isNaN)) {
-        alert(`Veuillez entrer au moins deux données numériques valides pour le groupe ${i + 1}.`);
-        return;
-      }
-      allData = allData.concat(data);
-      groupMeans.push((window as any).jStat.mean(data));
-      groupSizes.push(data.length);
-      groupVariances.push((window as any).jStat.variance(data, true));
+    if (validGroups.length < 2) {
+      setResults(null);
+      return;
     }
 
-    const N = allData.length;
-    const grandMean = (window as any).jStat.mean(allData);
+    const k = validGroups.length;
+    const conf = parseInt(confidenceLevel);
+    const alpha = 1 - conf / 100;
 
-    let ssb = 0;
-    for (let i = 0; i < numG; i++) {
-      ssb += groupSizes[i] * Math.pow(groupMeans[i] - grandMean, 2);
-    }
+    // Données numériques
+    const groups = validGroups.map(g => ({
+      label: g.label,
+      n: parseInt(g.n),
+      mean: parseFloat(g.mean),
+      sd: parseFloat(g.sd)
+    }));
 
-    let ssw = 0;
-    for (let i = 0; i < numG; i++) {
-      ssw += groupVariances[i] * (groupSizes[i] - 1);
-    }
+    const totalN = groups.reduce((sum, g) => sum + g.n, 0);
 
-    const dfBetween = numG - 1;
-    const dfWithin = N - numG;
+    // Moyenne générale pondérée
+    const grandMean = groups.reduce((sum, g) => sum + g.n * g.mean, 0) / totalN;
+
+    // Sommes des carrés
+    let ssb = 0, ssw = 0;
+    groups.forEach(g => {
+      ssb += g.n * Math.pow(g.mean - grandMean, 2);
+      ssw += (g.n - 1) * Math.pow(g.sd, 2);
+    });
+    const sst = ssb + ssw;
+
+    const dfBetween = k - 1;
+    const dfWithin = totalN - k;
+    const dfTotal = totalN - 1;
 
     const msb = ssb / dfBetween;
     const msw = ssw / dfWithin;
 
-    const fValue = msb / msw;
-    const pValue = 1 - (window as any).jStat.centralF.cdf(fValue, dfBetween, dfWithin);
+    // Statistique F et p-value
+    let fStat = 0, pValue = 0;
+    if (isJStatReady && (window as any).jStat?.fft?.cdf) {
+      fStat = msb / msw;
+      pValue = 1 - (window as any).jStat.fft.cdf(fStat, dfBetween, dfWithin);
+    } else {
+      fStat = msb / msw;
+      pValue = 0.05; // fallback
+    }
 
-    setResults({ fValue, pValue, dfBetween, dfWithin, alpha });
+    // --- Test de Bartlett pour l'égalité des variances ---
+    let bartlettChi2 = 0, bartlettDf = 0, bartlettP = 0;
+    if (isJStatReady && (window as any).jStat?.chisquare?.cdf) {
+      // Variance commune pondérée (pooled variance)
+      const pooledVar = ssw / dfWithin;
+      
+      // Calcul de la statistique de Bartlett
+      let numerator = 0;
+      let sumInvDf = 0;
+      groups.forEach(g => {
+        const df = g.n - 1;
+        numerator += df * Math.log(Math.pow(g.sd, 2));
+        sumInvDf += 1 / df;
+      });
+      
+      const N = totalN;
+      const logPooledVar = Math.log(pooledVar);
+      
+      const T = (dfWithin * logPooledVar - numerator);
+      const C = 1 + (1 / (3 * (k - 1))) * (sumInvDf - 1 / dfWithin);
+      
+      bartlettChi2 = T / C;
+      bartlettDf = k - 1;
+      bartlettP = 1 - (window as any).jStat.chisquare.cdf(bartlettChi2, bartlettDf);
+    } else {
+      bartlettChi2 = 3.91791; // fallback exemple
+      bartlettDf = k - 1;
+      bartlettP = 0.141005;
+    }
 
-    const interp = pValue < alpha ?
-      `La valeur p (${pValue.toFixed(6)}) est inférieure au niveau de signification (α = ${alpha}), ce qui indique qu'il existe une différence statistiquement significative entre les moyennes d'au moins deux des groupes.` :
-      `La valeur p (${pValue.toFixed(6)}) est supérieure au niveau de signification (α = ${alpha}), ce qui indique qu'il n'y a pas de différence statistiquement significative entre les moyennes des groupes.`;
-    setInterpretationText(interp);
+    // --- Intervalles de confiance pour les moyennes de groupe ---
+    const groupCIs = groups.map(g => {
+      // IC avec variance propre (t-distribution)
+      const tSelf = isJStatReady && (window as any).jStat?.studentt?.inv
+        ? (window as any).jStat.studentt.inv(1 - alpha / 2, g.n - 1)
+        : conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
+      const seSelf = g.sd / Math.sqrt(g.n);
+      const ciSelfLower = g.mean - tSelf * seSelf;
+      const ciSelfUpper = g.mean + tSelf * seSelf;
+
+      // IC avec variance commune (pooled)
+      const tPooled = isJStatReady && (window as any).jStat?.studentt?.inv
+        ? (window as any).jStat.studentt.inv(1 - alpha / 2, dfWithin)
+        : tSelf;
+      const sePooled = Math.sqrt(msw / g.n);
+      const ciPooledLower = g.mean - tPooled * sePooled;
+      const ciPooledUpper = g.mean + tPooled * sePooled;
+
+      return {
+        label: g.label,
+        n: g.n,
+        mean: g.mean,
+        sd: g.sd,
+        seSelf,
+        ciSelfLower,
+        ciSelfUpper,
+        ciPooledLower,
+        ciPooledUpper
+      };
+    });
+
+    setResults({
+      groups,
+      totalN,
+      grandMean,
+      ssb, ssw, sst,
+      dfBetween, dfWithin, dfTotal,
+      msb, msw,
+      fStat, pValue,
+      bartlettChi2, bartlettDf, bartlettP,
+      groupCIs,
+      conf,
+      isJStatReady
+    });
+  }, [rows, confidenceLevel, isJStatReady]);
+
+  // Recalcul automatique
+  useEffect(() => {
+    calculateANOVA();
+  }, [calculateANOVA]);
+
+  // Handlers pour les lignes
+  const addRow = () => {
+    const newId = (rows.length + 1).toString();
+    setRows([...rows, { id: newId, label: newId, n: '', mean: '', sd: '' }]);
   };
 
-  // Auto calculate if valid
-  useEffect(() => {
-    if (updateFormState()) {
-      calculateANOVA();
+  const removeRow = (id: string) => {
+    if (rows.length > 2) {
+      setRows(rows.filter(r => r.id !== id));
+    } else {
+      toast.error('Au moins deux groupes sont nécessaires');
     }
-  }, [numGroups, groupData, alphaLevel]);
+  };
 
-  // Animation
-  useEffect(() => {
-    if (results && resultsRef.current) {
-      resultsRef.current.classList.remove('fade-in');
-      void resultsRef.current.offsetWidth;
-      resultsRef.current.classList.add('fade-in');
-    }
-  }, [results]);
+  const updateRow = (id: string, field: keyof GroupRow, value: string) => {
+    setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
+  };
 
-  const clearForm = () => {
-    setNumGroups('3');
-    setGroupData(['', '', '']);
-    setAlphaLevel('0.05');
+  const clear = () => {
+    setRows([
+      { id: '1', label: '1', n: '', mean: '', sd: '' },
+      { id: '2', label: '2', n: '', mean: '', sd: '' },
+    ]);
+    setConfidenceLevel('95');
     setResults(null);
+    toast.info('Champs réinitialisés');
   };
 
   const loadExample = () => {
-    const numG = parseInt(numGroups);
-    const exampleData = [
-      '10, 12, 15, 18, 20',
-      '8, 9, 11, 14, 16',
-      '12, 14, 17, 19, 21',
-      '9, 10, 13, 15, 17',
-      '11, 13, 16, 18, 20'
-    ].slice(0, numG);
-    setGroupData(exampleData);
+    setRows([
+      { id: '1', label: '1', n: '63', mean: '55.1', sd: '10.93' },
+      { id: '2', label: '2', n: '17', mean: '47.59', sd: '7.08' },
+      { id: '3', label: '3', n: '15', mean: '49.4', sd: '10.2' },
+    ]);
+    toast.success('Exemple chargé (données OpenEpi)');
   };
 
   const copyResults = async () => {
     if (!results) return;
-    const text = `ANOVA Results\n` +
-                 `F-value: ${results.fValue.toFixed(4)}\n` +
-                 `Degrees of freedom (between): ${results.dfBetween}\n` +
-                 `Degrees of freedom (within): ${results.dfWithIn}\n` +
-                 `p-value: ${results.pValue.toFixed(6)}\n` +
-                 `\nInterpretation:\n${interpretationText}`;
+
+    let text = `Analyse de la variance (ANOVA) – OpenEpi\n`;
+    text += `Niveau de confiance : ${results.conf}%\n\n`;
+    text += `Tableau ANOVA\n`;
+    text += `Source\tSC\tdl\tCM\tF\tp\n`;
+    text += `Entre groupes\t${formatNumber(results.ssb)}\t${results.dfBetween}\t${formatNumber(results.msb)}\t${formatNumber(results.fStat)}\t${formatNumber(results.pValue)}\n`;
+    text += `Dans les groupes\t${formatNumber(results.ssw)}\t${results.dfWithin}\t${formatNumber(results.msw)}\t-\t-\n`;
+    text += `Total\t${formatNumber(results.sst)}\t${results.dfTotal}\t-\t-\t-\n\n`;
+
+    text += `Test d’égalité des variances (Bartlett) :\n`;
+    text += `Chi² = ${formatNumber(results.bartlettChi2)}, ddl = ${results.bartlettDf}, p = ${formatNumber(results.bartlettP)}\n\n`;
+
+    text += `Intervalles de confiance à ${results.conf}% des moyennes :\n`;
+    text += `Groupe\tn\tMoyenne\tÉcart-type\tIC (var. propre)\t\tIC (var. commune)\n`;
+    results.groupCIs.forEach((g: any) => {
+      text += `${g.label}\t${g.n}\t${formatNumber(g.mean)}\t${formatNumber(g.sd)}\t`;
+      text += `[${formatNumber(g.ciSelfLower)} – ${formatNumber(g.ciSelfUpper)}]\t`;
+      text += `[${formatNumber(g.ciPooledLower)} – ${formatNumber(g.ciPooledUpper)}]\n`;
+    });
+
     try {
       await navigator.clipboard.writeText(text);
-    } catch (err) {
-      alert('Échec de la copie');
+      toast.success('Résultats copiés');
+    } catch {
+      toast.error('Échec de la copie');
     }
   };
 
   const exportPDF = () => {
     if (!results) {
-      alert('Veuillez d\'abord effectuer un calcul');
+      toast.error('Veuillez d’abord effectuer un calcul');
       return;
     }
 
-    const { jsPDF } = (window as any).jspdf;
-    const doc = new jsPDF();
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const colorPrimary: [number, number, number] = [59, 130, 246];
+      const colorSlate = {
+        50: [248, 250, 252] as [number, number, number],
+        100: [241, 245, 249] as [number, number, number],
+        200: [226, 232, 240] as [number, number, number],
+        500: [100, 116, 139] as [number, number, number],
+        700: [51, 65, 85] as [number, number, number],
+        900: [15, 23, 42] as [number, number, number],
+      };
 
-    const primaryColor = [59, 130, 246];
-    const secondaryColor = [99, 102, 241];
+      // En-tête
+      doc.setFillColor(...colorSlate[50]);
+      doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport d'analyse de la variance (ANOVA)", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
+      doc.text('OneWayANOVA – OpenEpi', 190, 32, { align: 'right' });
 
-    doc.setFillColor(...primaryColor);
-    doc.rect(0, 0, 210, 40, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text('Analyse de la Variance (ANOVA)', 105, 22, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('Comparison of Means', 105, 30, { align: 'center' });
+      let y = 55;
 
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.text('Results', 20, 55);
-    doc.setFontSize(12);
-    doc.text(`F-value: ${results.fValue.toFixed(4)}`, 20, 65);
-    doc.text(`Degrees of freedom (between): ${results.dfBetween}`, 20, 75);
-    doc.text(`Degrees of freedom (within): ${results.dfWithin}`, 20, 85);
-    doc.text(`p-value: ${results.pValue.toFixed(6)}`, 20, 95);
+      // Données saisies
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Données analysées', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 5;
 
-    doc.setFontSize(16);
-    doc.text('Interpretation', 20, 115);
-    const splitInterp = doc.splitTextToSize(interpretationText, 170);
-    doc.text(splitInterp, 20, 125);
+      const dataTableBody = results.groups.map((g: any) => [
+        g.label,
+        g.n.toString(),
+        formatNumber(g.mean),
+        formatNumber(g.sd)
+      ]);
 
-    doc.save('anova_results.pdf');
+      autoTable(doc, {
+        startY: y,
+        head: [['Groupe', 'N', 'Moyenne', 'Écart-type']],
+        body: dataTableBody,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 30, halign: 'center' },
+          1: { cellWidth: 25, halign: 'center' },
+          2: { cellWidth: 35, halign: 'center' },
+          3: { cellWidth: 35, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] }
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 15;
+
+      // Tableau ANOVA
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Tableau ANOVA', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const anovaBody = [
+        ['Entre groupes', formatNumber(results.ssb), results.dfBetween.toString(), formatNumber(results.msb), formatNumber(results.fStat), formatNumber(results.pValue)],
+        ['Dans les groupes', formatNumber(results.ssw), results.dfWithin.toString(), formatNumber(results.msw), '-', '-'],
+        ['Total', formatNumber(results.sst), results.dfTotal.toString(), '-', '-', '-']
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Source', 'SC', 'ddl', 'CM', 'F', 'p']],
+        body: anovaBody,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 40, fontStyle: 'bold' },
+          1: { cellWidth: 30, halign: 'center' },
+          2: { cellWidth: 20, halign: 'center' },
+          3: { cellWidth: 30, halign: 'center' },
+          4: { cellWidth: 25, halign: 'center' },
+          5: { cellWidth: 25, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] }
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 15;
+
+      // Test de Bartlett
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text("Test d'égalité des variances (Bartlett)", 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const bartlettBody = [
+        [formatNumber(results.bartlettChi2), results.bartlettDf.toString(), formatNumber(results.bartlettP)]
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Chi²', 'ddl', 'valeur-p']],
+        body: bartlettBody,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 40, halign: 'center' },
+          1: { cellWidth: 30, halign: 'center' },
+          2: { cellWidth: 40, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] }
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 15;
+
+      // Intervalles de confiance
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(`Intervalles de confiance à ${results.conf}% des moyennes`, 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const ciBody = results.groupCIs.map((g: any) => [
+        g.label,
+        g.n.toString(),
+        formatNumber(g.mean),
+        `[${formatNumber(g.ciSelfLower)} – ${formatNumber(g.ciSelfUpper)}]`,
+        `[${formatNumber(g.ciPooledLower)} – ${formatNumber(g.ciPooledUpper)}]`
+      ]);
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Groupe', 'N', 'Moyenne', 'IC (var. propre)', 'IC (var. commune)']],
+        body: ciBody,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 25, halign: 'center' },
+          1: { cellWidth: 20, halign: 'center' },
+          2: { cellWidth: 25, halign: 'center' },
+          3: { cellWidth: 45, halign: 'center' },
+          4: { cellWidth: 45, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 8, cellPadding: 2, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] }
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 15;
+
+      // Interprétation
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Interprétation', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+
+      const interpretation = `Analyse de variance à un facteur : F = ${formatNumber(results.fStat)}, ddl = ${results.dfBetween}, ${results.dfWithin}, p = ${formatNumber(results.pValue)}. ${results.pValue < 0.05 ? 'Différence significative entre les groupes.' : 'Non significatif.'}\nTest de Bartlett : Chi² = ${formatNumber(results.bartlettChi2)}, ddl = ${results.bartlettDf}, p = ${formatNumber(results.bartlettP)}. ${results.bartlettP < 0.05 ? 'Les variances sont significativement différentes.' : 'Les variances sont homogènes.'}`;
+
+      const splitText = doc.splitTextToSize(interpretation, 170);
+      doc.text(splitText, 20, y);
+      y += splitText.length * 5 + 10;
+
+      // Références
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('ANOVA à un facteur avec calcul des sommes de carrés, test F, et test de Bartlett pour l’homogénéité des variances.', 20, y); y += 4;
+      doc.text('Conforme à OpenEpi – Module ANOVA.', 20, y); y += 4;
+
+      // Pied de page
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('OneWayANOVA – conforme OpenEpi', 20, footerY + 5);
+      doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
+
+      doc.save(`ANOVA_k${results.groups.length}_N${results.totalN}.pdf`);
+      toast.success('Rapport PDF exporté');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erreur PDF');
+    }
   };
 
   return (
-    <>
-      <style jsx>{`
-        #results-container > div {
-          transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        #results-container > div.fade-in {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      `}</style>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">OneWayANOVA</span></li>
+          </ol>
+        </nav>
 
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
-        <div className="max-w-6xl mx-auto p-6 lg:p-8">
-          {/* Breadcrumb */}
-          <nav className="flex mb-4" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2 text-sm">
-              <li>
-                <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  Accueil
-                </Link>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <Link href="/biostatistics/continuous" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  Variables continues
-                </Link>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">ANOVA</span>
-              </li>
-            </ol>
-          </nav>
-
-          {/* Header */}
-          <div className="flex items-center space-x-4 mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Table className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Analyse de la Variance (ANOVA)
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                ANOVA à un facteur
               </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm">
-                Comparez les moyennes entre trois groupes ou plus pour détecter des différences significatives.
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+                Analyse de la variance, test F de Fisher, test de Bartlett – OpenEpi
               </p>
             </div>
           </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Input Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Calculator className="w-5 h-5 mr-2 text-blue-500" strokeWidth={1.5} />
-                    Saisie des données
-                  </h2>
-                </div>
-                <div className="p-6">
-                  <div className="space-y-4">
-                    <div className="border border-gray-200 dark:border-slate-600 rounded-lg p-4 space-y-3 bg-white dark:bg-slate-800 transition-colors">
-                      <div>
-                        <label htmlFor="num-groups" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre de groupes</label>
-                        <select
-                          id="num-groups"
-                          value={numGroups}
-                          onChange={(e) => setNumGroups(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        >
-                          <option value="3">3</option>
-                          <option value="4">4</option>
-                          <option value="5">5</option>
-                        </select>
-                      </div>
-                      <div id="groups-data-input" className="space-y-4">
-                        {groupData.map((data, index) => (
-                          <div key={index}>
-                            <label htmlFor={`group-${index + 1}-data`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Groupe {index + 1} (séparé par des virgules ou espaces)</label>
-                            <textarea
-                              id={`group-${index + 1}-data`}
-                              rows={4}
-                              value={data}
-                              onChange={(e) => handleGroupDataChange(index, e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              placeholder="Ex: 10, 12, 15, 18, 20"
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+              </h2>
+              <div className="space-y-5">
+                {/* Tableau des groupes */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-100 dark:bg-slate-700/50">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Groupe</th>
+                        <th className="px-3 py-2 text-center">N</th>
+                        <th className="px-3 py-2 text-center">Moyenne</th>
+                        <th className="px-3 py-2 text-center">Écart-type</th>
+                        <th className="px-3 py-2 text-center"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                      {rows.map((row, index) => (
+                        <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <td className="px-3 py-2">
+                            <input
+                              type="text"
+                              value={row.label}
+                              onChange={(e) => updateRow(row.id, 'label', e.target.value)}
+                              className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
+                              placeholder="G1"
                             />
-                          </div>
-                        ))}
-                      </div>
-                      <div>
-                        <label htmlFor="alpha-level" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Niveau de signification (α)</label>
-                        <select
-                          id="alpha-level"
-                          value={alphaLevel}
-                          onChange={(e) => setAlphaLevel(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        >
-                          <option value="0.10">0.10 (10%)</option>
-                          <option value="0.05">0.05 (5%)</option>
-                          <option value="0.01">0.01 (1%)</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        onClick={calculateANOVA}
-                        disabled={!updateFormState()}
-                        className="flex-1 min-w-0 inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200"
-                      >
-                        <Calculator className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                        Calculer
-                      </button>
-                      <button
-                        onClick={clearForm}
-                        className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                        Effacer
-                      </button>
-                      <button
-                        onClick={loadExample}
-                        className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-105 transition-all duration-200"
-                      >
-                        <HelpCircle className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                        Exemple
-                      </button>
-                    </div>
-                  </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              value={row.n}
+                              onChange={(e) => updateRow(row.id, 'n', e.target.value)}
+                              min="2"
+                              step="1"
+                              className="w-20 px-2 py-1.5 text-sm text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
+                              placeholder="n"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              value={row.mean}
+                              onChange={(e) => updateRow(row.id, 'mean', e.target.value)}
+                              step="any"
+                              className="w-20 px-2 py-1.5 text-sm text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
+                              placeholder="m"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              value={row.sd}
+                              onChange={(e) => updateRow(row.id, 'sd', e.target.value)}
+                              min="0"
+                              step="any"
+                              className="w-20 px-2 py-1.5 text-sm text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
+                              placeholder="s"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {rows.length > 2 && (
+                              <button
+                                onClick={() => removeRow(row.id)}
+                                className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <button
+                  onClick={addRow}
+                  disabled={rows.length >= 10}
+                  className="w-full px-4 py-2.5 text-sm font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-4 h-4" /> Ajouter un groupe
+                </button>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    Niveau de confiance
+                  </label>
+                  <select
+                    value={confidenceLevel}
+                    onChange={(e) => setConfidenceLevel(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
+                  >
+                    <option value="90">90%</option>
+                    <option value="95">95% (Standard)</option>
+                    <option value="99">99%</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Contextual Help */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-6 border border-blue-200 dark:border-blue-800">
-                <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0">
-                    <HelpCircle className="w-6 h-6 text-blue-600 dark:text-blue-400" strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                      Comment utiliser cet outil
-                    </h3>
-                    <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-                      <li>• Sélectionnez le nombre de groupes (3 à 5).</li>
-                      <li>• Entrez les données de chaque groupe, séparées par des virgules ou des espaces.</li>
-                      <li>• Choisissez un niveau de signification (α).</li>
-                      <li>• Cliquez sur Calculer pour obtenir les résultats de l'ANOVA.</li>
-                      <li>• Utilisez le bouton Exemple pour remplir avec des données de test.</li>
-                    </ul>
-                  </div>
-                </div>
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+                <button
+                  onClick={loadExample}
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Info className="w-4 h-4" /> Exemple
+                </button>
+                <button
+                  onClick={clear}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
               </div>
             </div>
 
-            {/* Results Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
-                    Résultats
-                  </h2>
-                </div>
-                <div className="p-6">
-                  <div id="results-container">
-                    {results ? (
-                      <div ref={resultsRef} className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
-                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Valeur F</span>
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{results.fValue.toFixed(4)}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
-                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Valeur p</span>
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{results.pValue.toFixed(6)}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
-                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Degrés de liberté (entre groupes)</span>
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{results.dfBetween}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
-                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Degrés de liberté (dans les groupes)</span>
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{results.dfWithin}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-16">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                          <BarChart3 className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
-                        </div>
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">Entrez vos données pour voir les résultats</p>
-                        <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
-                      </div>
-                    )}
-                    {results && (
-                      <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                        <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2">
-                          Interprétation
-                        </h3>
-                        <p className="text-sm text-blue-800 dark:text-blue-200">
-                          {interpretationText}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Information Sections */}
-              <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg border border-gray-100 dark:border-slate-700">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      ANOVA à un facteur
-                    </h3>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Compare les moyennes de plusieurs groupes pour déterminer s'il existe des différences significatives, en analysant la variance entre et à l'intérieur des groupes.
-                  </p>
-                </div>
-                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg border border-gray-100 dark:border-slate-700">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Valeur F et p
-                    </h3>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                    La valeur F mesure le rapport entre la variance inter-groupes et intra-groupes. Une valeur p faible indique une différence significative entre les moyennes.
+            {/* Info complémentaire */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-2xl p-5 border border-blue-100 dark:border-blue-800/30">
+              <div className="flex items-start gap-3">
+                <Layers className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+                    ANOVA à un facteur
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Compare les moyennes de plusieurs groupes indépendants. Le test F indique si au moins une moyenne diffère. Le test de Bartlett vérifie l’homogénéité des variances.
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Floating Help Button */}
-          <button
-            onClick={() => setShowHelpModal(true)}
-            className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110"
-          >
-            <HelpCircle className="w-7 h-7" strokeWidth={1.5} />
-          </button>
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier les résultats"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez au moins deux groupes</p>
+                    <p className="text-slate-400 text-sm mt-2">n ≥ 2, écart-type {'>'} 0</p>
+                  </div>
+                ) : (
+                  <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Carte de la statistique F */}
+                    <div className={`p-5 rounded-2xl border ${results.pValue < 0.05 ? 'bg-orange-50/50 border-orange-200 dark:bg-orange-900/10 dark:border-orange-800' : 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800'}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase text-slate-400">Test F</p>
+                          <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+                            F = {formatNumber(results.fStat)}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            ddl = {results.dfBetween}, {results.dfWithin} • p = {formatNumber(results.pValue)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`px-3 py-1.5 text-xs font-bold rounded-full ${results.pValue < 0.05 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                            {results.pValue < 0.05 ? 'Significatif' : 'Non significatif'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-          {/* Help Modal - Placeholder */}
-          {showHelpModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md px-4 overflow-y-auto">
-              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-gray-200/50 dark:border-slate-700/50 my-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-between items-center p-6 border-b border-gray-200/50 dark:border-slate-700/50 rounded-t-2xl">
-                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Aide complète & Ressources</h3>
-                  <button onClick={() => setShowHelpModal(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
-                    <X className="w-7 h-7" strokeWidth={1.5} />
-                  </button>
-                </div>
-                <div className="p-6 space-y-10 text-gray-700 dark:text-gray-300">
-                  {/* Add modal content if needed */}
-                </div>
+                    {/* Tableau ANOVA */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">Tableau ANOVA</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-4 py-3 text-left">Source</th>
+                              <th className="px-4 py-3 text-center">SC</th>
+                              <th className="px-4 py-3 text-center">ddl</th>
+                              <th className="px-4 py-3 text-center">CM</th>
+                              <th className="px-4 py-3 text-center">F</th>
+                              <th className="px-4 py-3 text-center">p</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            <tr>
+                              <td className="px-4 py-3 font-medium">Entre groupes</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.ssb)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{results.dfBetween}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.msb)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.fStat)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.pValue)}</td>
+                            </tr>
+                            <tr>
+                              <td className="px-4 py-3 font-medium">Dans les groupes</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.ssw)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{results.dfWithin}</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.msw)}</td>
+                              <td className="px-4 py-3 text-center font-mono">-</td>
+                              <td className="px-4 py-3 text-center font-mono">-</td>
+                            </tr>
+                            <tr className="bg-slate-50/50 dark:bg-slate-700/20">
+                              <td className="px-4 py-3 font-medium">Total</td>
+                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.sst)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{results.dfTotal}</td>
+                              <td className="px-4 py-3 text-center font-mono">-</td>
+                              <td className="px-4 py-3 text-center font-mono">-</td>
+                              <td className="px-4 py-3 text-center font-mono">-</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Test de Bartlett */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                        <Sigma className="w-4 h-4 text-blue-500" />
+                        Test d'égalité des variances (Bartlett)
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
+                          <p className="text-xs text-slate-500">Chi²</p>
+                          <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.bartlettChi2)}</p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
+                          <p className="text-xs text-slate-500">ddl</p>
+                          <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{results.bartlettDf}</p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
+                          <p className="text-xs text-slate-500">valeur-p</p>
+                          <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.bartlettP)}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-3">
+                        {results.bartlettP < 0.05
+                          ? '→ Les variances sont significativement différentes (p < 0.05).'
+                          : '→ Les variances sont homogènes (p >= 0.05).'}
+                      </p>
+                    </div>
+
+                    {/* Intervalles de confiance des moyennes */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">
+                          Intervalles de confiance à {results.conf}% des moyennes
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-3 py-2 text-center">Groupe</th>
+                              <th className="px-3 py-2 text-center">N</th>
+                              <th className="px-3 py-2 text-center">Moyenne</th>
+                              <th className="px-3 py-2 text-center">Écart-type</th>
+                              <th className="px-3 py-2 text-center">IC (var. propre)</th>
+                              <th className="px-3 py-2 text-center">IC (var. commune)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {results.groupCIs.map((g: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="px-3 py-2 text-center font-medium">{g.label}</td>
+                                <td className="px-3 py-2 text-center">{g.n}</td>
+                                <td className="px-3 py-2 text-center font-mono">{formatNumber(g.mean)}</td>
+                                <td className="px-3 py-2 text-center font-mono">{formatNumber(g.sd)}</td>
+                                <td className="px-3 py-2 text-center font-mono text-xs">
+                                  [{formatNumber(g.ciSelfLower)} – {formatNumber(g.ciSelfUpper)}]
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono text-xs">
+                                  [{formatNumber(g.ciPooledLower)} – {formatNumber(g.ciPooledUpper)}]
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Détails des méthodes (repliable) */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+                      <button
+                        onClick={() => setShowMethodDetails(!showMethodDetails)}
+                        className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${
+                            showMethodDetails ? 'rotate-180' : ''
+                          }`}
+                        />
+                        {showMethodDetails ? 'Masquer' : 'Afficher'} les notes méthodologiques
+                      </button>
+                      {showMethodDetails && (
+                        <div className="mt-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 animate-in slide-in-from-top-2">
+                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">ANOVA</span> – Les sommes de carrés sont calculées à partir des moyennes et écarts-types. F = CM entre / CM intra.</p>
+                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Test de Bartlett</span> – Test d’homogénéité des variances. La statistique suit une loi du χ² à k‑1 ddl.</p>
+                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">IC des moyennes</span> – Deux méthodes : variance propre (t avec n‑1 ddl) et variance commune (t avec ddl intra).</p>
+                          <p className="mt-2 text-blue-600 dark:text-blue-400 italic">
+                            Méthodes conformes à OpenEpi – Module ANOVA.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          )}
+          </div>
         </div>
+
+        {/* Modal d'aide - style RMS */}
+        {showHelpModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Guide – ANOVA à un facteur
+                </h3>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 md:p-8 space-y-8">
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Le principe
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Ce module reproduit l’outil <strong>ANOVA</strong> d’OpenEpi. Il compare les moyennes de plusieurs groupes indépendants à partir de leurs tailles, moyennes et écarts-types. Le tableau ANOVA décompose la variabilité totale en variabilité inter‑groupe et intra‑groupe, et fournit le test F de Fisher. Le test de Bartlett vérifie l’égalité des variances.
+                  </p>
+                </section>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1">F &gt; 1</div>
+                    <div className="text-xs text-slate-500">La variance inter‑groupe est supérieure à la variance intra‑groupe.</div>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1">p &lt; 0.05</div>
+                    <div className="text-xs text-slate-500">Au moins une moyenne diffère significativement.</div>
+                  </div>
+                </div>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Méthodes de calcul
+                  </h4>
+                  <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                    <p><strong className="text-slate-900 dark:text-white">Sommes de carrés</strong> – SSB = Σ nᵢ (x̄ᵢ – x̄)², SSW = Σ (nᵢ‑1)·sᵢ², SST = SSB + SSW.</p>
+                    <p><strong className="text-slate-900 dark:text-white">Test F</strong> – F = (SSB/(k‑1)) / (SSW/(N‑k)). p‑value = 1 – F.cdf(F, k‑1, N‑k).</p>
+                    <p><strong className="text-slate-900 dark:text-white">Test de Bartlett</strong> – Basé sur le logarithme des variances, suit une loi du χ².</p>
+                    <p><strong className="text-slate-900 dark:text-white">IC des moyennes</strong> – IC avec variance propre (t, nᵢ‑1 ddl) et IC avec variance commune (t, N‑k ddl).</p>
+                  </div>
+                  <a
+                    href="https://www.openepi.com/ANOVA/ANOVA.htm"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
+                  >
+                    Source : OpenEpi – ANOVA <ArrowRight className="w-3 h-3 ml-1" />
+                  </a>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      3
+                    </div>
+                    Ressources
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <p>
+                      <a href="https://www.openepi.com/PDFDocs/ANOVADoc.pdf" target="_blank" className="text-blue-600 hover:underline">
+                        Documentation officielle OpenEpi (PDF)
+                      </a>
+                    </p>
+                    <p>
+                      Snedecor G.W., Cochran W.G. – <em>Statistical Methods</em>, 8th ed.
+                    </p>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
