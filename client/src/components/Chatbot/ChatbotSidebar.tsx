@@ -2,52 +2,22 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
-  MessageCircle, 
-  X, 
-  Send, 
-  Bot, 
-  User,
-  Maximize2, 
-  Minimize2,
-  GripVertical,
-  Trash2,
-  Clock,
-  Sparkles,
-  Copy,
-  Loader2,
-  Globe,
-  Mic,
-  Paperclip,
-  ChevronUp,
-  Brain,
-  Calculator,
-  FileText,
-  MessageSquare,
-  Settings,
-  CheckCircle,
-  FileCode,
-  Search,
-  Download,
-  Upload,
-  History,
-  BookOpen,
-  Database,
-  PieChart,
-  BarChart3,
-  LineChart
+  MessageCircle, X, Send, Bot, User, Maximize2, Minimize2,
+  GripVertical, Trash2, Clock, Copy, Loader2, Globe, Mic,
+  Paperclip, Brain, Calculator, FileText, MessageSquare,
+  Settings, FileCode, BookOpen, Database, BarChart3, ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
+// --- Interfaces & Types ---
 interface Message {
   id: string;
   content: string;
@@ -65,63 +35,6 @@ interface ChatbotSidebarProps {
   position?: 'right' | 'left';
 }
 
-// Données initiales pour la conversation
-const initialMessages: Message[] = [
-  {
-    id: '1',
-    content: "Comment calculer un risque relatif en épidémiologie ?",
-    sender: 'user',
-    timestamp: new Date(Date.now() - 7200000),
-  },
-  {
-    id: '2',
-    content: `# Risque Relatif en Épidémiologie
-
-## Définition
-Le **risque relatif (RR)** mesure l'association entre une exposition et une maladie. Il compare le risque de maladie chez les exposés au risque chez les non-exposés.
-
-## Formule
-\`\`\`
-RR = (a / (a + b)) / (c / (c + d))
-\`\`\`
-
-## Exemple
-Tableau 2×2 pour le tabagisme et le cancer du poumon :
-
-|            | Cancer | Pas Cancer | Total |
-|------------|--------|------------|-------|
-| Fumeurs    | 70     | 30         | 100   |
-| Non-fumeurs| 30     | 70         | 100   |
-
-**Calcul :**
-- Risque chez les fumeurs = 70/100 = 0.70
-- Risque chez les non-fumeurs = 30/100 = 0.30
-- **RR = 0.70 / 0.30 = 2.33**
-
-## Interprétation
-- **RR = 1** : Pas d'association
-- **RR > 1** : Risque accru (association positive)
-- **RR < 1** : Risque réduit (effet protecteur)`,
-    sender: 'assistant',
-    timestamp: new Date(Date.now() - 3600000),
-    reasoning: "L'utilisateur demande une explication sur le calcul du risque relatif en épidémiologie. Je vais fournir une définition claire, la formule, un exemple concret et interpréter les résultats.",
-    sources: [
-      { title: "Guide des mesures de risque", url: "/docs/epidemiology/risk-measures" },
-      { title: "Calcul du risque relatif", url: "/docs/statistics/relative-risk" }
-    ]
-  },
-];
-
-
-
-const mockResponses = [
-  "J'ai analysé votre question sur les données épidémiologiques. Voici une explication détaillée basée sur les meilleures pratiques actuelles...",
-  "Très bonne question ! En épidémiologie, ce concept est fondamental. Voici comment l'aborder...",
-  "Je comprends votre besoin d'analyse. Voici une méthodologie éprouvée pour traiter ce type de données...",
-  "Excellent sujet ! L'approche recommandée consiste à suivre ces étapes...",
-  "Cette question touche à un aspect important de l'analyse statistique. Voici ce que je recommande...",
-];
-
 export function ChatbotSidebar({
   isOpen,
   onClose,
@@ -129,764 +42,231 @@ export function ChatbotSidebar({
   onWidthChange,
   position = 'right'
 }: ChatbotSidebarProps) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [input, setInput] = useState<string>("");
-  const [isTyping, setIsTyping] = useState<boolean>(false);
-  const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
-  const [useMicrophone, setUseMicrophone] = useState<boolean>(false);
+  // --- States ---
+  const [messages, setMessages] = useState<Message[]>([]); // Initialisation vide pour l'exemple
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [useWebSearch, setUseWebSearch] = useState(false);
+  const [useMicrophone, setUseMicrophone] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'models' | 'settings'>('chat');
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, width: 0 });
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const minWidth = 420;
-  const maxWidth = 800;
-  const expandedWidth = 600;
+  const minWidth = 400;
+  const maxWidth = 850;
+  const expandedWidth = 650;
 
-  // Auto-scroll vers le dernier message
+  // --- Effects ---
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isTyping]);
 
-  // Focus sur l'input quand la sidebar s'ouvre
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 300);
+      setTimeout(() => inputRef.current?.focus(), 400);
     }
   }, [isOpen]);
 
-  // Gestion du redimensionnement
+  // --- Handlers ---
   const handleDragStart = (e: React.MouseEvent) => {
     dragStartRef.current = { x: e.clientX, width };
     setIsDragging(true);
     document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
   };
-
-  const handleDrag = (e: MouseEvent) => {
-    if (!isDragging) return;
-    
-    const delta = position === 'right' 
-      ? dragStartRef.current.x - e.clientX
-      : e.clientX - dragStartRef.current.x;
-    
-    let newWidth = dragStartRef.current.width + delta;
-    newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-    onWidthChange(newWidth);
-  };
-
-  const handleDragEnd = () => {
-    setIsDragging(false);
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  };
-
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleDrag);
-      document.addEventListener('mouseup', handleDragEnd);
-      return () => {
-        document.removeEventListener('mousemove', handleDrag);
-        document.removeEventListener('mouseup', handleDragEnd);
-      };
-    }
-  }, [isDragging, position]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim()) return;
-  
-    const userMessage: Message = {
+    const userMsg: Message = {
       id: Date.now().toString(),
       content: input.trim(),
       sender: 'user',
       timestamp: new Date()
     };
-  
-    setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
-  
-    // Simulation de réponse IA avec raisonnement
-    setTimeout(() => {
-      const userQuery = input.trim().toLowerCase();
-      let codeExample = '';
-      let language = 'r'; // Par défaut R pour épidémiologie
-      let reasoning = "L'utilisateur a posé une question sur l'analyse épidémiologique. Je fournis une réponse détaillée avec un exemple de code pour illustrer le calcul.";
-      
-      // Détection du langage demandé
-      if (userQuery.includes('python') || userQuery.includes('pandas') || userQuery.includes('numpy')) {
-        language = 'python';
-      } else if (userQuery.includes('javascript') || userQuery.includes('js') || userQuery.includes('node')) {
-        language = 'javascript';
-      } else if (userQuery.includes(' r ') || userQuery.startsWith('r ') || userQuery.includes('langage r')) {
-        language = 'r';
-      }
-  
-      // Génération de code spécifique selon la requête
-      if (userQuery.includes('risque relatif') || userQuery.includes('rr')) {
-        if (language === 'python') {
-          codeExample = `# Calcul du risque relatif en Python
-  import numpy as np
-  
-  def calculate_rr(a, b, c, d):
-      """
-      Calcule le Risque Relatif (RR)
-      a: exposés malades
-      b: exposés non malades
-      c: non-exposés malades
-      d: non-exposés non malades
-      """
-      risk_exposed = a / (a + b)
-      risk_unexposed = c / (c + d)
-      rr = risk_exposed / risk_unexposed
-      return rr
-  
-  # Exemple tabagisme/cancer poumon
-  rr_value = calculate_rr(70, 30, 30, 70)
-  print(f"Risque relatif: {rr_value:.2f}")
-  print(f"Interprétation: Les fumeurs ont {rr_value:.2f} fois plus de risque")`;
-        } else if (language === 'r') {
-          codeExample = `# Calcul du risque relatif en R
-  calculate_rr <- function(a, b, c, d) {
-    #' Calcule le Risque Relatif (RR)
-    #' a: exposés malades
-    #' b: exposés non malades  
-    #' c: non-exposés malades
-    #' d: non-exposés non malades
     
-    risk_exposed <- a / (a + b)
-    risk_unexposed <- c / (c + d)
-    rr <- risk_exposed / risk_unexposed
-    return(rr)
-  }
-  
-  # Exemple tabagisme/cancer poumon
-  rr <- calculate_rr(70, 30, 30, 70)
-  cat("Risque relatif:", round(rr, 2), "\\n")
-  cat("Interprétation: Les fumeurs ont", round(rr, 2), "fois plus de risque\\n")`;
-        } else {
-          codeExample = `// Calcul du risque relatif en JavaScript
-  function calculateRR(a, b, c, d) {
-    /**
-     * Calcule le Risque Relatif (RR)
-     * a: exposés malades
-     * b: exposés non malades
-     * c: non-exposés malades  
-     * d: non-exposés non malades
-     */
-    const riskExposed = a / (a + b);
-    const riskUnexposed = c / (c + d);
-    const rr = riskExposed / riskUnexposed;
-    return rr;
-  }
-  
-  // Exemple tabagisme/cancer poumon
-  const rr = calculateRR(70, 30, 30, 70);
-  console.log(\`Risque relatif: \${rr.toFixed(2)}\`);
-  console.log(\`Interprétation: Les fumeurs ont \${rr.toFixed(2)} fois plus de risque\`);`;
-        }
-      } else if (userQuery.includes('odds ratio') || userQuery.includes('or')) {
-        // Code pour Odds Ratio
-        if (language === 'python') {
-          codeExample = `# Calcul de l'Odds Ratio (OR) en Python
-  def calculate_or(a, b, c, d):
-      odds_exposed = a / b
-      odds_unexposed = c / d
-      or_value = odds_exposed / odds_unexposed
-      return or_value
-  
-  # Exemple étude cas-témoins
-  or_value = calculate_or(50, 50, 30, 70)
-  print(f"Odds Ratio: {or_value:.2f}")
-  print(f"IC 95%: [{or_value * 0.8:.2f}, {or_value * 1.2:.2f}]")`;
-        } else if (language === 'r') {
-          codeExample = `# Calcul de l'Odds Ratio (OR) en R
-  calculate_or <- function(a, b, c, d) {
-    odds_exposed <- a / b
-    odds_unexposed <- c / d
-    or_value <- odds_exposed / odds_unexposed
-    return(or_value)
-  }
-  
-  # Exemple étude cas-témoins
-  or_value <- calculate_or(50, 50, 30, 70)
-  cat("Odds Ratio:", round(or_value, 2), "\\n")
-  cat("IC 95%: [", round(or_value * 0.8, 2), ",", round(or_value * 1.2, 2), "]\\n")`;
-        }
-      } else if (userQuery.includes('tableau') || userQuery.includes('2x2') || userQuery.includes('deux par deux')) {
-        // Code pour tableaux 2x2
-        if (language === 'r') {
-          codeExample = `# Analyse d'un tableau 2x2 en R
-  # Création d'un tableau de contingence
-  tableau <- matrix(c(70, 30, 30, 70), nrow = 2, byrow = TRUE)
-  rownames(tableau) <- c("Exposé", "Non-exposé")
-  colnames(tableau) <- c("Malade", "Non malade")
-  
-  # Affichage du tableau
-  print("Tableau 2x2:")
-  print(tableau)
-  
-  # Calcul des indicateurs
-  library(epitools)
-  
-  # Risque relatif
-  rr <- riskratio(tableau)
-  print("Risque relatif:")
-  print(rr$measure)
-  
-  # Odds ratio  
-  or <- oddsratio(tableau)
-  print("Odds ratio:")
-  print(or$measure)`;
-        } else if (language === 'python') {
-          codeExample = `# Analyse d'un tableau 2x2 en Python
-  import numpy as np
-  import pandas as pd
-  
-  # Création du tableau
-  data = {
-      'Malade': [70, 30],
-      'Non malade': [30, 70]
-  }
-  df = pd.DataFrame(data, index=['Exposé', 'Non-exposé'])
-  
-  print("Tableau 2x2:")
-  print(df)
-  
-  # Calcul manuel des indicateurs
-  a, b, c, d = 70, 30, 30, 70
-  rr = (a/(a+b)) / (c/(c+d))
-  or_value = (a/b) / (c/d)
-  
-  print(f"\\nRisque relatif (RR): {rr:.2f}")
-  print(f"Odds ratio (OR): {or_value:.2f}")`;
-        }
-      } else {
-        // Réponse générique avec exemple de code
-        const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
-        if (language === 'r') {
-          codeExample = `# Exemple d'analyse épidémiologique en R
-  # Chargement des données (simulées)
-  set.seed(123)
-  n <- 100
-  groupe <- rep(c("Traitement", "Contrôle"), each = n/2)
-  succes <- rbinom(n, 1, c(0.7, 0.3))
-  
-  # Tableau de contingence
-  table(groupe, succes)
-  
-  # Test du Chi²
-  resultat_chi2 <- chisq.test(table(groupe, succes))
-  print(resultat_chi2)
-  
-  # Risque relatif approximatif
-  prop.table(table(groupe, succes), margin = 1)`;
-        } else if (language === 'python') {
-          codeExample = `# Exemple d'analyse épidémiologique en Python
-  import numpy as np
-  import pandas as pd
-  from scipy import stats
-  
-  # Données simulées
-  np.random.seed(123)
-  n = 100
-  groupe = ['Traitement'] * 50 + ['Contrôle'] * 50
-  succes = np.random.binomial(1, [0.7, 0.3], n)
-  
-  # Création DataFrame
-  df = pd.DataFrame({'Groupe': groupe, 'Succès': succes})
-  
-  # Tableau de contingence
-  table = pd.crosstab(df['Groupe'], df['Succès'])
-  print("Tableau de contingence:")
-  print(table)
-  
-  # Test du Chi²
-  chi2, p, dof, expected = stats.chi2_contingency(table)
-  print(f"\\nChi² = {chi2:.2f}, p = {p:.4f}")`;
-        }
-      }
-  
-      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
-      const languageName = language === 'r' ? 'R' : language === 'python' ? 'Python' : 'JavaScript';
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `${randomResponse}\n\n**Exemple en ${languageName} :**\n\n\`\`\`${language}\n${codeExample}\n\`\`\`\n\n*Vous pouvez exécuter ce code directement dans l'atelier d'analyse ou le copier pour l'utiliser localement.*`,
-        sender: 'assistant',
-        timestamp: new Date(),
-        reasoning: reasoning,
-        sources: [
-          { title: `Guide OpenEPI - ${languageName}`, url: `/docs/${language}/guide` },
-          { title: "Référence statistique", url: "/docs/statistics" }
-        ]
-      };
-  
-      setMessages(prev => [...prev, assistantMessage]);
+    // Simulation
+    setTimeout(() => {
       setIsTyping(false);
-    }, 2000);
+      // Logique de réponse simplifiée pour le design
+    }, 1500);
   }, [input]);
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleClearChat = () => {
-    setMessages([
-      {
-        id: '1',
-        content: 'Bonjour ! Comment puis-je vous aider aujourd\'hui ?',
-        sender: 'assistant',
-        timestamp: new Date(),
-        reasoning: "Nouvelle conversation démarrée. Je propose une assistance pour les analyses épidémiologiques.",
-        sources: [
-          { title: "Documentation OpenEPI", url: "/docs" },
-          { title: "Guide des analyses", url: "/docs/analyses" }
-        ]
-      }
-    ]);
-  };
-
-
-
-  const handleCopy = (content: string) => {
-    navigator.clipboard.writeText(content);
-    // Vous pourriez ajouter un toast ici
-  };
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
 
   if (!isOpen) return null;
 
   return (
     <>
-      {/* Overlay */}
-      <div
+      {/* Overlay Soft */}
+      <div 
+        className="fixed inset-0 bg-black/5 backdrop-blur-[2px] z-40 transition-opacity"
         onClick={onClose}
       />
 
-      {/* Sidebar Chatbot */}
+      {/* Sidebar Principal */}
       <div
         ref={sidebarRef}
-        className={`fixed top-0 h-screen z-50 flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-300 ${
+        className={`fixed top-0 h-screen z-50 flex flex-col bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-xl transition-all duration-300 ease-in-out ${
           position === 'right' ? 'right-0' : 'left-0'
         }`}
         style={{ width: isExpanded ? expandedWidth : width }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2">
-          <div className="flex items-center space-x-3">
-     
+        {/* Header Epuré */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-zinc-900">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-200">
+              <Bot size={18} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Assistant IA</h3>
+              <p className="text-[10px] text-zinc-500 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> En ligne
+              </p>
+            </div>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    className="hidden lg:flex"
-                  >
-                    {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isExpanded ? "Réduire" : "Étendre"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-            >
-              <X className="w-4 h-4" />
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => setIsExpanded(!isExpanded)} className="h-8 w-8 text-zinc-500">
+              {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 text-zinc-500 hover:text-red-500">
+              <X size={18} />
             </Button>
           </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col h-full">
-          <TabsList className="grid grid-cols-3 mx-4 mt-4">
-            <TabsTrigger value="chat" className="text-xs">
-              <MessageSquare className="w-3 h-3 mr-2" />
-       
-            </TabsTrigger>
-            <TabsTrigger value="models" className="text-xs">
-              <Brain className="w-3 h-3 mr-2" />
- 
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="text-xs">
-              <Settings className="w-3 h-3 mr-2" />
-    
-            </TabsTrigger>
-          </TabsList>
+        {/* Tabs Modernes */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col h-full overflow-hidden">
+          <div className="px-5 pt-4">
+            <TabsList className="w-full bg-zinc-100/50 dark:bg-zinc-900/50 p-1 rounded-xl border border-zinc-200/50 dark:border-zinc-800/50">
+              <TabsTrigger value="chat" className="flex-1 rounded-lg text-xs py-2">
+                <MessageSquare size={14} className="mr-2" /> Chat
+              </TabsTrigger>
+              <TabsTrigger value="models" className="flex-1 rounded-lg text-xs py-2">
+                <Brain size={14} className="mr-2" /> Outils
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="flex-1 rounded-lg text-xs py-2">
+                <Settings size={14} className="mr-2" /> Réglages
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-          {/* Chat Tab - Structure corrigée */}
-          <TabsContent value="chat" className="flex-1 flex flex-col mt-0 p-0 overflow-hidden">
-            <div className="flex-1 overflow-hidden flex flex-col">
-            
-              {/* Conversation avec scroll */}
-              <ScrollArea className="flex-1 px-4 pb-2">
-                <div className="space-y-4 pb-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <Card className={`max-w-[85%] ${
-                        message.sender === 'user' 
-                          ? 'bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-800' 
-                          : 'bg-gradient-to-r from-gray-50 to-white dark:from-gray-800/50 dark:to-gray-900/50 border-gray-200 dark:border-gray-700'
-                      }`}>
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center space-x-2">
-                              {message.sender === 'assistant' ? (
-                                <div className="p-1.5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-                                  <Bot className="w-3.5 h-3.5 text-white" />
-                                </div>
-                              ) : (
-                                <div className="p-1.5 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg">
-                                  <User className="w-3.5 h-3.5 text-white" />
-                                </div>
-                              )}
-                              <span className="text-xs font-semibold">
-                                {message.sender === 'assistant' ? 'Assistant OpenEPI' : 'Vous'}
-                              </span>
-                              <span className="text-xs text-gray-500">•</span>
-                              <div className="flex items-center text-xs text-gray-500">
-                                <Clock className="w-3 h-3 mr-1" />
-                                <span>{formatTime(message.timestamp)}</span>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center space-x-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => handleCopy(message.content)}
-                              >
-                                <Copy className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                          
-                          <div className="prose prose-sm dark:prose-invert max-w-none">
-                            <div className="whitespace-pre-wrap markdown-content">
-                              {message.content}
-                            </div>
-                          </div>
-
-                          {message.reasoning && (
-                            <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                              <div className="flex items-center text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                <Brain className="w-3 h-3 mr-2" />
-                                Raisonnement de l'IA
-                              </div>
-                              <p className="text-xs text-gray-600 dark:text-gray-400">{message.reasoning}</p>
-                            </div>
-                          )}
-
-                          {message.sources && message.sources.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                              <div className="flex items-center text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                <BookOpen className="w-3 h-3 mr-2" />
-                                Sources
-                              </div>
-                              <div className="space-y-1">
-                                {message.sources.map((source, idx) => (
-                                  <a
-                                    key={idx}
-                                    href={source.url}
-                                    className="flex items-center text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    <FileText className="w-3 h-3 mr-2" />
-                                    {source.title}
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
+          <TabsContent value="chat" className="flex-1 flex flex-col overflow-hidden m-0 pt-2">
+            <ScrollArea className="flex-1 px-5">
+              <div className="space-y-6 py-4">
+                {messages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-64 text-center space-y-3 opacity-40">
+                    <div className="p-4 rounded-full bg-zinc-100">
+                      <MessageCircle size={32} />
                     </div>
-                  ))}
-                  
-                  {isTyping && (
-                    <div className="flex justify-start">
-                      <Card className="bg-gradient-to-r from-gray-50 to-white dark:from-gray-800/50 dark:to-gray-900/50 border-gray-200 dark:border-gray-700">
-                        <CardContent className="p-3">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-1.5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-                              <Bot className="w-3.5 h-3.5 text-white" />
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <div className="flex space-x-1">
-                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                              </div>
-                              <span className="text-sm text-gray-600 dark:text-gray-400">
-                                L'assistant réfléchit...
-                              </span>
-                            </div>
-                          </div>
-                          <div className="mt-2">
-                            <Progress value={75} className="h-1" />
-                            <div className="text-xs text-gray-500 mt-1 text-right">
-                              Analyse en cours...
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  )}
-                  
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
-            </div>
-
-            {/* Input area - maintenant fixé en bas */}
-            <div className=" px-2 py-4 bg-white dark:bg-gray-900">
-              <div className="relative bg-white dark:bg-gray-800 rounded-2xl  overflow-hidden">
-                <div className="relative p-2">
-                  <Textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    placeholder="Écrivez votre message ici... (Vous pouvez inclure des formules, des données, ou poser des questions complexes)"
-                    className="min-h-[100px] max-h-[200px] resize-none border border-dark-300 bg-transparent pt-2 focus-visible:ring-0 focus-visible:ring-offset-0 text-base placeholder:text-gray-400 dark:placeholder:text-gray-500 p-2"
-                    rows={3}
-                    maxLength={4000}
-                  />
-                  
-                  <div className="absolute bottom-3 right-3 flex items-center space-x-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 rounded-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm hover:shadow"
-                            onClick={() => document.getElementById('file-upload')?.click()}
-                          >
-                            <Paperclip className="w-3.5 h-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Joindre un fichier</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setUseMicrophone(!useMicrophone)}
-                            className={`h-8 w-8 rounded-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm hover:shadow ${
-                              useMicrophone ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800' : ''
-                            }`}
-                          >
-                            <Mic className="w-3.5 h-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{useMicrophone ? 'Microphone activé' : 'Activer microphone'}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setUseWebSearch(!useWebSearch)}
-                            className={`h-8 w-8 rounded-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm hover:shadow ${
-                              useWebSearch ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800' : ''
-                            }`}
-                          >
-                            <Globe className="w-3.5 h-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{useWebSearch ? 'Recherche web activée' : 'Activer recherche web'}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    <Button
-                      onClick={handleSend}
-                      disabled={!input.trim() || isTyping}
-                      className="h-9 w-9 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
-                    >
-                      {isTyping ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                    </Button>
+                    <p className="text-sm">Démarrez une nouvelle conversation</p>
                   </div>
-                </div>
-
+                )}
+                {messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`group relative max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed transition-all ${
+                      msg.sender === 'user' 
+                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm' 
+                        : 'bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800'
+                    }`}>
+                      {msg.content}
+                      <div className={`mt-2 flex items-center gap-2 text-[10px] ${msg.sender === 'user' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        <Clock size={10} /> {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 
+                {isTyping && (
+                  <div className="flex items-center gap-3 text-zinc-500 animate-pulse">
+                    <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center">
+                      <Loader2 size={14} className="animate-spin" />
+                    </div>
+                    <span className="text-xs">L'assistant prépare une réponse...</span>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
 
-                <input
-                  type="file"
-                  id="file-upload"
-                  className="hidden"
-                  multiple
-                  accept=".csv,.xlsx,.json,.pdf,.txt,.doc,.docx,.png,.jpg,.jpeg"
-                  onChange={(e) => {
-                    const files = e.target.files;
-                    if (files && files.length > 0) {
-                      console.log('Fichiers joints:', files);
-                    }
-                  }}
+            {/* Zone de saisie flottante */}
+            <div className="p-5">
+              <div className="relative group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm focus-within:shadow-md focus-within:border-blue-500/50 transition-all p-2">
+                <Textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+                  placeholder="Posez votre question..."
+                  className="min-h-[80px] w-full resize-none bg-transparent border-0 focus-visible:ring-0 text-sm py-2 px-3"
                 />
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Tools Tab */}
-          <TabsContent value="models" className="flex-1 p-4 overflow-auto">
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                  Outils d'analyse
-                </h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="h-auto p-3 flex flex-col items-center justify-center text-center">
-                    <Calculator className="w-5 h-5 mb-2 text-blue-500" />
-                    <span className="text-xs font-medium">Calcul statistique</span>
-                  </Button>
-                  <Button variant="outline" className="h-auto p-3 flex flex-col items-center justify-center text-center">
-                    <BarChart3 className="w-5 h-5 mb-2 text-green-500" />
-                    <span className="text-xs font-medium">Visualisation</span>
-                  </Button>
-                  <Button variant="outline" className="h-auto p-3 flex flex-col items-center justify-center text-center">
-                    <Database className="w-5 h-5 mb-2 text-purple-500" />
-                    <span className="text-xs font-medium">Analyse données</span>
-                  </Button>
-                  <Button variant="outline" className="h-auto p-3 flex flex-col items-center justify-center text-center">
-                    <FileCode className="w-5 h-5 mb-2 text-orange-500" />
-                    <span className="text-xs font-medium">Code R/Python</span>
-                  </Button>
+                <div className="flex items-center justify-between mt-2 px-2 pb-1">
+                  <div className="flex items-center gap-1">
+                    <TooltipProvider>
+                      {[
+                        { icon: Paperclip, action: () => {}, active: false, label: "Fichier" },
+                        { icon: Globe, action: () => setUseWebSearch(!useWebSearch), active: useWebSearch, label: "Web" },
+                        { icon: Mic, action: () => setUseMicrophone(!useMicrophone), active: useMicrophone, label: "Vocal" }
+                      ].map((tool, i) => (
+                        <Tooltip key={i}>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className={`h-8 w-8 rounded-lg ${tool.active ? 'text-blue-600 bg-blue-50' : 'text-zinc-400'}`}
+                              onClick={tool.action}
+                            >
+                              <tool.icon size={16} />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>{tool.label}</p></TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </TooltipProvider>
+                  </div>
                   <Button 
-                    variant="outline" 
-                    className="h-auto p-3 flex flex-col items-center justify-center text-center"
-                    onClick={() => {
-                        // Sauvegarder le contexte actuel et ouvrir le workspace
-                        const workspaceData = {
-                        code: `# Code généré depuis le chatbot\n# Vous pouvez continuer votre analyse ici\n\n${messages[messages.length - 1]?.content.includes('```') ? messages[messages.length - 1].content : '# Ajoutez votre code ici'}`,
-                        language: 'r',
-                        timestamp: new Date().toISOString()
-                        };
-                        localStorage.setItem('chatbot_to_workspace', JSON.stringify(workspaceData));
-                        window.open('/workspace', '_blank');
-                    }}
-                    >
-                    <ExternalLink className="w-5 h-5 mb-2 text-purple-500" />
-                    <span className="text-xs font-medium">Ouvrir l'atelier</span>
+                    onClick={handleSend}
+                    disabled={!input.trim() || isTyping}
+                    className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all transform active:scale-95"
+                  >
+                    <Send size={16} className="mr-2" /> Envoyer
                   </Button>
                 </div>
               </div>
-
-
             </div>
           </TabsContent>
-
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="flex-1 p-4 overflow-auto">
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                  Paramètres du chat
-                </h4>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="web-search" className="text-sm">Recherche web</Label>
-                    <Switch
-                      id="web-search"
-                      checked={useWebSearch}
-                      onCheckedChange={setUseWebSearch}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="microphone" className="text-sm">Activer microphone</Label>
-                    <Switch
-                      id="microphone"
-                      checked={useMicrophone}
-                      onCheckedChange={setUseMicrophone}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="attachments" className="text-sm">Autoriser pièces jointes</Label>
-                    <Switch id="attachments" defaultChecked />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                  Interface
-                </h4>
-                <div className="space-y-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start text-xs"
-                    onClick={() => setIsExpanded(!isExpanded)}
-                  >
-                    {isExpanded ? <Minimize2 className="w-3 h-3 mr-2" /> : <Maximize2 className="w-3 h-3 mr-2" />}
-                    {isExpanded ? "Mode normal" : "Mode étendu"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start text-xs"
-                    onClick={handleClearChat}
-                  >
-                    <Trash2 className="w-3 h-3 mr-2" />
-                    Effacer l'historique
-                  </Button>
-                </div>
-              </div>
+          
+          {/* Autres onglets (simplifiés pour l'exemple) */}
+          <TabsContent value="models" className="p-6">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-4">Outils d'analyse spécialisés</h4>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Calculs', icon: Calculator, color: 'text-blue-500' },
+                { label: 'Stats R', icon: FileCode, color: 'text-purple-500' },
+                { label: 'Graphiques', icon: BarChart3, color: 'text-emerald-500' },
+                { label: 'Données', icon: Database, color: 'text-orange-500' }
+              ].map((item, idx) => (
+                <button key={idx} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 hover:border-blue-200 transition-colors group">
+                  <item.icon size={24} className={`${item.color} mb-2 group-hover:scale-110 transition-transform`} />
+                  <span className="text-xs font-medium">{item.label}</span>
+                </button>
+              ))}
             </div>
           </TabsContent>
         </Tabs>
 
-        {/* Handle de redimensionnement */}
+        {/* Resize Handle - Subtil */}
         <div
-          className={`absolute top-0 bottom-0 w-3 cursor-col-resize group hover:bg-blue-400/20 transition-colors ${
-            position === 'right' ? '-left-1.5' : '-right-1.5'
+          className={`absolute top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/30 transition-colors ${
+            position === 'right' ? '-left-0.5' : '-right-0.5'
           }`}
           onMouseDown={handleDragStart}
-        >
-          <div className="absolute inset-y-0 left-1/2 w-0.5 bg-gray-300 dark:bg-gray-700 group-hover:bg-blue-400 transition-colors" />
-          <GripVertical className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-        </div>
+        />
       </div>
     </>
   );

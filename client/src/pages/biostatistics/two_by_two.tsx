@@ -1,34 +1,48 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  Calculator,
-  Trash2,
-  HelpCircle,
-  BarChart3,
-  Copy,
-  Download,
-  X,
-  ChevronRight,
-  Home,
-  Edit,
-  Grid3x3,
-  Info,
-  TrendingUp,
-  AlertCircle
+  Blocks, ChevronRight, Calculator, BarChart3,
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
+  ChevronDown
 } from 'lucide-react';
 import { Link } from 'wouter';
+import { toast } from 'sonner';
+
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface TwoByTwoResults {
-  or: number | string;
-  rr: number | string;
-  chi2: string;
-  pValue: string;
-  orInterpretation: string;
-  rrInterpretation: string;
-  chi2Interpretation: string;
   a: number;
   b: number;
   c: number;
   d: number;
+  totalExposed: number;
+  totalUnexposed: number;
+  totalDiseased: number;
+  totalUndiseased: number;
+  total: number;
+  incExposed: number;
+  incUnexposed: number;
+  incTotal: number;
+  incExposedPct: string;
+  incUnexposedPct: string;
+  incTotalPct: string;
+  or: number | string;
+  rr: number | string;
+  orLower: number | string;
+  orUpper: number | string;
+  rrLower: number | string;
+  rrUpper: number | string;
+  orInterpretation: string;
+  rrInterpretation: string;
+  chi2unc: string;
+  punc: string;
+  chi2mh: string;
+  pmh: string;
+  chi2yates: string;
+  pyates: string;
+  fisherOne: string;
+  fisherTwo: string;
+  chi2Interpretation: string;
 }
 
 export default function TwoByTwo() {
@@ -38,28 +52,25 @@ export default function TwoByTwo() {
   const [d, setD] = useState<string>('');
   const [results, setResults] = useState<TwoByTwoResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showStatsDetail, setShowStatsDetail] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load external scripts
+  // Load jStat script
   useEffect(() => {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
         const jstatScript = document.createElement('script');
         jstatScript.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
+        jstatScript.onload = () => {
+          console.log('jStat loaded');
+        };
         document.body.appendChild(jstatScript);
-      }
-      if (!(window as any).jspdf) {
-        const jspdfScript = document.createElement('script');
-        jspdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        document.body.appendChild(jspdfScript);
-
-        const autotableScript = document.createElement('script');
-        autotableScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js';
-        document.body.appendChild(autotableScript);
       }
     };
     loadScripts();
   }, []);
+
+  const hasJStat = !!(window as any).jStat;
 
   const validateInputs = (): boolean => {
     const aVal = parseInt(a);
@@ -86,6 +97,33 @@ export default function TwoByTwo() {
     };
   };
 
+  const getFisherP = (a: number, b: number, c: number, d: number) => {
+    if (!hasJStat) return { oneTail: 'N/A', twoTail: 'N/A' };
+
+    const jStat = (window as any).jStat;
+    const n = a + b + c + d;
+    const r1 = a + b;
+    const c1 = a + c;
+    const minA = Math.max(0, r1 + c1 - n);
+    const maxA = Math.min(r1, c1);
+    const observedProb = jStat.hypergeometric.pdf(a, n, c1, r1);
+    const expected = r1 * c1 / n;
+    let oneTail = 0;
+    let twoTail = 0;
+
+    for (let k = minA; k <= maxA; k++) {
+      const p = jStat.hypergeometric.pdf(k, n, c1, r1);
+      if (p <= observedProb + Number.EPSILON) twoTail += p;
+      if (a >= expected) {
+        if (k >= a) oneTail += p;
+      } else {
+        if (k <= a) oneTail += p;
+      }
+    }
+
+    return { oneTail, twoTail };
+  };
+
   const calculateResults = () => {
     const aVal = parseInt(a) || 0;
     const bVal = parseInt(b) || 0;
@@ -98,74 +136,132 @@ export default function TwoByTwo() {
       return;
     }
 
-    // Calculate Odds Ratio (OR)
-    let or: number | string = 0;
-    if (bVal * cVal === 0) {
-      or = '∞';
-    } else {
+    const r1 = aVal + bVal;
+    const r2 = cVal + dVal;
+    const c1 = aVal + cVal;
+    const c2 = bVal + dVal;
+    const denom = r1 * r2 * c1 * c2;
+
+    const incExposed = r1 > 0 ? aVal / r1 : 0;
+    const incUnexposed = r2 > 0 ? cVal / r2 : 0;
+    const incTotal = n > 0 ? c1 / n : 0;
+    const incExposedPct = (incExposed * 100).toFixed(1) + '%';
+    const incUnexposedPct = (incUnexposed * 100).toFixed(1) + '%';
+    const incTotalPct = (incTotal * 100).toFixed(1) + '%';
+
+    let or: number | string = 'Non calculable';
+    let orLower: number | string = 'Non calculable';
+    let orUpper: number | string = 'Non calculable';
+    if (bVal * cVal !== 0) {
       or = (aVal * dVal) / (bVal * cVal);
+      const lnor = Math.log(or as number);
+      const se = Math.sqrt(1 / aVal + 1 / bVal + 1 / cVal + 1 / dVal);
+      const z = 1.96;
+      orLower = Math.exp(lnor - z * se);
+      orUpper = Math.exp(lnor + z * se);
+      or = (or as number).toFixed(3);
+      orLower = (orLower as number).toFixed(3);
+      orUpper = (orUpper as number).toFixed(3);
+    } else if (aVal === 0 && dVal === 0) {
+      or = 'Indéterminé';
+    } else if (bVal === 0 || cVal === 0) {
+      or = '∞';
     }
 
-    // Calculate Relative Risk (RR)
-    let rr: number | string = 0;
-    if ((aVal + bVal === 0) || (cVal + dVal === 0)) {
-      rr = '∞';
-    } else {
-      rr = (aVal / (aVal + bVal)) / (cVal / (cVal + dVal));
+    let rr: number | string = 'Non calculable';
+    let rrLower: number | string = 'Non calculable';
+    let rrUpper: number | string = 'Non calculable';
+    if (incUnexposed !== 0) {
+      rr = incExposed / incUnexposed;
+      if (Number.isFinite(rr as number) && rr !== 0) {
+        const lnrr = Math.log(rr as number);
+        const se = Math.sqrt((bVal / (aVal * r1)) + (dVal / (cVal * r2)));
+        const z = 1.96;
+        rrLower = Math.exp(lnrr - z * se);
+        rrUpper = Math.exp(lnrr + z * se);
+        rr = (rr as number).toFixed(3);
+        rrLower = (rrLower as number).toFixed(3);
+        rrUpper = (rrUpper as number).toFixed(3);
+      } else if (rr === 0) {
+        rr = 0;
+      } else {
+        rr = '∞';
+      }
     }
 
-    // Calculate Chi-square
-    const expectedA = (aVal + bVal) * (aVal + cVal) / n;
-    const expectedB = (aVal + bVal) * (bVal + dVal) / n;
-    const expectedC = (cVal + dVal) * (aVal + cVal) / n;
-    const expectedD = (cVal + dVal) * (bVal + dVal) / n;
+    const adbc = aVal * dVal - bVal * cVal;
+    const absadbc = Math.abs(adbc);
 
-    const chi2 = (
-      (expectedA > 0 ? Math.pow(aVal - expectedA, 2) / expectedA : 0) +
-      (expectedB > 0 ? Math.pow(bVal - expectedB, 2) / expectedB : 0) +
-      (expectedC > 0 ? Math.pow(cVal - expectedC, 2) / expectedC : 0) +
-      (expectedD > 0 ? Math.pow(dVal - expectedD, 2) / expectedD : 0)
-    );
+    let chi2unc = denom > 0 ? (adbc ** 2 * n) / denom : 0;
+    let chi2mh = denom > 0 && n > 1 ? (adbc ** 2 * (n - 1)) / denom : 0;
+    let chi2yates = denom > 0 ? ((absadbc - 0.5 * n) ** 2 * n) / denom : 0;
 
-    // Calculate p-value
-    const pValue = 1 - (window as any).jStat?.chisquare?.cdf(chi2, 1) || 0;
+    let punc = 'N/A';
+    let pmh = 'N/A';
+    let pyates = 'N/A';
+    if (hasJStat) {
+      const jStat = (window as any).jStat;
+      punc = (1 - jStat.chisquare.cdf(chi2unc, 1)).toFixed(4);
+      pmh = (1 - jStat.chisquare.cdf(chi2mh, 1)).toFixed(4);
+      pyates = (1 - jStat.chisquare.cdf(chi2yates, 1)).toFixed(4);
+    }
 
-    // Interpretations
-    const orInterpretation = or === '∞' ? 'Non calculable' :
-      typeof or === 'number' ? (
-        or > 1 ? 'Risque accru' :
-        or < 1 ? 'Effet protecteur' : 'Aucune association'
-      ) : 'Non calculable';
+    let fisherOne = 'N/A';
+    let fisherTwo = 'N/A';
+    if (hasJStat) {
+      const { oneTail, twoTail } = getFisherP(aVal, bVal, cVal, dVal);
+      fisherOne = oneTail.toFixed(4);
+      fisherTwo = twoTail.toFixed(4);
+    }
 
-    const rrInterpretation = rr === '∞' ? 'Non calculable' :
-      typeof rr === 'number' ? (
-        rr > 1 ? 'Risque accru' :
-        rr < 1 ? 'Risque réduit' : 'Risque égal'
-      ) : 'Non calculable';
-
-    const chi2Interpretation = pValue < 0.05 ? 'Association significative' : 'Aucune association significative';
+    const orInterpretation = typeof or === 'string' ? or : Number(or) > 1 ? 'Risque accru' : Number(or) < 1 ? 'Effet protecteur' : 'Aucune association';
+    const rrInterpretation = typeof rr === 'string' ? rr : Number(rr) > 1 ? 'Risque accru' : Number(rr) < 1 ? 'Risque réduit' : 'Risque égal';
+    const chi2Interpretation = Number(punc) < 0.05 ? 'Association significative' : 'Aucune association significative';
 
     setResults({
-      or,
-      rr,
-      chi2: chi2.toFixed(3),
-      pValue: pValue.toFixed(4),
-      orInterpretation,
-      rrInterpretation,
-      chi2Interpretation,
       a: aVal,
       b: bVal,
       c: cVal,
-      d: dVal
+      d: dVal,
+      totalExposed: r1,
+      totalUnexposed: r2,
+      totalDiseased: c1,
+      totalUndiseased: c2,
+      total: n,
+      incExposed,
+      incUnexposed,
+      incTotal,
+      incExposedPct,
+      incUnexposedPct,
+      incTotalPct,
+      or,
+      rr,
+      orLower,
+      orUpper,
+      rrLower,
+      rrUpper,
+      orInterpretation,
+      rrInterpretation,
+      chi2unc: chi2unc.toFixed(3),
+      punc,
+      chi2mh: chi2mh.toFixed(3),
+      pmh,
+      chi2yates: chi2yates.toFixed(3),
+      pyates,
+      fisherOne,
+      fisherTwo,
+      chi2Interpretation
     });
   };
 
   // Auto calculate if valid
   useEffect(() => {
-    if (validateInputs() && (window as any).jStat) {
+    if (validateInputs() && hasJStat) {
       calculateResults();
+    } else if (!hasJStat) {
+      toast.error('jStat non disponible - les calculs exacts sont désactivés');
     }
-  }, [a, b, c, d]);
+  }, [a, b, c, d, hasJStat]);
 
   // Animation
   useEffect(() => {
@@ -182,6 +278,7 @@ export default function TwoByTwo() {
     setC('');
     setD('');
     setResults(null);
+    toast.info('Champs réinitialisés');
   };
 
   const loadExample = () => {
@@ -189,6 +286,7 @@ export default function TwoByTwo() {
     setB('40');
     setC('30');
     setD('70');
+    toast.success('Exemple chargé');
   };
 
   const copyResults = async () => {
@@ -200,507 +298,698 @@ export default function TwoByTwo() {
                  `b (exposés non-malades): ${results.b}\n` +
                  `c (non-exposés malades): ${results.c}\n` +
                  `d (non-exposés non-malades): ${results.d}\n\n` +
-                 `Odds Ratio (OR): ${results.or}\n` +
+                 `Incidence chez les exposés: ${results.incExposedPct}\n` +
+                 `Incidence chez les non-exposés: ${results.incUnexposedPct}\n` +
+                 `Incidence totale: ${results.incTotalPct}\n\n` +
+                 `Odds Ratio (OR): ${results.or} (95% CI: ${results.orLower} - ${results.orUpper})\n` +
                  `Interprétation: ${results.orInterpretation}\n\n` +
-                 `Risque Relatif (RR): ${results.rr}\n` +
+                 `Risque Relatif (RR): ${results.rr} (95% CI: ${results.rrLower} - ${results.rrUpper})\n` +
                  `Interprétation: ${results.rrInterpretation}\n\n` +
-                 `Chi-carré: ${results.chi2}\n` +
-                 `Valeur p: ${results.pValue}\n` +
+                 `Chi-carré non corrigé: ${results.chi2unc} (p = ${results.punc})\n` +
+                 `Chi-carré Mantel-Haenszel: ${results.chi2mh} (p = ${results.pmh})\n` +
+                 `Chi-carré corrigé (Yates): ${results.chi2yates} (p = ${results.pyates})\n` +
+                 `Fisher exact 1-queue: ${results.fisherOne}\n` +
+                 `Fisher exact 2-queues: ${results.fisherTwo}\n` +
                  `Interprétation: ${results.chi2Interpretation}`;
     
     try {
       await navigator.clipboard.writeText(text);
-      alert('Résultats copiés dans le presse-papier !');
+      toast.success('Résultats copiés');
     } catch (err) {
-      alert('Échec de la copie');
+      toast.error('Échec de la copie');
     }
   };
 
   const exportPDF = () => {
     if (!results) {
-      alert('Veuillez d\'abord effectuer un calcul');
+      toast.error('Veuillez d\'abord effectuer un calcul');
       return;
     }
 
-    const { jsPDF } = (window as any).jspdf;
-    const doc = new jsPDF();
-    
-    const primaryColor = [59, 130, 246];
-    const secondaryColor = [99, 102, 241];
-    const accentColor = [16, 185, 129];
-    
-    // En-tête
-    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.rect(0, 0, 210, 40, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text('Résultats de l\'Analyse 2×2', 105, 22, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('Odds Ratio, Risque Relatif & Test du Chi-carré', 105, 30, { align: 'center' });
-    
-    // Informations principales
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.text('Tableau de contingence', 20, 55);
-    
-    // Tableau des données
-    const tableData = [
-      ['Exposé', results.a, results.b, results.a + results.b],
-      ['Non-exposé', results.c, results.d, results.c + results.d],
-      ['Total', results.a + results.c, results.b + results.d, results.a + results.b + results.c + results.d]
-    ];
-    
-    (doc as any).autoTable({
-      startY: 60,
-      head: [['Exposition', 'Malade', 'Non-malade', 'Total']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: {
-        fillColor: secondaryColor,
-        textColor: 255,
-        fontStyle: 'bold'
-      },
-      margin: { left: 20, right: 20 },
-      styles: {
-        fontSize: 11,
-        cellPadding: 5,
-        lineColor: [200, 200, 200],
-        lineWidth: 0.1
-      },
-      columnStyles: {
-        0: { cellWidth: 40, fontStyle: 'bold' },
-        1: { cellWidth: 30, halign: 'center' },
-        2: { cellWidth: 30, halign: 'center' },
-        3: { cellWidth: 30, halign: 'center', fontStyle: 'bold' }
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      // Couleurs
+      const colorPrimary = Number(results.rr) > 1
+        ? { bg: [255, 247, 237], border: [234, 88, 12], text: [234, 88, 12] }
+        : { bg: [236, 253, 245], border: [5, 150, 105], text: [5, 150, 105] };
+      const colorSlate = {
+        50: [248, 250, 252],
+        100: [241, 245, 249],
+        200: [226, 232, 240],
+        300: [203, 213, 225],
+        500: [100, 116, 139],
+        700: [51, 65, 85],
+        900: [15, 23, 42],
+      };
+      const colorRed = [239, 68, 68];
+
+      // Helper rectangle arrondi
+      const roundedRect = (x: number, y: number, w: number, h: number, r: number, style: 'F' | 'S' | 'FD' = 'F') => {
+        doc.roundedRect(x, y, w, h, r, r, style);
+      };
+
+      // ---------- EN-TÊTE ----------
+      doc.setFillColor(...colorSlate[50]);
+      roundedRect(0, 0, 210, 40, 0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text("Rapport d'Analyse 2x2", 20, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text('Calculateur 2x2 – OpenEpi', 190, 32, { align: 'right' });
+
+      // ---------- DONNÉES ----------
+      let y = 55;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Données analysées', 20, y);
+      y += 3;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, y, 190, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      doc.text(`Exposés malades (a) : ${results.a}`, 25, y); y += 6;
+      doc.text(`Exposés non-malades (b) : ${results.b}`, 25, y); y += 6;
+      doc.text(`Non-exposés malades (c) : ${results.c}`, 25, y); y += 6;
+      doc.text(`Non-exposés non-malades (d) : ${results.d}`, 25, y); y += 12;
+
+      // ---------- TABLEAU CONTINGENCE ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Tableau de contingence', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const tableData = [
+        ['Exposé', results.a, results.b, results.totalExposed],
+        ['Non-exposé', results.c, results.d, results.totalUnexposed],
+        ['Total', results.totalDiseased, results.totalUndiseased, results.total]
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Exposition', 'Malade', 'Non-malade', 'Total']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 40, fontStyle: 'bold' },
+          1: { cellWidth: 30, halign: 'center' },
+          2: { cellWidth: 30, halign: 'center' },
+          3: { cellWidth: 30, halign: 'center', fontStyle: 'bold' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- INCIDENCES ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Incidences', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const incTable = [
+        ['Chez exposés', results.incExposedPct],
+        ['Chez non-exposés', results.incUnexposedPct],
+        ['Totale', results.incTotalPct]
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Paramètre', 'Valeur']],
+        body: incTable,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 80, fontStyle: 'bold' },
+          1: { cellWidth: 40, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- MESURES ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Mesures d\'association', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const measuresTable = [
+        ['Odds Ratio (OR)', `${results.or}`, `${results.orLower} – ${results.orUpper}`, results.orInterpretation],
+        ['Risque Relatif (RR)', `${results.rr}`, `${results.rrLower} – ${results.rrUpper}`, results.rrInterpretation]
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Mesure', 'Valeur', 'IC 95%', 'Interprétation']],
+        body: measuresTable,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 40, fontStyle: 'bold' },
+          1: { cellWidth: 25, halign: 'center' },
+          2: { cellWidth: 40, halign: 'center' },
+          3: { cellWidth: 55 }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- TESTS ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Tests statistiques', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 5;
+
+      const testTable = [
+        ['Chi² non corrigé', results.chi2unc, results.punc],
+        ['Chi² Mantel-Haenszel', results.chi2mh, results.pmh],
+        ['Chi² corrigé (Yates)', results.chi2yates, results.pyates],
+        ['Fisher exact 1-queue', '—', results.fisherOne],
+        ['Fisher exact 2-queues', '—', results.fisherTwo]
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Test', 'Valeur', 'p-value']],
+        body: testTable,
+        theme: 'striped',
+        headStyles: {
+          fillColor: colorSlate[100] as [number, number, number],
+          textColor: colorSlate[900] as [number, number, number],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { cellWidth: 70, fontStyle: 'bold' },
+          1: { cellWidth: 30, halign: 'center' },
+          2: { cellWidth: 30, halign: 'center' }
+        },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // ---------- CONCLUSION ----------
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...colorSlate[900]);
+      doc.text('Conclusion', 20, y);
+      y += 2;
+      doc.line(20, y, 190, y);
+      y += 8;
+
+      let interpretation = results.chi2Interpretation;
+      if (typeof results.rr === 'number') {
+        interpretation += ` Le risque relatif est ${results.rr}, indiquant un ${results.rrInterpretation.toLowerCase()}.`;
       }
-    });
-    
-    // Mesures d'association
-    const measuresY = (doc as any).autoTable.previous.finalY + 20;
-    doc.setFontSize(16);
-    doc.text('Mesures d\'association', 20, measuresY);
-    
-    const measuresTable = [
-      ['Odds Ratio (OR)', results.or.toString(), results.orInterpretation],
-      ['Risque Relatif (RR)', results.rr.toString(), results.rrInterpretation]
-    ];
-    
-    (doc as any).autoTable({
-      startY: measuresY + 10,
-      head: [['Mesure', 'Valeur', 'Interprétation']],
-      body: measuresTable,
-      theme: 'striped',
-      headStyles: {
-        fillColor: primaryColor,
-        textColor: 255,
-        fontStyle: 'bold'
-      },
-      alternateRowStyles: {
-        fillColor: [240, 240, 240]
-      },
-      margin: { left: 20, right: 20 },
-      styles: {
-        fontSize: 10,
-        cellPadding: 4,
-        lineColor: [200, 200, 200],
-        lineWidth: 0.1
-      },
-      columnStyles: {
-        0: { cellWidth: 45, fontStyle: 'bold' },
-        1: { cellWidth: 30, halign: 'center' },
-        2: { cellWidth: 75 }
-      }
-    });
-    
-    // Test statistique
-    const testY = (doc as any).autoTable.previous.finalY + 20;
-    doc.setFontSize(16);
-    doc.text('Test statistique', 20, testY);
-    
-    const testTable = [
-      ['Chi-carré (χ²)', results.chi2],
-      ['Degrés de liberté', '1'],
-      ['Valeur p', results.pValue],
-      ['Interprétation', results.chi2Interpretation]
-    ];
-    
-    (doc as any).autoTable({
-      startY: testY + 10,
-      head: [['Paramètre', 'Valeur']],
-      body: testTable,
-      theme: 'grid',
-      headStyles: {
-        fillColor: accentColor,
-        textColor: 255,
-        fontStyle: 'bold'
-      },
-      margin: { left: 20, right: 20 },
-      styles: {
-        fontSize: 10,
-        cellPadding: 4,
-        lineColor: [200, 200, 200],
-        lineWidth: 0.1
-      },
-      columnStyles: {
-        0: { cellWidth: 60, fontStyle: 'bold' },
-        1: { cellWidth: 40, halign: 'center' }
-      }
-    });
-    
-    // Pied de page
-    const pageHeight = doc.internal.pageSize.height;
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Généré le ' + new Date().toLocaleDateString('fr-FR'), 20, pageHeight - 20);
-    doc.text('StatTool - Analyse Épidémiologique 2×2', 105, pageHeight - 20, { align: 'center' });
-    doc.text('Page 1/1', 190, pageHeight - 20, { align: 'right' });
-    
-    doc.save('resultats_analyse_2x2_detaille.pdf');
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...colorSlate[700]);
+      const splitText = doc.splitTextToSize(interpretation, 170);
+      doc.text(splitText, 20, y);
+      y += splitText.length * 5 + 8;
+
+      // ---------- PIED DE PAGE ----------
+      const footerY = 280;
+      doc.setDrawColor(...colorSlate[200]);
+      doc.line(20, footerY, 190, footerY);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...colorSlate[500]);
+      doc.text('Calculateur 2x2 – Fidèle à OpenEpi', 20, footerY + 5);
+      doc.text(`Page 1 / 1`, 190, footerY + 5, { align: 'right' });
+
+      doc.save(`Rapport_2x2_${results.a}_${results.b}_${results.c}_${results.d}.pdf`);
+      toast.success('Rapport PDF exporté avec succès');
+    } catch (error) {
+      console.error('Erreur PDF :', error);
+      toast.error('Erreur lors de la génération du PDF');
+    }
   };
 
   const totals = calculateTotals();
 
   return (
-    <>
-      <style jsx>{`
-        #two-by-two-results {
-          transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        #two-by-two-results.fade-in {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      `}</style>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><ChevronRight className="w-3 h-3" /></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Tableau 2×2</span></li>
+          </ol>
+        </nav>
 
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
-        <div className="max-w-6xl mx-auto p-6 lg:p-8">
-          {/* Breadcrumb */}
-          <nav className="flex mb-4" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2 text-sm">
-              <li>
-                <Link href="/" className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                  Accueil
-                </Link>
-              </li>
-              <li>
-                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </li>
-              <li>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">Tableau 2×2</span>
-              </li>
-            </ol>
-          </nav>
-          
-          {/* Header */}
-          <div className="flex items-center space-x-4 mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-              <Grid3x3 className="w-6 h-6 text-white" strokeWidth={1.5} />
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
+              <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Analyse de tableau 2×2
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Calculez l'odds ratio, le risque relatif et le chi-carré
-              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Analyse de tableau 2×2</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Calculez l'odds ratio, le risque relatif et le chi-carré.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Colonne gauche - saisie */}
+          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+              </h2>
+              <div className="space-y-5">
+                <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-600">
+                  <table className="min-w-full">
+                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Exposition
+                        </th>
+                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Malade
+                        </th>
+                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Non-malade
+                        </th>
+                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
+                      <tr className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
+                          Exposé
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={a}
+                            onChange={(e) => setA(e.target.value)}
+                            className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="a"
+                          />
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={b}
+                            onChange={(e) => setB(e.target.value)}
+                            className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="b"
+                          />
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm font-medium text-gray-600 dark:text-gray-400">
+                          {totals.totalExposed || '-'}
+                        </td>
+                      </tr>
+                      <tr className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
+                          Non-exposé
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={c}
+                            onChange={(e) => setC(e.target.value)}
+                            className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="c"
+                          />
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={d}
+                            onChange={(e) => setD(e.target.value)}
+                            className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="d"
+                          />
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm font-medium text-gray-600 dark:text-gray-400">
+                          {totals.totalUnexposed || '-'}
+                        </td>
+                      </tr>
+                      <tr className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">Total</td>
+                        <td className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          {totals.totalDiseased || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          {totals.totalUndiseased || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm font-bold text-gray-900 dark:text-gray-100">
+                          {totals.totalAll || '-'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+                <button
+                  onClick={loadExample}
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Info className="w-4 h-4" /> Exemple
+                </button>
+                <button
+                  onClick={clearForm}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Input Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Edit className="w-5 h-5 mr-2 text-blue-500" strokeWidth={1.5} />
-                    Saisie des données
-                  </h2>
-                </div>
-                
-                <div className="p-6">
-                  {/* Table */}
-                  <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-600">
-                    <table className="min-w-full">
-                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
-                        <tr>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Exposition
-                          </th>
-                          <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Malade
-                          </th>
-                          <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Non-malade
-                          </th>
-                          <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Total
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-slate-600">
-                        <tr className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
-                          <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                            Exposé
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input
-                              type="number"
-                              id="cell-a"
-                              min="0"
-                              step="1"
-                              value={a}
-                              onChange={(e) => setA(e.target.value)}
-                              className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              placeholder="a"
-                            />
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input
-                              type="number"
-                              id="cell-b"
-                              min="0"
-                              step="1"
-                              value={b}
-                              onChange={(e) => setB(e.target.value)}
-                              className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              placeholder="b"
-                            />
-                          </td>
-                          <td className="px-6 py-4 text-center text-sm font-medium text-gray-600 dark:text-gray-400" id="total-exposed">
-                            {totals.totalExposed || '-'}
-                          </td>
-                        </tr>
-                        <tr className="bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
-                          <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                            Non-exposé
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input
-                              type="number"
-                              id="cell-c"
-                              min="0"
-                              step="1"
-                              value={c}
-                              onChange={(e) => setC(e.target.value)}
-                              className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              placeholder="c"
-                            />
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input
-                              type="number"
-                              id="cell-d"
-                              min="0"
-                              step="1"
-                              value={d}
-                              onChange={(e) => setD(e.target.value)}
-                              className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              placeholder="d"
-                            />
-                          </td>
-                          <td className="px-6 py-4 text-center text-sm font-medium text-gray-600 dark:text-gray-400" id="total-unexposed">
-                            {totals.totalUnexposed || '-'}
-                          </td>
-                        </tr>
-                        <tr className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
-                          <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">Total</td>
-                          <td className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-300" id="total-diseased">
-                            {totals.totalDiseased || '-'}
-                          </td>
-                          <td className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-300" id="total-undiseased">
-                            {totals.totalUndiseased || '-'}
-                          </td>
-                          <td className="px-6 py-4 text-center text-sm font-bold text-gray-900 dark:text-gray-100" id="total-all">
-                            {totals.totalAll || '-'}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Buttons */}
-                  <div className="flex flex-wrap gap-3 mt-6">
+          {/* Colonne droite - résultats */}
+          <div className="lg:col-span-7">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                </h2>
+                {results && (
+                  <div className="flex gap-2">
                     <button
-                      type="button"
-                      onClick={calculateResults}
-                      disabled={!validateInputs()}
-                      className="flex-1 min-w-0 inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200"
+                      onClick={copyResults}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title="Copier le résultat principal"
                     >
-                      <Calculator className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Calculer
+                      <Copy className="w-4 h-4" />
                     </button>
                     <button
-                      type="button"
-                      onClick={clearForm}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg shadow hover:shadow-lg hover:bg-gray-50 dark:hover:bg-slate-600 transform hover:scale-105 transition-all duration-200"
+                      onClick={exportPDF}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title="Exporter en PDF"
                     >
-                      <Trash2 className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Effacer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={loadExample}
-                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transform hover:scale-105 transition-all duration-200"
-                    >
-                      <HelpCircle className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Exemple
+                      <FileDown className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
+                )}
               </div>
-            </div>
 
-            {/* Results Panel */}
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center justify-between">
-                    <div className="flex items-center">
-                      <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
-                      Résultats
-                    </div>
-                    {results && (
-                      <div id="export-buttons" className="flex gap-4">
-                        <button
-                          id="copy-btn"
-                          aria-label="Copier les résultats"
-                          onClick={copyResults}
-                          className="p-2 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                        >
-                          <Copy className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
-                        <button
-                          id="pdf-btn"
-                          aria-label="Exporter en PDF"
-                          onClick={exportPDF}
-                          className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          <Download className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
-                      </div>
-                    )}
-                  </h2>
-                </div>
-                
-                <div className="p-6">
-                  <div id="two-by-two-results" ref={resultsRef}>
-                    {results ? (
-                      <div className="space-y-8">
-                        <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-6">
-                          <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center">
-                            <TrendingUp className="w-5 h-5 mr-2" />
-                            Mesures d'association
-                          </h3>
-                          <dl className="grid grid-cols-1 md:grid-cols-2 gap-6 text-lg">
-                            <div>
-                              <dt className="font-medium text-sm mb-1">Odds Ratio (OR)</dt>
-                              <dd className="text-3xl font-bold text-blue-700 dark:text-blue-300 mb-2">
-                                {typeof results.or === 'number' ? results.or.toFixed(3) : results.or}
-                              </dd>
-                              <dd className="text-sm text-gray-600 dark:text-gray-400">{results.orInterpretation}</dd>
-                            </div>
-                            <div>
-                              <dt className="font-medium text-sm mb-1">Risque Relatif (RR)</dt>
-                              <dd className="text-3xl font-bold text-indigo-700 dark:text-indigo-300 mb-2">
-                                {typeof results.rr === 'number' ? results.rr.toFixed(3) : results.rr}
-                              </dd>
-                              <dd className="text-sm text-gray-600 dark:text-gray-400">{results.rrInterpretation}</dd>
-                            </div>
-                          </dl>
-                        </div>
-
-                        <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-6">
-                          <h3 className="text-lg font-semibold text-green-900 dark:text-green-100 mb-4 flex items-center">
-                            <AlertCircle className="w-5 h-5 mr-2" />
-                            Test du Chi²
-                          </h3>
-                          <dl className="space-y-3 text-lg">
-                            <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-600">
-                              <dt>Chi² (non corrigé)</dt>
-                              <dd className="font-bold">{results.chi2}</dd>
-                            </div>
-                            <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-600">
-                              <dt>Degrés de liberté</dt>
-                              <dd className="font-bold">1</dd>
-                            </div>
-                            <div className="flex justify-between py-3">
-                              <dt>Valeur p</dt>
-                              <dd className="font-bold">{results.pValue}</dd>
-                            </div>
-                          </dl>
-                          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-                            {results.chi2Interpretation} ({parseFloat(results.pValue) < 0.05 ? 'p < 0.05' : 'p ≥ 0.05'})
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+                {!results ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                  </div>
+                ) : (
+                  <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Carte Incidences */}
+                    <div
+                      className={`p-8 rounded-3xl text-center border ${
+                        Number(results.rr) > 1
+                          ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
+                          : 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Incidences
+                      </p>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <div
+                            className={`text-3xl font-bold tracking-tight mb-2 ${
+                              Number(results.rr) > 1 ? 'text-orange-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {results.incExposedPct}
                           </div>
+                          <span className="text-xs">Exposés</span>
+                        </div>
+                        <div>
+                          <div
+                            className={`text-3xl font-bold tracking-tight mb-2 ${
+                              Number(results.rr) > 1 ? 'text-orange-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {results.incUnexposedPct}
+                          </div>
+                          <span className="text-xs">Non-exposés</span>
+                        </div>
+                        <div>
+                          <div
+                            className={`text-3xl font-bold tracking-tight mb-2 ${
+                              Number(results.rr) > 1 ? 'text-orange-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {results.incTotalPct}
+                          </div>
+                          <span className="text-xs">Totale</span>
                         </div>
                       </div>
-                    ) : (
-                      <div className="text-center py-16">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                          <BarChart3 className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
+                    </div>
+
+                    {/* Mesures d'association */}
+                    <div
+                      className={`p-8 rounded-3xl text-center border ${
+                        Number(results.rr) > 1
+                          ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
+                          : 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Mesures d'association
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div
+                            className={`text-4xl font-bold tracking-tight mb-2 ${
+                              Number(results.or) > 1 ? 'text-orange-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {results.or}
+                          </div>
+                          <span className="text-xs">Odds Ratio (OR)</span>
+                          <p className="text-xs mt-1">{results.orLower} – {results.orUpper} (95% CI)</p>
                         </div>
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">Saisissez vos données pour voir les résultats</p>
-                        <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
+                        <div>
+                          <div
+                            className={`text-4xl font-bold tracking-tight mb-2 ${
+                              Number(results.rr) > 1 ? 'text-orange-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {results.rr}
+                          </div>
+                          <span className="text-xs">Risque Relatif (RR)</span>
+                          <p className="text-xs mt-1">{results.rrLower} – {results.rrUpper} (95% CI)</p>
+                        </div>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Détails statistiques avancés (repliables) */}
+                    <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                      <button
+                        onClick={() => setShowStatsDetail(!showStatsDetail)}
+                        className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${
+                            showStatsDetail ? 'rotate-180' : ''
+                          }`}
+                        />
+                        {showStatsDetail ? 'Masquer' : 'Afficher'} les détails statistiques complets
+                      </button>
+
+                      {showStatsDetail && (
+                        <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                          {!hasJStat && (
+                            <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                              ⚠️ jStat non disponible – les calculs exacts sont approximés.
+                            </div>
+                          )}
+                          <table className="w-full text-xs sm:text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold">Méthode</th>
+                                <th className="px-3 py-2 text-center font-semibold">Valeur</th>
+                                <th className="px-3 py-2 text-center font-semibold">p-value</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Chi² non corrigé</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.chi2unc}</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.punc}</td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Chi² Mantel-Haenszel</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.chi2mh}</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.pmh}</td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Chi² corrigé (Yates)</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.chi2yates}</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.pyates}</td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Fisher exact 1-queue</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.fisherOne}</td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Fisher exact 2-queues</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">{results.fisherTwo}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                          <p className="text-sm text-slate-400 mt-3 italic">
+                            * Les calculs sont fidèles à OpenEpi, avec approximations Taylor pour les IC.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Test et Interprétation */}
+                    <div
+                      className={`p-6 rounded-2xl ${
+                        Number(results.punc) < 0.05
+                          ? 'bg-blue-50 border-blue-500 dark:bg-blue-900/10'
+                          : 'bg-slate-100 border-slate-400 dark:bg-slate-800'
+                      }`}
+                    >
+                      <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-500" /> Test et Conclusion
+                      </h3>
+                      <p className="text-sm leading-relaxed">
+                        {results.chi2Interpretation}
+                        <br />
+                        p-value (Chi² non corrigé) = {results.punc}
+                        <br />
+                        {Number(results.punc) < 0.05 ? (
+                          <span className="text-orange-600 font-bold mt-2 block">
+                            Association significative (p {'<'} 0.05).
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 mt-2 block">
+                            Pas d'association significative.
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
                   </div>
-                </div>
+                )}
               </div>
-
-
             </div>
           </div>
         </div>
 
-        {/* Floating Help Button */}
-        <button
-          onClick={() => setShowHelpModal(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110"
-        >
-          <HelpCircle className="w-7 h-7" strokeWidth={1.5} />
-        </button>
-
-        {/* Help Modal */}
+        {/* Modal d'aide */}
         {showHelpModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md px-4 overflow-y-auto">
-            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/30 dark:border-slate-700/50 my-8 w-full max-w-3xl">
-              <div className="sticky top-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md flex justify-between items-center p-6 border-b border-gray-200/50 dark:border-slate-700/50 rounded-t-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Aide complète & Ressources</h3>
-                <button onClick={() => setShowHelpModal(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
-                  <X className="w-7 h-7" strokeWidth={1.5} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide (OpenEpi)</h3>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6 space-y-10 text-gray-700 dark:text-gray-300 overflow-y-auto max-h-[70vh]">
+
+              <div className="p-6 md:p-8 space-y-8">
                 <section>
-                  <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                    <Info className="w-6 h-6 mr-3" strokeWidth={1.5} />
-                    Comment utiliser cet outil
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Le Principe
                   </h4>
-                  <ul className="space-y-3 text-base bg-blue-50 dark:bg-blue-900/20 rounded-xl p-5">
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Saisissez les effectifs dans chaque cellule du tableau
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      <strong>a</strong> = exposés malades, <strong>b</strong> = exposés non-malades
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      <strong>c</strong> = non-exposés malades, <strong>d</strong> = non-exposés non-malades
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-600 mr-2">•</span>
-                      Les totaux et résultats se mettent à jour automatiquement
-                    </li>
-                  </ul>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Analyse un tableau 2x2 pour mesures d'association et tests d'indépendance, fidèle à OpenEpi.
+                  </p>
                 </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Méthodes
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    OR et RR avec IC Taylor, Chi² variés, Fisher exact. Utilisez pour études cas-témoins ou cohortes.
+                  </p>
+                </section>
+
               </div>
             </div>
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
