@@ -346,11 +346,11 @@ export default function StdMortalityRatio() {
   
       y = (doc as any).lastAutoTable.finalY + 10;
   
-      // ---------- CONCLUSION ----------
+      // ---------- Interprétation ----------
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Conclusion', 20, y);
+      doc.text('Interprétation', 20, y);
       y += 2;
       doc.line(20, y, 190, y);
       y += 8;
@@ -777,7 +777,7 @@ export default function StdMortalityRatio() {
                       }`}
                     >
                       <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-500" /> Conclusion
+                        <Info className="w-4 h-4 text-blue-500" /> Interprétation
                       </h3>
                       <p className="text-sm leading-relaxed">
                         {results.smr > 1 ? (

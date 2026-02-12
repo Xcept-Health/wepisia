@@ -411,11 +411,11 @@ export default function Proportion() {
       doc.text(`Two-sided p-value = ${results.pValue.toFixed(6)}`, 20, y);
       y += 12;
   
-      // ---------- CONCLUSION ----------
+      // ---------- Interprétation ----------
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Conclusion', 20, y);
+      doc.text('Interprétation', 20, y);
       y += 2;
       doc.line(20, y, 190, y);
       y += 8;
@@ -793,7 +793,7 @@ export default function Proportion() {
                       }`}
                     >
                       <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-500" /> Test et Conclusion
+                        <Info className="w-4 h-4 text-blue-500" /> Test et Interprétation
                       </h3>
                       <p className="text-sm leading-relaxed">
                         La proportion {(results.proportion * results.multiplier).toFixed(4)} diffère-t-elle de {results.compareTo} ?
