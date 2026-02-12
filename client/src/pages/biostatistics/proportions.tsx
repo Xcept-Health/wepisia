@@ -786,11 +786,7 @@ export default function Proportion() {
 
                     {/* Test et Interprétation */}
                     <div
-                      className={`p-6 rounded-2xl ${
-                        results.pValue < 0.05
-                          ? 'bg-blue-50 border-blue-500 dark:bg-blue-900/10'
-                          : 'bg-slate-100 border-slate-400 dark:bg-slate-800'
-                      }`}
+                      className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5"
                     >
                       <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
                         <Info className="w-4 h-4 text-blue-500" /> Test et Interprétation
