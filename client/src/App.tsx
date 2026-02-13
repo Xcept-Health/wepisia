@@ -11,7 +11,6 @@ import About from "./pages/About";
 import Docs from "./pages/Docs";
 import { Sidebar } from "./components/Layout/Sidebar";
 import standardized_mortality_ratio from "./pages/biostatistics/standardized_mortality_ratio";
-import Settings from "./pages/settings";
 import Proportions from "./pages/biostatistics/proportions";
 import RxCTable from "./pages/biostatistics/r_by_c";
 import ScreeningTest from "./pages/biostatistics/screening";
@@ -33,17 +32,21 @@ import MeanDifferencePower from "./pages/biostatistics/mean_difference_power";
 import PowerCaseControl from "./pages/biostatistics/matched_case_power";
 import RandomNumberGenerator from "./pages/biostatistics/random_numbers";
 import SampleSizeCohortRCT from "./pages/biostatistics/cohort_rct";
-// Importez les composants du chatbot
+// Composants du chatbot
 import { ChatbotSidebar } from "./components/Chatbot/ChatbotSidebar";
 import { ChatbotToggle } from "./components/Chatbot/ChatbotToggle";
-// Importez les composant de recherche
+// Composants de recherche
 import Explorer from "./pages/explorer/search";
-// Importez la page Workspace
+// Composants de Workspace
 import Workspace from "./pages/Workspace";
-
+// Composants Geospatial
 import Geospatial from "./pages/geospatial/map";
-
+// Composants de simulation épidémiologique
 import EpidemiologicalSimulation from "./pages/simulation/dashboard";
+// Composants d'aide
+import HelpPage from "./pages/help";
+// Composants de paramètres
+import Settings from "./pages/settings";
 
 
 
@@ -60,6 +63,7 @@ function Router() {
       <Route path={"/docs"} component={Docs} />
       {/* Settings Route */}
       <Route path="/settings" component={Settings} />
+      {/* 404 Route */}
       <Route path={"/404"} component={NotFound} />
       {/* Biostatistics Routes */}
       <Route path="/biostatistics/std_mortality_ratio" component={standardized_mortality_ratio} />
@@ -92,6 +96,8 @@ function Router() {
       <Route path="/geospatial/map" component={Geospatial} />
       {/* Epidemiological Simulation Route */}
       <Route path="/simulation/dashboard" component={EpidemiologicalSimulation} />
+      {/* Help Route */}
+      <Route path="/help" component={HelpPage} />
       {/* Fallback route */}
       <Route component={NotFound} />
     </Switch>
@@ -123,17 +129,7 @@ function App() {
     return () => window.removeEventListener('resize', checkIfMobile);
   }, []);
 
-  // Simulation de notifications
-  useEffect(() => {
-    if (!isChatbotOpen) {
-      const timer = setTimeout(() => {
-        setChatbotNotificationCount(prev => Math.min(prev + 1, 99));
-      }, 120000); // Une notification toutes les 2 minutes
-      return () => clearTimeout(timer);
-    } else {
-      setChatbotNotificationCount(0);
-    }
-  }, [isChatbotOpen]);
+
 
   return (
     <ErrorBoundary>
