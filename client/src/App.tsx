@@ -139,7 +139,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider>
-          <Toaster position="top-center" />
+          <Toaster position="top-center"  />
           
           <div className="flex h-screen bg-background">
             {/* Sidebar fixe */}
