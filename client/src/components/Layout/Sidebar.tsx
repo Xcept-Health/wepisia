@@ -90,7 +90,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       items: [
         { id: 'proportions_sample', label: 'Proportions', icon: ChartPie, href: '/biostatistics/proportions_sample' },
         { id: 'cohort_rct', label: 'Cohort RCT', icon: UsersRound, href: '/biostatistics/cohort_rct' },
-        { id: 'matched_case', label: 'Matched Case', icon: LinkIcon, href: '/biostatistics/matched_case' },
+        { id: 'matched_case', label: 'Cas Non Apparié', icon: LinkIcon, href: '/biostatistics/unmatched_case' },
         { id: 'mean_difference_sample', label: 'Mean difference', icon: AlignHorizontalSpaceAround, href: '/biostatistics/mean_difference_sample' },
       ]
     },

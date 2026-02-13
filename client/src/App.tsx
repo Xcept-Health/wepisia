@@ -25,13 +25,14 @@ import TTestCalculator from "./pages/biostatistics/t_test";
 import ANOVA from "./pages/biostatistics/anova";
 import ProportionsSample from "./pages/biostatistics/proportions_sample";
 import CohortRCT from "./pages/biostatistics/cohort_rct_power";
-import MatchedCaseControl from "./pages/biostatistics/matched_case";
+import MatchedCaseControl from "./pages/biostatistics/unmatched_case";
 import MeanDifference from "./pages/biostatistics/mean_difference_sample";
 import ClinicalTrial from "./pages/biostatistics/clinical_trial";
 import CaseControlStudy from "./pages/biostatistics/case_control";
 import MeanDifferencePower from "./pages/biostatistics/mean_difference_power";
 import PowerCaseControl from "./pages/biostatistics/matched_case_power";
 import RandomNumberGenerator from "./pages/biostatistics/random_numbers";
+import SampleSizeCohortRCT from "./pages/biostatistics/cohort_rct";
 // Importez les composants du chatbot
 import { ChatbotSidebar } from "./components/Chatbot/ChatbotSidebar";
 import { ChatbotToggle } from "./components/Chatbot/ChatbotToggle";
@@ -75,7 +76,8 @@ function Router() {
       <Route path="/biostatistics/anova" component={ANOVA} />
       <Route path="/biostatistics/proportions_sample" component={ProportionsSample} />
       <Route path="/biostatistics/cohort_rct_power" component={CohortRCT} />
-      <Route path="/biostatistics/matched_case" component={MatchedCaseControl} />
+      <Route path="/biostatistics/cohort_rct" component={SampleSizeCohortRCT} />
+      <Route path="/biostatistics/unmatched_case" component={MatchedCaseControl} />
       <Route path="/biostatistics/mean_difference_sample" component={MeanDifference} />
       <Route path="/biostatistics/clinical_trial" component={ClinicalTrial} />
       <Route path="/biostatistics/case_control" component={CaseControlStudy} />

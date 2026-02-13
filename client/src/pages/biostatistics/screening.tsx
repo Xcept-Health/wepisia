@@ -750,9 +750,12 @@ export default function ScreeningTest() {
               <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10 overflow-y-auto">
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez au moins deux niveaux</p>
-                    <p className="text-slate-400 text-sm mt-2">Les calculs apparaîtront automatiquement</p>
+                  
+                  <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                  <p className="text-lg">Saisissez les données pour l'analyse</p>
+                  <div className="text-4xl font-bold mt-2">
+                    0.00
+                  </div>
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -780,7 +783,7 @@ export default function ScreeningTest() {
                     </div>
 
                     {/* Courbe ROC SVG */}
-<div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+<div className="bg-white dark:bg-slate-900">
   {/* Header avec Stats */}
   <div className="flex justify-between items-start mb-8">
     <div>
@@ -915,9 +918,7 @@ export default function ScreeningTest() {
                     {results.cutoffs.map((c, index) => (
                       <div key={index} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
                         <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs text-blue-700 dark:text-blue-300">
-                            {index + 1}
-                          </span>
+                         
                           Point de coupure {c.cutoff}
                         </h3>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">

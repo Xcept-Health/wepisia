@@ -596,10 +596,12 @@ Test d’égalité des variances (F de Hartley) :
               <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les deux groupes</p>
-                    <p className="text-slate-400 text-sm mt-2">n ≥ 2 et écart-type {'>'} 0</p>
+                  <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                  <p className="text-lg">Saisissez les données pour l'analyse</p>
+                  <div className="text-4xl font-bold mt-2">
+                    0.00
                   </div>
+                </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     

@@ -317,9 +317,13 @@ export default function RandomNumberGenerator() {
 
               <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
                 {results.length === 0 ? (
+                 
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-                    <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Générez des nombres pour voir les résultats</p>
+                  <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                  <p className="text-lg">Saisissez les données pour l'analyse</p>
+                  <div className="text-4xl font-bold mt-2">
+                    0.00
+                  </div>
                   </div>
                 ) : (
                   <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
