@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calculator, TrendingUp, Clock, PieChart, 
-  Activity, Grid, Users, Shuffle, Table2, 
-  Search, ArrowUpRight, Zap, ShieldCheck, Command
+  Activity, Grid,Code, ExternalLink,
+  Search, ArrowUpRight, Zap, Brain, Command, Menu,
+  ArrowRight,  ChevronRight, BookOpen,BarChart3,
+  Table2,  Map, Cpu, FileText,
+  Globe, Layers, Sliders, Database, 
+  X,  Sparkles
 } from 'lucide-react';
+import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import { Link } from 'wouter';
 
 import {
@@ -17,6 +22,14 @@ import {
 
 export default function Home() {
   const [open, setOpen] = useState(false);
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("intro");
+  const { scrollY } = useScroll();
+
+  // Effets de parallaxe pour le Hero
+  const y1 = useTransform(scrollY, [0, 500], [0, 200]);
+  const opacity = useTransform(scrollY, [0, 300], [1, 0]);
 
   // Ouvrir avec Cmd+K / Ctrl+K
   useEffect(() => {
@@ -90,7 +103,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-gray-100 font-sans selection:bg-blue-200/50 dark:selection:bg-blue-900/50 selection:text-blue-900 dark:selection:text-blue-100">
       
-      {/* --- FOND INNOVANT (MESH GRADIENT SUBTILE) --- */}
+      {/* --- MESH GRADIENT SUBTILE --- */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-200/30 dark:bg-blue-900/20 blur-[120px] rounded-full" />
         <div className="absolute bottom-[10%] right-[-5%] w-[30%] h-[30%] bg-purple-200/30 dark:bg-purple-900/20 blur-[100px] rounded-full" />
@@ -98,24 +111,33 @@ export default function Home() {
       </div>
 
       {/* --- HEADER --- */}
-      <nav className="relative z-10 flex items-center justify-center px-8 py-6 max-w-7xl mx-auto">
+      {/*  NAVIGATION FLOTTANTE ) */}
 
-        <div className="hidden md:flex items-center gap-4 bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-slate-200 dark:border-slate-700 p-1 rounded-full shadow-sm">
-          
-          {['Outils', 'Docs', 'Méthodes'].map((item) => (
-            <button key={item} className="px-5 py-2 text-sm font-medium hover:bg-white dark:hover:bg-slate-700 rounded-full transition-all">{item}</button>
-          ))}
+      <nav className="fixed top-6 inset-x-0 z-[100] max-w-5xl mx-auto px-4">
+        <div className="bg-white/70 dark:bg-black/70 backdrop-blur-2xl border border-white/20 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.05)] rounded-3xl h-16 flex items-center justify-between px-6">
+          <div className="flex items-center gap-2">
+            <span className="font-bold tracking-tighter text-lg">OpenEPI <span className="font-light opacity-50">Reedited</span></span>
+          </div>
+
+          <div className="hidden md:flex items-center gap-6">
+            {["Tour rapide", "Documentation", "Workspace"].map((item) => (
+              <a key={item} href="#" className="text-sm font-medium opacity-60 hover:opacity-100 transition-opacity">{item}</a>
+            ))}
+            <button className="bg-slate-900 dark:bg-white dark:text-black text-white px-5 py-2 rounded-2xl text-xs font-bold hover:scale-105 transition-transform active:scale-95">
+              Aide
+            </button>
+          </div>
+
+          <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2">
+            <Menu size={20} />
+          </button>
         </div>
-      
       </nav>
 
       {/* --- HERO SECTION --- */}
-      <header className="relative z-10 pt-20 pb-16 px-6">
+      <header className="relative z-10 pt-45 pb-30 px-6">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-full shadow-sm mb-8 animate-fade-in">
-            <ShieldCheck className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Outil d'épidémiologie et de Biostatistique</span>
-          </div>
+
           
           <h1 className="text-6xl md:text-8xl font-black tracking-tight text-gray-900 dark:text-white mb-8">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-emerald-600 to-purple-600">
@@ -136,7 +158,7 @@ export default function Home() {
             <div className="relative flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl p-2 transition-transform hover:scale-[1.02] group-hover:shadow-2xl">
               <Search className="w-5 h-5 ml-4 text-gray-400" />
               <div className="w-full px-4 py-3 text-gray-700 dark:text-gray-200">
-                Chercher un test (ex: Chi-carré, Odds Ratio...)
+                Chercher (ex: Chi-carré, Odds Ratio...)
               </div>
               <kbd className="hidden sm:inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 px-2 py-1 rounded-md text-xs text-gray-500 dark:text-gray-400 mr-2">
                 <Command className="w-3 h-3" /> K
@@ -176,7 +198,120 @@ export default function Home() {
         </CommandList>
       </CommandDialog>
 
-      {/* --- BENTO GRID INNOVANTE --- */}
+
+        {/* 3. BENTO GRID  */}
+            <section className="max-w-7xl mx-auto px-6 pb-20">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          
+          {/* Module Biostat - Grande Carte */}
+          <div className="md:col-span-8 bg-white dark:bg-white/5 border border-slate-200/60 dark:border-white/5 rounded-[2.5rem] p-10 relative overflow-hidden group">
+            <div className="relative z-10">
+              <Calculator className="text-blue-500 mb-6" size={32} />
+              <h3 className="text-3xl font-bold mb-4">Calcul Biostatistiques</h3>
+              <p className="text-slate-500 dark:text-slate-400 max-w-md mb-8">
+                Des calculs de puissance aux tests de Mantel-Haenszel, accédez à une suite d'outils validés scientifiquement.
+              </p>
+              <button className="flex items-center gap-2 text-sm font-bold text-blue-600 group-hover:gap-4 transition-all">
+                Explorer le module <ArrowRight size={16} />
+              </button>
+            </div>
+            {/* Simulation d'une partie d'image (Graphique soft) */}
+            <div className="absolute right-[-5%] bottom-[-10%] w-1/2 h-2/3 bg-slate-100 dark:bg-white/5 rounded-3xl border border-slate-200 dark:border-white/10 p-4 transform rotate-[-5deg] group-hover:rotate-0 transition-transform duration-700">
+               <div className="w-full h-full bg-gradient-to-br from-blue-500/20 to-transparent rounded-xl flex items-end p-4">
+                  <div className="flex gap-2 items-end w-full h-24">
+                    {[40, 70, 45, 90, 65].map((h, i) => (
+                      <motion.div key={i} initial={{ height: 0 }} whileInView={{ height: `${h}%` }} className="flex-1 bg-blue-500/40 rounded-t-md" />
+                    ))}
+                  </div>
+               </div>
+            </div>
+          </div>
+
+          {/* Petite Carte - AI */}
+          <div className="md:col-span-4 bg-slate-900 text-white rounded-[2.5rem] p-10 flex flex-col justify-between overflow-hidden relative">
+            <Brain className="text-blue-400 mb-6" size={32} />
+            <div>
+              <h3 className="text-2xl font-bold mb-2">Analyse IA</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                Interprétez vos résultats automatiquement grâce à notre moteur d'intelligence contextuelle.
+              </p>
+            </div>
+            <div className="absolute top-0 right-0 p-8 opacity-20">
+              <Zap size={120} />
+            </div>
+          </div>
+
+          {/* Module Géo - Carte Moyenne */}
+          <div className="md:col-span-6 bg-white dark:bg-white/5 border border-slate-200/60 dark:border-white/5 rounded-[2.5rem] p-10 flex flex-col md:flex-row gap-8 items-center">
+            <div className="flex-1">
+               <Map className="text-indigo-500 mb-6" size={32} />
+               <h3 className="text-2xl font-bold mb-4">Visualisation Géo</h3>
+               <p className="text-slate-500 text-sm italic">
+                 "visualisez vos evènements épidémiologiques sur des cartes interactives avec des heatmaps dynamiques et des clusters intelligents."
+               </p>
+            </div>
+            <div className="w-full md:w-48 h-48 bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden relative border border-slate-200 dark:border-white/10">
+               {/* Image d'illustration "Map" */}
+               <div className="absolute inset-0 bg-blue-500/10 blur-xl scale-150" />
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-600 rounded-full animate-ping" />
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-blue-600 rounded-full shadow-[0_0_20px_blue]" />
+            </div>
+          </div>
+
+          {/* Simulation - Carte Moyenne */}
+          <div className="md:col-span-6 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-[2.5rem] p-10 group cursor-pointer overflow-hidden relative">
+            <div className="relative z-10">
+              <Activity className="mb-6" size={32} />
+              <h3 className="text-2xl font-bold mb-4">Moteur de Simulation</h3>
+              <p className="opacity-80 text-sm mb-6 max-w-xs">
+                Simulez des scénarios épidémiologiques complexes avec notre moteur de simulation avancé avec des performances optimales.
+              </p>
+              <div className="flex gap-4">
+                <span className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-wider">WebR Powered</span>
+                <span className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-wider">60 FPS</span>
+              </div>
+            </div>
+            {/* Effet visuel au hover */}
+            <motion.div 
+              className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity"
+              whileHover={{ scale: 1.05 }}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* 4. DRAWER MOBILE (RESPONSIVE) */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110]"
+            />
+            <motion.div 
+              initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed right-0 top-0 bottom-0 w-[80%] bg-white dark:bg-[#0A0A0A] z-[120] p-10 shadow-2xl"
+            >
+              <button onClick={() => setMobileMenuOpen(false)} className="mb-12 p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl">
+                <X size={24} />
+              </button>
+              <nav className="flex flex-col gap-8">
+                {["Introduction", "Biostatistiques", "Simulation", "Géospatial", "Workspace"].map((item) => (
+                  <button key={item} className="text-3xl font-bold tracking-tighter text-left hover:text-blue-600 transition-colors">
+                    {item}
+                  </button>
+                ))}
+              </nav>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+
+
+      {/* --- BENTO GRID --- */}
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {tools.map((tool, idx) => {
@@ -211,16 +346,14 @@ export default function Home() {
         </div>
       </main>
 
-      {/* --- FOOTER ÉPURÉ --- */}
-      <footer className="relative z-10 max-w-7xl mx-auto px-8 py-20 mt-20 border-t border-gray-200 dark:border-slate-800">
+      {/* FOOTER  */}
+      <footer className="max-w-7xl mx-auto px-6 py-20 border-t border-slate-200 dark:border-white/5">
         <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
-            © 2026 OpenEpi Project. <span className="text-gray-400 dark:text-gray-500 mx-2">|</span> Propulsé par Xcept-Health.
-          </p>
-          <div className="flex gap-8">
-            {['GitHub', 'Contact'].map(link => (
-              <a key={link} href="#" className="text-sm font-bold text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{link}</a>
-            ))}
+          <div className="opacity-40 text-sm italic">© 2026 OpenEPI Project. Build for Epidemiologiy. Prolpulsed by Xcept-Health</div>
+          <div className="flex gap-6">
+             <ExternalLink size={18} className="opacity-40 hover:opacity-100 cursor-pointer" />
+             <Code size={18} className="opacity-40 hover:opacity-100 cursor-pointer" />
+             <Database size={18} className="opacity-40 hover:opacity-100 cursor-pointer" />
           </div>
         </div>
       </footer>
