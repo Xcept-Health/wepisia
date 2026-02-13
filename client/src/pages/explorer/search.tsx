@@ -145,7 +145,7 @@ const FilterPanel = React.memo(({
             placeholder="2000"
             value={filterYearFrom}
             onChange={e => setFilterYearFrom(e.target.value)}
-            className="w-full rounded-xl border-slate-200 bg-slate-50 py-2 px-3 text-sm"
+            className="w-full rounded-xl outline-none  border-slate-200 bg-slate-50 py-2 px-3 text-sm"
           />
           <span className="text-slate-300">à</span>
           <input
@@ -515,7 +515,7 @@ export default function Explorer() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B0F19] text-slate-600 dark:text-slate-300 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900 overflow-x-hidden">
-      {/* ========== MODE CENTRÉ (ACCUEIL) ========== */}
+
       {showCentered ? (
         <div className="flex flex-col items-center justify-center min-h-screen px-4 py-12">
           <div className="w-full max-w-3xl mx-auto text-center animate-in fade-in zoom-in duration-700">
@@ -528,49 +528,52 @@ export default function Explorer() {
               </p>
             </div>
 
-            {/* Barre de recherche large */}
-            <div className="relative group">
-              <div className="absolute -inset-1.5 rounded-full opacity-30 group-hover:opacity-50 blur-xl transition duration-700" />
-              <div className="relative flex items-center bg-white dark:bg-slate-800 rounded-full border border-slate-200/80 dark:border-slate-700/80 p-2">
-                <Search className="ml-5 w-7 h-7 text-slate-400" />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && performSearch()}
-                  placeholder="Mots-clés, maladies, auteurs, DOI..."
-                  className="w-full bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 text-xl py-5 px-4"
-                  autoFocus
-                />
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className={`p-3.5 rounded-full transition-all ${
-                    showFilters ? 'bg-indigo-50 text-indigo-600 ' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                  }`}
-                  aria-label="Filtres"
-                >
-                  <Filter className="w-6 h-6" />
-                </button>
-                <button
-                  onClick={performSearch}
-                  className="ml-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white p-4 rounded-full transition-transform active:scale-90 "
-                  aria-label="Rechercher"
-                >
-                  <SearchButtonIcon className="w-7 h-7" />
-                </button>
-              </div>
-            </div>
+            {/* Barre de recherche  */}
+            <div className="w-full max-w-3xl mx-auto">
+  <div className="relative flex items-center bg-white dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow duration-300 p-1.5">
+    
+    {/* Icône de recherche (plus petite et marges réduites) */}
+    <Search className="ml-3 w-5 h-5 text-slate-400 shrink-0" />
+    
+    {/* Input (Padding réduit, texte plus petit, AUCUN contour au focus) */}
+    <input
+      type="text"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+      placeholder="Mots-clés, maladies, auteurs, DOI..."
+      className="w-full bg-transparent border-none focus:ring-0 outline-none text-slate-800 dark:text-white placeholder:text-slate-400 text-sm py-2.5 px-3"
+      autoFocus
+    />
 
-            {/* Bouton Générer MeSH (amélioré) */}
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={() => fetchMeshTerms(query)}
-                disabled={loadingMesh || !query.trim()}
-                className="flex items-center gap-2 px-6 py-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-sm font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed "
-              >
-               
-              </button>
-            </div>
+    <div className="flex items-center gap-1">
+      {/* Bouton Filtre (Taille réduite) */}
+      <button
+        onClick={() => setShowFilters(!showFilters)}
+        className={`p-2 rounded-full transition-colors ${
+          showFilters 
+            ? 'bg-indigo-50 text-indigo-600' 
+            : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600'
+        }`}
+        aria-label="Filtres"
+      >
+        <Filter className="w-5 h-5" />
+      </button>
+
+      {/* Bouton Rechercher (Compact et élégant) */}
+      <button
+        onClick={performSearch}
+        className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-full transition-transform active:scale-95 shadow-sm"
+        aria-label="Rechercher"
+      >
+        <SearchButtonIcon className="w-5 h-5" />
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
 
             {/* Panneau des filtres */}
             {showFilters && (
@@ -692,7 +695,7 @@ export default function Explorer() {
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && performSearch()}
                   placeholder="Rechercher dans PubMed..."
-                  className="w-full bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 text-sm py-2 px-2"
+                  className="w-full bg-transparent border-none focus:ring-0 outline-none  text-slate-800 dark:text-white placeholder:text-slate-400 text-sm py-2 px-2"
                 />
                 <button
                   onClick={() => setShowFilters(!showFilters)}
@@ -885,7 +888,7 @@ export default function Explorer() {
               </>
             )}
 
-            {/* MODE FAVORIS (inchangé) */}
+            {/* MODE FAVORIS  */}
             {view === 'bookmarks' && (
               <div className="animate-in slide-in-from-right-4 duration-300">
                 <div className="flex items-center justify-between mb-6">
