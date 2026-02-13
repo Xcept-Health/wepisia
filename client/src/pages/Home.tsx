@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Calculator, TrendingUp, Clock, PieChart, 
   Activity, Grid,Code, ExternalLink,
   Search, ArrowUpRight, Zap, Brain, Command, Menu,
   ArrowRight,  ChevronRight, BookOpen,BarChart3,
   Table2,  Map, Cpu, FileText,
-  Globe, Layers, Sliders, Database, 
+  Globe as GlobeIcon, Layers, Sliders, Database, 
   X,  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
@@ -19,6 +19,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+
+import Globe from 'react-globe.gl';
 
 export default function Home() {
   const [open, setOpen] = useState(false);
@@ -99,6 +101,18 @@ export default function Home() {
       dark: "from-purple-900/30 to-purple-800/10 text-purple-400 border-purple-900/50"
     },
   };
+
+  const globeRef = useRef();
+
+  useEffect(() => {
+    if (globeRef.current) {
+      globeRef.current.controls().autoRotate = true;
+      globeRef.current.controls().autoRotateSpeed = 0.5;
+    }
+  }, []);
+
+    const bgColor = getComputedStyle(document.documentElement)
+    .getPropertyValue('--background').trim() || 'rgba(0,0,0,0)';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-gray-100 font-sans selection:bg-blue-200/50 dark:selection:bg-blue-900/50 selection:text-blue-900 dark:selection:text-blue-100">
@@ -250,11 +264,15 @@ export default function Home() {
                  "visualisez vos evènements épidémiologiques sur des cartes interactives avec des heatmaps dynamiques et des clusters intelligents."
                </p>
             </div>
-            <div className="w-full md:w-48 h-48 bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden relative border border-slate-200 dark:border-white/10">
-               {/* Image d'illustration "Map" */}
-               <div className="absolute inset-0 bg-blue-500/10 blur-xl scale-150" />
-               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-600 rounded-full animate-ping" />
-               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-blue-600 rounded-full shadow-[0_0_20px_blue]" />
+            <div className="w-full md:w-48 h-48">
+               <Globe
+                 ref={globeRef}
+                 globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
+                 bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+                 backgroundColor="rgba(155, 155, 155, 0)"
+                 width={200}
+                 height={200}
+               />
             </div>
           </div>
 
