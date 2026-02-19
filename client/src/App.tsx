@@ -5,6 +5,7 @@ import { Route, Switch } from "wouter";
 import { useState, useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { SettingsProvider } from "./contexts/SettingsContext";
 import Home from "./pages/Home";
 import Tools from "./pages/Tools";
 import About from "./pages/About";
@@ -134,6 +135,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light" switchable>
+      <SettingsProvider>
         <TooltipProvider>
           <Toaster position="top-center"  />
           
@@ -173,6 +175,7 @@ function App() {
             />
           </div>
         </TooltipProvider>
+        </SettingsProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

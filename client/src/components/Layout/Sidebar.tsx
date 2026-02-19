@@ -12,7 +12,7 @@ import {
   MapPinHouse, Biohazard, HeartHandshake, Moon, Sun,
   ChevronRight, Code, UsersRound, ChevronsLeft
 } from 'lucide-react';
-
+import { useSettings } from '@/contexts/SettingsContext'; 
 
 interface SidebarProps {
   isOpen: boolean;
@@ -33,6 +33,16 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const { settings } = useSettings();
+
+  const getFloatingButtonClasses = () => {
+    switch (settings.floatingButtonPosition) {
+      case 'top-right': return 'top-6 right-6';
+      case 'bottom-left': return 'bottom-6 left-6';
+      case 'bottom-right': return 'bottom-6 right-6';
+      default: return 'top-6 left-6';
+    }
+  };
 
   // Détecter si on est en mobile
   useEffect(() => {
@@ -327,17 +337,40 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
         )}
       </aside>
 
-      {/* Bouton Burger fixe pour mobile – visible seulement quand la sidebar est fermée */}
-      {isMobile && !isOpen && (
+{/* Bouton Burger fixe pour mobile – position dynamique */}
+{isMobile && !isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed top-4 left-4 z-50 p-3 bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-gray-200 dark:border-slate-800 transition-all hover:shadow-xl"
+          className={`fixed ${getFloatingButtonClasses()} z-50 flex items-center gap-2 p-1.5 pr-4
+            bg-black/10 dark:bg-white/10 backdrop-blur-lg
+            rounded-full shadow-inner
+            border border-white/10 dark:border-white/5
+            transition-all duration-300 ease-out
+            hover:bg-black/20 dark:hover:bg-white/20
+            hover:scale-105 active:scale-95 group`}
           aria-label="Ouvrir le menu"
         >
-          <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" strokeWidth={1.5} />
+          {/* Cercle d'icône avec morphing */}
+          <div className="flex items-center justify-center w-10 h-10 rounded-full 
+            bg-white dark:bg-slate-950 
+            shadow-md shadow-black/10
+            transition-all duration-300 group-hover:shadow-lg group-hover:shadow-black/20">
+            
+            {/* Animation des barres en X au survol */}
+            <div className="flex flex-col gap-1.5 w-4.5 transition-transform duration-300 group-hover:rotate-180">
+              <span className="w-4.5 h-0.5 bg-slate-900 dark:bg-white rounded-full transition-all group-hover:rotate-45 group-hover:translate-y-1.5" />
+              <span className="w-3 h-0.5 bg-slate-900 dark:bg-white rounded-full transition-all group-hover:opacity-0" />
+              <span className="w-4.5 h-0.5 bg-slate-900 dark:bg-white rounded-full transition-all group-hover:-rotate-45 group-hover:-translate-y-1.5" />
+            </div>
+          </div>
+          
+          {/* Texte ultra-discret */}
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] 
+            text-slate-900/60 dark:text-white/60">
+            Menu
+          </span>
         </button>
       )}
-
       {/* Styles CSS pour les animations */}
       <style jsx>{`
         @keyframes fadeIn {

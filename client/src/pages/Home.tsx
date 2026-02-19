@@ -114,6 +114,8 @@ export default function Home() {
     const bgColor = getComputedStyle(document.documentElement)
     .getPropertyValue('--background').trim() || 'rgba(0,0,0,0)';
 
+  const navLinks = ["Tour rapide", "Documentation", "Workspace"];
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-gray-100 font-sans selection:bg-blue-200/50 dark:selection:bg-blue-900/50 selection:text-blue-900 dark:selection:text-blue-100">
       
@@ -128,25 +130,55 @@ export default function Home() {
       {/*  NAVIGATION FLOTTANTE ) */}
 
       <nav className="fixed top-6 inset-x-0 z-[100] max-w-5xl mx-auto px-4">
-        <div className="bg-white/70 dark:bg-black/70 backdrop-blur-2xl border border-white/20 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.05)] rounded-3xl h-16 flex items-center justify-between px-6">
-          <div className="flex items-center gap-2">
-            <span className="font-bold tracking-tighter text-lg">OpenEPI <span className="font-light opacity-50">Reedited</span></span>
-          </div>
+      {/* Barre principale */}
+      <div className="bg-white/70 dark:bg-black/70 backdrop-blur-2xl border border-white/20 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.05)] rounded-3xl h-16 flex items-center justify-between px-6">
+        
+        <div className="flex items-center gap-2">
+          <span className="font-bold tracking-tighter text-lg">
+            OpenEPI <span className="font-light opacity-50">Reedited</span>
+          </span>
+        </div>
 
-          <div className="hidden md:flex items-center gap-6">
-            {["Tour rapide", "Documentation", "Workspace"].map((item) => (
-              <a key={item} href="#" className="text-sm font-medium opacity-60 hover:opacity-100 transition-opacity">{item}</a>
-            ))}
-            <button className="bg-slate-900 dark:bg-white dark:text-black text-white px-5 py-2 rounded-2xl text-xs font-bold hover:scale-105 transition-transform active:scale-95">
-              Aide
-            </button>
-          </div>
-
-          <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2">
-            <Menu size={20} />
+        {/* Desktop Links */}
+        <div className="hidden md:flex items-center gap-6">
+          {navLinks.map((item) => (
+            <a key={item} href="#" className="text-sm font-medium opacity-60 hover:opacity-100 transition-opacity">
+              {item}
+            </a>
+          ))}
+          <button className="bg-slate-900 dark:bg-white dark:text-black text-white px-5 py-2 rounded-2xl text-xs font-bold hover:scale-105 transition-transform active:scale-95">
+            Aide
           </button>
         </div>
-      </nav>
+
+        {/* Burger Button (Mobile) */}
+        <button 
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
+          className="md:hidden p-2 text-slate-900 dark:text-white"
+        >
+          {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
+
+      {/* Menu Mobile Déroulant */}
+      {mobileMenuOpen && (
+        <div className="md:hidden mt-2 bg-white/90 dark:bg-black/90 backdrop-blur-2xl border border-white/20 rounded-3xl p-4 shadow-xl flex flex-col gap-4 animate-in fade-in zoom-in duration-200">
+          {navLinks.map((item) => (
+            <a 
+              key={item} 
+              href="#" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="px-4 py-2 text-sm font-medium border-b border-gray-100 dark:border-white/5 last:border-none"
+            >
+              {item}
+            </a>
+          ))}
+          <button className="w-full bg-slate-900 dark:bg-white dark:text-black text-white py-3 rounded-xl text-sm font-bold">
+            Aide
+          </button>
+        </div>
+      )}
+    </nav>
 
       {/* --- HERO SECTION --- */}
       <header className="relative z-10 pt-45 pb-30 px-6">
@@ -255,26 +287,48 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Module Géo - Carte Moyenne */}
-          <div className="md:col-span-6 bg-white dark:bg-white/5 border border-slate-200/60 dark:border-white/5 rounded-[2.5rem] p-10 flex flex-col md:flex-row gap-8 items-center">
-            <div className="flex-1">
-               <Map className="text-indigo-500 mb-6" size={32} />
-               <h3 className="text-2xl font-bold mb-4">Visualisation Géo</h3>
-               <p className="text-slate-500 text-sm italic">
-                 "visualisez vos evènements épidémiologiques sur des cartes interactives avec des heatmaps dynamiques et des clusters intelligents."
-               </p>
-            </div>
-            <div className="w-full md:w-48 h-48">
-               <Globe
-                 ref={globeRef}
-                 globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
-                 bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-                 backgroundColor="rgba(155, 155, 155, 0)"
-                 width={200}
-                 height={200}
-               />
-            </div>
-          </div>
+{/* Module Géo - Carte Moyenne */}
+<div className="md:col-span-6 bg-white dark:bg-white/5 border border-slate-200/60 dark:border-white/5 rounded-[2.5rem] p-10 flex flex-col md:flex-row gap-8 items-center overflow-hidden">
+  <div className="flex-1">
+    <Map className="text-indigo-500 mb-6" size={32} />
+    <h3 className="text-2xl font-bold mb-4">Visualisation Géo</h3>
+    <p className="text-slate-500 text-sm italic">
+      "Visualisez vos évènements épidémiologiques sur des cartes interactives avec des heatmaps dynamiques et des clusters intelligents."
+    </p>
+  </div>
+  
+  <div className="w-full md:w-64 h-64 flex items-center justify-center relative">
+    {/* Effet de halo lumineux en arrière-plan pour faire ressortir le globe */}
+    <div className="absolute inset-0  rounded-full" />
+    
+    <Globe
+      ref={globeRef}
+      width={320}
+      height={320}
+      backgroundColor="rgba(255, 255, 255, 0)"
+      // Texture plus claire et stylisée
+      globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg" 
+  
+      atmosphereAltitude={0.25}
+
+      hexPolygonsData={[]} 
+      customLayerData={[]}
+
+      arcsData={Array.from({ length: 5 }).map(() => ({
+        startLat: (Math.random() - 0.5) * 180,
+        startLng: (Math.random() - 0.5) * 360,
+        endLat: (Math.random() - 0.6) * 180,
+        endLng: (Math.random() - 0.8) * 360,
+        color: ['#6366f1', '#f43f5e', '#ec4899'][Math.floor(Math.random() * 3)]
+      }))}
+      arcColor="color"
+      arcDashLength={0.5}
+      arcDashGap={4}
+      arcDashAnimateTime={1000}
+      arcStroke={0.7}
+    />
+  </div>
+</div>
 
           {/* Simulation - Carte Moyenne */}
           <div className="md:col-span-6 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-[2.5rem] p-10 group cursor-pointer overflow-hidden relative">
