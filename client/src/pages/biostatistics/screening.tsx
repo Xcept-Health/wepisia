@@ -19,6 +19,21 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+/**
+ * Screening Test Analysis Component
+ *
+ * This component replicates OpenEpi's "Screening Test" tool.
+ * It evaluates the performance of a diagnostic or screening test with multiple ordinal levels.
+ *
+ * For each cutoff between levels, it computes:
+ *   - Sensitivity, Specificity, Predictive Values, Likelihood Ratios,
+ *     Odds Ratio, Kappa, Entropy Reduction, Bias Index.
+ * It also provides level‑specific likelihood ratios and the Area Under the ROC Curve (AUC).
+ *
+ * All confidence intervals follow standard methods (Wilson, Katz, Hanley–McNeil, etc.)
+ * and match those used in OpenEpi.
+ */
+
 interface LevelRow {
   id: string;
   level: string;
@@ -73,7 +88,7 @@ interface ScreeningResults {
   auc: number;
   aucLower: number;
   aucUpper: number;
-  rocPoints: { fpr: number; tpr: number }[]; // pour la courbe ROC
+  rocPoints: { fpr: number; tpr: number }[]; // for ROC curve
 }
 
 export default function ScreeningTest() {
@@ -84,25 +99,26 @@ export default function ScreeningTest() {
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Recalcul automatique à chaque modification des données
+  // Recalculate whenever input data changes
   useEffect(() => {
     calculateResults();
   }, [rows]);
 
-  // Méthode Wilson pour IC d'une proportion
-  const wilsonCI = (p: number, n: number, z: number = 1.96) => {
+  // Wilson score interval for a proportion (standard formula)
+  const wilsonCI = (x: number, n: number, z: number = 1.96) => {
     if (n === 0) return { lower: 0, upper: 0 };
-    const a = p * n;
-    const b = (1 - p) * n;
-    const center = (a + z * z / 2) / (n + z * z);
-    const margin = z * Math.sqrt((a * b + z * z * n / 4) / (n * n)) / (1 + z * z / n);
+    const p = x / n;
+    const z2 = z * z;
+    const A = 2 * x + z2;
+    const B = z * Math.sqrt(z2 + 4 * x * (1 - p));
+    const C = 2 * (n + z2);
     return {
-      lower: Math.max(0, center - margin),
-      upper: Math.min(1, center + margin)
+      lower: Math.max(0, (A - B) / C),
+      upper: Math.min(1, (A + B) / C)
     };
   };
 
-  // Calcul principal
+  // Main calculation routine
   const calculateResults = () => {
     const validRows = rows.filter(
       (r) => (parseInt(r.cases) || 0) >= 0 && (parseInt(r.nonCases) || 0) >= 0
@@ -127,44 +143,53 @@ export default function ScreeningTest() {
       return;
     }
 
-    // --- Rapports de vraisemblance par niveau ---
+    // --- Level‑specific likelihood ratios (method of Katz) ---
     const levelLRs: LevelLR[] = levels.map((l) => {
-      const lr = totalCases > 0 && totalNonCases > 0 && l.nonCases > 0
-        ? (l.cases / l.nonCases) / (totalCases / totalNonCases)
-        : 0;
-      const se = l.cases > 0 && l.nonCases > 0
-        ? Math.sqrt(1 / l.cases + 1 / l.nonCases)
-        : 0;
-      const lower = Math.exp(Math.log(lr) - 1.96 * se);
-      const upper = Math.exp(Math.log(lr) + 1.96 * se);
+      const cases = l.cases;
+      const nonCases = l.nonCases;
+      let lr = 0, lrLower = 0, lrUpper = 0;
+      if (totalCases > 0 && totalNonCases > 0 && nonCases > 0) {
+        lr = (cases / nonCases) / (totalCases / totalNonCases);
+        const se = Math.sqrt(1 / cases + 1 / nonCases - 1 / totalCases - 1 / totalNonCases);
+        const lnLR = Math.log(lr);
+        lrLower = Math.exp(lnLR - 1.96 * se);
+        lrUpper = Math.exp(lnLR + 1.96 * se);
+      }
       return {
         level: l.level,
-        lr,
-        lrLower: isFinite(lower) ? lower : 0,
-        lrUpper: isFinite(upper) ? upper : 0,
+        lr: isFinite(lr) ? lr : 0,
+        lrLower: isFinite(lrLower) ? lrLower : 0,
+        lrUpper: isFinite(lrUpper) ? lrUpper : 0,
       };
     });
 
-    // --- Préparation des points ROC ---
-    let tprPoints: number[] = [0];
-    let fprPoints: number[] = [0];
+    // --- Prepare ROC points (from most pathological to least) ---
+    let rocPoints: { fpr: number; tpr: number }[] = [{ fpr: 0, tpr: 0 }];
     let cumCasesPositive = 0;
     let cumNonCasesPositive = 0;
 
+    // Parcourir du plus pathologique (dernier niveau) au moins pathologique (premier)
     for (let i = levels.length - 1; i >= 0; i--) {
       cumCasesPositive += levels[i].cases;
       cumNonCasesPositive += levels[i].nonCases;
-      tprPoints.unshift(cumCasesPositive / totalCases);
-      fprPoints.unshift(cumNonCasesPositive / totalNonCases);
+      rocPoints.push({
+        fpr: cumNonCasesPositive / totalNonCases,
+        tpr: cumCasesPositive / totalCases,
+      });
     }
+    // Ajouter le point (1,1) si nécessaire (déjà atteint)
+    // Trier par fpr croissant (au cas où)
+    rocPoints.sort((a, b) => a.fpr - b.fpr);
 
-    // --- AUC par méthode des trapèzes ---
+    // --- AUC via trapezoidal rule ---
     let auc = 0;
-    for (let i = 1; i < tprPoints.length; i++) {
-      auc += (fprPoints[i] - fprPoints[i - 1]) * (tprPoints[i] + tprPoints[i - 1]) / 2;
+    for (let i = 1; i < rocPoints.length; i++) {
+      const prev = rocPoints[i - 1];
+      const curr = rocPoints[i];
+      auc += (curr.fpr - prev.fpr) * (curr.tpr + prev.tpr) / 2;
     }
 
-    // --- IC de l'AUC (Hanley‑McNeil) ---
+    // --- AUC confidence interval (Hanley‑McNeil) ---
     const Q1 = auc / (2 - auc);
     const Q2 = 2 * auc * auc / (1 + auc);
     const seAuc = Math.sqrt(
@@ -176,10 +201,7 @@ export default function ScreeningTest() {
     const aucLower = Math.max(0, auc - 1.96 * seAuc);
     const aucUpper = Math.min(1, auc + 1.96 * seAuc);
 
-    // --- Points pour la courbe ROC (sans le (0,0) et (1,1) redondants) ---
-    const rocPoints = fprPoints.map((fpr, i) => ({ fpr, tpr: tprPoints[i] }));
-
-    // --- Calculs par point de coupure ---
+    // --- Cutoff‑specific calculations ---
     const cutoffs: CutoffResult[] = [];
     let cumCasesNegative = 0;
     let cumNonCasesNegative = 0;
@@ -199,49 +221,44 @@ export default function ScreeningTest() {
       const ppv = tp / (tp + fp);
       const npv = tn / (tn + fn);
 
-      const sensCI = wilsonCI(sens, tp + fn);
-      const specCI = wilsonCI(spec, tn + fp);
-      const ppvCI = wilsonCI(ppv, tp + fp);
-      const npvCI = wilsonCI(npv, tn + fn);
-      const accCI = wilsonCI(acc, total);
+      // Wilson confidence intervals
+      const sensCI = wilsonCI(tp, tp + fn);
+      const specCI = wilsonCI(tn, tn + fp);
+      const ppvCI = wilsonCI(tp, tp + fp);
+      const npvCI = wilsonCI(tn, tn + fn);
+      const accCI = wilsonCI(tp + tn, total);
 
-      // LR+
-      const lrPos = sens / (1 - spec);
-      let lrPosLower = 0, lrPosUpper = 0;
-      if (isFinite(lrPos) && lrPos > 0) {
+      // LR+ and its CI (Katz method)
+      let lrPos = 0, lrPosLower = 0, lrPosUpper = 0;
+      if (tp > 0 && fp > 0) {
+        lrPos = sens / (1 - spec); // équivalent à (tp/(tp+fn)) / (fp/(fp+tn))
+        const seLRPos = Math.sqrt(1 / tp - 1 / (tp + fn) + 1 / fp - 1 / (fp + tn));
         const lnLRPos = Math.log(lrPos);
-        const seLRPos = Math.sqrt(
-          (1 - sens) / (sens * (tp + fn)) +
-          (1 - spec) / (spec * (tn + fp))
-        );
         lrPosLower = Math.exp(lnLRPos - 1.96 * seLRPos);
         lrPosUpper = Math.exp(lnLRPos + 1.96 * seLRPos);
       }
 
-      // LR-
-      const lrNeg = (1 - sens) / spec;
-      let lrNegLower = 0, lrNegUpper = 0;
-      if (isFinite(lrNeg) && lrNeg > 0) {
+      // LR- and its CI (Katz method)
+      let lrNeg = 0, lrNegLower = 0, lrNegUpper = 0;
+      if (fn > 0 && tn > 0) {
+        lrNeg = (1 - sens) / spec; // équivalent à (fn/(tp+fn)) / (tn/(tn+fp))
+        const seLRNeg = Math.sqrt(1 / fn - 1 / (tp + fn) + 1 / tn - 1 / (tn + fp));
         const lnLRNeg = Math.log(lrNeg);
-        const seLRNeg = Math.sqrt(
-          sens / ((1 - sens) * (tp + fn)) +
-          (1 - spec) / (spec * (tn + fp))
-        );
         lrNegLower = Math.exp(lnLRNeg - 1.96 * seLRNeg);
         lrNegUpper = Math.exp(lnLRNeg + 1.96 * seLRNeg);
       }
 
-      // Odds ratio
-      const odds = (tp * tn) / (fp * fn);
-      let oddsLower = 0, oddsUpper = 0;
-      if (isFinite(odds) && odds > 0) {
+      // Odds ratio (DOR)
+      let odds = 0, oddsLower = 0, oddsUpper = 0;
+      if (tp * tn > 0 && fp * fn > 0) {
+        odds = (tp * tn) / (fp * fn);
         const lnOdds = Math.log(odds);
         const seOdds = Math.sqrt(1 / tp + 1 / tn + 1 / fp + 1 / fn);
         oddsLower = Math.exp(lnOdds - 1.96 * seOdds);
         oddsUpper = Math.exp(lnOdds + 1.96 * seOdds);
       }
 
-      // Kappa
+      // Kappa de Cohen
       const observedAcc = acc;
       const expectedAcc = ((tp + fp) / total) * ((tp + fn) / total) +
                          ((fn + tn) / total) * ((fp + tn) / total);
@@ -250,7 +267,7 @@ export default function ScreeningTest() {
       const kappaLower = kappa - 1.96 * seKappa;
       const kappaUpper = kappa + 1.96 * seKappa;
 
-      // Entropie
+      // Réduction d'entropie (Shannon, log naturel)
       const prev = totalCases / total;
       const hPre = prev > 0 && prev < 1
         ? -prev * Math.log(prev) - (1 - prev) * Math.log(1 - prev)
@@ -264,7 +281,7 @@ export default function ScreeningTest() {
       const entropyPos = hPre > 0 ? 100 * (hPre - hPostPos) / hPre : 0;
       const entropyNeg = hPre > 0 ? 100 * (hPre - hPostNeg) / hPre : 0;
 
-      // Bias index
+      // Indice de biais
       const bias = (tp + fp - fn - tn) / total;
 
       cutoffs.push({
@@ -338,11 +355,11 @@ export default function ScreeningTest() {
 
   const loadExample = () => {
     setRows([
-      { id: '1', level: 'Niveau 1', cases: '1', nonCases: '4' },
-      { id: '2', level: 'Niveau 2', cases: '2', nonCases: '1' },
-      { id: '3', level: 'Niveau 3', cases: '3', nonCases: '23' },
-      { id: '4', level: 'Niveau 4', cases: '5', nonCases: '6' },
-      { id: '5', level: 'Niveau 5', cases: '4', nonCases: '3' },
+      { id: '1', level: 'Niveau 1', cases: '1', nonCases: '2' },
+      { id: '2', level: 'Niveau 2', cases: '2', nonCases: '3' },
+      { id: '3', level: 'Niveau 3', cases: '4', nonCases: '5' },
+      { id: '4', level: 'Niveau 4', cases: '7', nonCases: '8' },
+      { id: '5', level: 'Niveau 5', cases: '9', nonCases: '10' },
     ]);
     toast.success('Exemple chargé');
   };
@@ -361,7 +378,7 @@ export default function ScreeningTest() {
       text += `Rapport de vraisemblance du test positif: ${c.lrPositive.toFixed(4)} (${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)})\n`;
       text += `Rapport de vraisemblance du test négatif: ${c.lrNegative.toFixed(4)} (${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)})\n`;
       text += `Diagnostic du rapport de cotes: ${c.oddsRatio.toFixed(4)} (${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)})\n`;
-      text += `coefficient kappa de Cohen: ${c.kappa.toFixed(4)} (${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)})\n`;
+      text += `Coefficient kappa de Cohen: ${c.kappa.toFixed(4)} (${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)})\n`;
       text += `Réduction d’entropie après un test positif: ${c.entropyPositive.toFixed(2)}%\n`;
       text += `Réduction d’entropie après un test négatif: ${c.entropyNegative.toFixed(2)}%\n`;
       text += `Index Biais: ${c.biasIndex.toFixed(4)}\n\n`;
@@ -401,7 +418,7 @@ export default function ScreeningTest() {
         900: [15, 23, 42] as [number, number, number],
       };
 
-      // En-tête
+      // Header
       doc.setFillColor(...colorSlate[50]);
       doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
       doc.setFont('helvetica', 'bold');
@@ -414,7 +431,7 @@ export default function ScreeningTest() {
       doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
       doc.text('Screening Test – OpenEpi', 190, 32, { align: 'right' });
 
-      // Données
+      // Input data
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -448,7 +465,7 @@ export default function ScreeningTest() {
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      // Résultats par cutoff
+      // Cutoff results
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text('Résultats par point de coupure', 20, y);
@@ -472,13 +489,13 @@ export default function ScreeningTest() {
           ['VPP', `${c.ppv.toFixed(2)}%`, `${c.ppvLower.toFixed(2)} - ${c.ppvUpper.toFixed(2)}`, 'Score de Wilson'],
           ['VPN', `${c.npv.toFixed(2)}%`, `${c.npvLower.toFixed(2)} - ${c.npvUpper.toFixed(2)}`, 'Score de Wilson'],
           ['Exactitude', `${c.accuracy.toFixed(2)}%`, `${c.accuracyLower.toFixed(2)} - ${c.accuracyUpper.toFixed(2)}`, 'Score de Wilson'],
-          ['LR+', c.lrPositive.toFixed(4), `${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)}`, ''],
-          ['LR-', c.lrNegative.toFixed(4), `${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)}`, ''],
-          ['OR', c.oddsRatio.toFixed(4), `${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)}`, ''],
-          ['Kappa', c.kappa.toFixed(4), `${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)}`, ''],
-          ['Entropie +', c.entropyPositive.toFixed(2) + '%', '', ''],
-          ['Entropie -', c.entropyNegative.toFixed(2) + '%', '', ''],
-          ['Biais', c.biasIndex.toFixed(4), '', '']
+          ['LR+', c.lrPositive.toFixed(4), `${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)}`, 'Katz'],
+          ['LR-', c.lrNegative.toFixed(4), `${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)}`, 'Katz'],
+          ['OR', c.oddsRatio.toFixed(4), `${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)}`, 'Log'],
+          ['Kappa', c.kappa.toFixed(4), `${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)}`, 'Normal'],
+          ['Entropie +', c.entropyPositive.toFixed(2) + '%', '', 'Shannon'],
+          ['Entropie -', c.entropyNegative.toFixed(2) + '%', '', 'Shannon'],
+          ['Biais', c.biasIndex.toFixed(4), '', 'Définition']
         ];
 
         autoTable(doc, {
@@ -500,7 +517,7 @@ export default function ScreeningTest() {
         y = (doc as any).lastAutoTable.finalY + 10;
       });
 
-      // LR par niveau
+      // Level‑specific LRs
       if (y > 250) {
         doc.addPage();
         y = 20;
@@ -536,7 +553,7 @@ export default function ScreeningTest() {
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      // ROC et AUC
+      // ROC and AUC
       if (y > 250) {
         doc.addPage();
         y = 20;
@@ -553,7 +570,7 @@ export default function ScreeningTest() {
       doc.text(`Aire sous la courbe ROC = ${results.auc.toFixed(7)} (${results.aucLower.toFixed(7)} - ${results.aucUpper.toFixed(7)})`, 20, y);
       y += 10;
 
-      // Courbe ROC textuelle simplifiée (par manque de place pour un dessin complexe)
+      // Simple textual approximation of ROC curve (no space for complex drawing)
       doc.text('Courbe caractéristique (ROC) – approximation textuelle', 20, y);
       y += 5;
       doc.text('0.0   0.2   0.4   0.6   0.8   1.0  TPR', 20, y);
@@ -562,7 +579,7 @@ export default function ScreeningTest() {
       y += 5;
       doc.text('TPR = taux vrais positifs, FPR = taux faux positifs', 20, y);
 
-      // Pied de page
+      // Footer
       const footerY = 280;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, footerY, 190, footerY);
@@ -580,7 +597,7 @@ export default function ScreeningTest() {
     }
   };
 
-  // Calcul des dimensions pour la courbe ROC SVG
+  // SVG dimensions for ROC curve
   const svgWidth = 300;
   const svgHeight = 300;
   const margin = { top: 20, right: 20, bottom: 30, left: 30 };
@@ -626,7 +643,7 @@ export default function ScreeningTest() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-          {/* Colonne gauche - saisie */}
+          {/* Left column – input */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
@@ -721,7 +738,7 @@ export default function ScreeningTest() {
             </div>
           </div>
 
-          {/* Colonne droite - résultats */}
+          {/* Right column – results */}
           <div className="lg:col-span-7">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
@@ -750,16 +767,15 @@ export default function ScreeningTest() {
               <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10 overflow-y-auto">
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-                  
-                  <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                  <p className="text-lg">Saisissez les données pour l'analyse</p>
-                  <div className="text-4xl font-bold mt-2">
-                    0.00
-                  </div>
+                    <Presentation className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <div className="text-4xl font-bold mt-2">
+                      0.00
+                    </div>
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Carte AUC - style RMS */}
+                    {/* AUC card */}
                     <div
                       className={`p-6 rounded-3xl text-center border ${
                         results.auc > 0.7
@@ -782,143 +798,140 @@ export default function ScreeningTest() {
                       </span>
                     </div>
 
-                    {/* Courbe ROC SVG */}
-<div className="bg-white dark:bg-slate-900">
-  {/* Header avec Stats */}
-  <div className="flex justify-between items-start mb-8">
-    <div>
-      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-        Analyse de Performance ROC
-      </h3>
-      <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
-        Compromis Sensibilité vs Spécificité
-      </p>
-    </div>
-    <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
-      <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">AUC: 0.88</span>
-    </div>
-  </div>
+                    {/* ROC Curve SVG */}
+                    <div className="bg-white dark:bg-slate-900">
+                      <div className="flex justify-between items-start mb-8">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                            Analyse de Performance ROC
+                          </h3>
+                          <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+                            Compromis Sensibilité vs Spécificité
+                          </p>
+                        </div>
+                        <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
+                          <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">AUC: {results.auc.toFixed(2)}</span>
+                        </div>
+                      </div>
 
-  <div className="relative flex justify-center">
-    <svg width={svgWidth} height={svgHeight} className="overflow-visible">
-      <defs>
-        {/* Dégradé sous la courbe pour l'aspect "Aire" */}
-        <linearGradient id="rocGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
-          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01} />
-        </linearGradient>
-      </defs>
+                      <div className="relative flex justify-center">
+                        <svg width={svgWidth} height={svgHeight} className="overflow-visible">
+                          <defs>
+                            <linearGradient id="rocGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01} />
+                            </linearGradient>
+                          </defs>
 
-      {/* Grille de lecture ultra-légère */}
-      {[0.25, 0.5, 0.75, 1].map((tick) => (
-        <g key={tick}>
-          <line
-            x1={margin.left}
-            y1={pointToSVG(0, tick).y}
-            x2={margin.left + plotWidth}
-            y2={pointToSVG(0, tick).y}
-            stroke="currentColor"
-            className="text-slate-100 dark:text-slate-800"
-            strokeWidth={1}
-          />
-          <line
-            x1={pointToSVG(tick, 0).x}
-            y1={margin.top}
-            x2={pointToSVG(tick, 0).x}
-            y2={margin.top + plotHeight}
-            stroke="currentColor"
-            className="text-slate-100 dark:text-slate-800"
-            strokeWidth={1}
-          />
-        </g>
-      ))}
+                          {/* Light grid lines */}
+                          {[0.25, 0.5, 0.75, 1].map((tick) => (
+                            <g key={tick}>
+                              <line
+                                x1={margin.left}
+                                y1={pointToSVG(0, tick).y}
+                                x2={margin.left + plotWidth}
+                                y2={pointToSVG(0, tick).y}
+                                stroke="currentColor"
+                                className="text-slate-100 dark:text-slate-800"
+                                strokeWidth={1}
+                              />
+                              <line
+                                x1={pointToSVG(tick, 0).x}
+                                y1={margin.top}
+                                x2={pointToSVG(tick, 0).x}
+                                y2={margin.top + plotHeight}
+                                stroke="currentColor"
+                                className="text-slate-100 dark:text-slate-800"
+                                strokeWidth={1}
+                              />
+                            </g>
+                          ))}
 
-      {/* Ligne de hasard (Diagonale) */}
-      <line
-        x1={margin.left}
-        y1={margin.top + plotHeight}
-        x2={margin.left + plotWidth}
-        y2={margin.top}
-        stroke="currentColor"
-        className="text-slate-300 dark:text-slate-700"
-        strokeWidth={1.5}
-        strokeDasharray="6 4"
-      />
+                          {/* Chance line */}
+                          <line
+                            x1={margin.left}
+                            y1={margin.top + plotHeight}
+                            x2={margin.left + plotWidth}
+                            y2={margin.top}
+                            stroke="currentColor"
+                            className="text-slate-300 dark:text-slate-700"
+                            strokeWidth={1.5}
+                            strokeDasharray="6 4"
+                          />
 
-      {/* Aire sous la courbe (AUC Fill) */}
-      <path
-        d={`
-          M ${pointToSVG(0, 0).x} ${pointToSVG(0, 0).y}
-          ${results.rocPoints.map(p => `L ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`).join(' ')}
-          L ${pointToSVG(1, 0).x} ${pointToSVG(1, 0).y}
-          Z
-        `}
-        fill="url(#rocGradient)"
-      />
+                          {/* Area under the curve */}
+                          <path
+                            d={`
+                              M ${pointToSVG(0, 0).x} ${pointToSVG(0, 0).y}
+                              ${results.rocPoints.map(p => `L ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`).join(' ')}
+                              L ${pointToSVG(1, 0).x} ${pointToSVG(1, 0).y}
+                              Z
+                            `}
+                            fill="url(#rocGradient)"
+                          />
 
-      {/* Courbe ROC Principale */}
-      <path
-        d={results.rocPoints
-          .map((p, i) => `${i === 0 ? 'M' : 'L'} ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`)
-          .join(' ')}
-        fill="none"
-        stroke="#3b82f6"
-        strokeWidth={3}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+                          {/* Main ROC curve */}
+                          <path
+                            d={results.rocPoints
+                              .map((p, i) => `${i === 0 ? 'M' : 'L'} ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`)
+                              .join(' ')}
+                            fill="none"
+                            stroke="#3b82f6"
+                            strokeWidth={3}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
 
-      {/* Points de coupure (Interactifs visuellement) */}
-      {results.rocPoints.map((p, i) => (
-        <circle
-          key={i}
-          cx={pointToSVG(p.fpr, p.tpr).x}
-          cy={pointToSVG(p.fpr, p.tpr).y}
-          r={4}
-          className="fill-white stroke-blue-600 dark:fill-slate-900"
-          strokeWidth={2}
-        />
-      ))}
+                          {/* Cutoff points */}
+                          {results.rocPoints.map((p, i) => (
+                            <circle
+                              key={i}
+                              cx={pointToSVG(p.fpr, p.tpr).x}
+                              cy={pointToSVG(p.fpr, p.tpr).y}
+                              r={4}
+                              className="fill-white stroke-blue-600 dark:fill-slate-900"
+                              strokeWidth={2}
+                            />
+                          ))}
 
-      {/* Étiquettes des Axes */}
-      <text 
-        x={margin.left + plotWidth / 2} 
-        y={margin.top + plotHeight + 35} 
-        className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
-        textAnchor="middle"
-      >
-        TAUX DE FAUX POSITIFS (1 - SPÉCIFICITÉ)
-      </text>
-      <text 
-        x={margin.left - 35} 
-        y={margin.top + plotHeight / 2} 
-        className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
-        textAnchor="middle" 
-        transform={`rotate(-90, ${margin.left - 35}, ${margin.top + plotHeight / 2})`}
-      >
-        TAUX DE VRAIS POSITIFS (SENSIBILITÉ)
-      </text>
-    </svg>
-  </div>
+                          {/* Axis labels */}
+                          <text 
+                            x={margin.left + plotWidth / 2} 
+                            y={margin.top + plotHeight + 35} 
+                            className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
+                            textAnchor="middle"
+                          >
+                            TAUX DE FAUX POSITIFS (1 - SPÉCIFICITÉ)
+                          </text>
+                          <text 
+                            x={margin.left - 35} 
+                            y={margin.top + plotHeight / 2} 
+                            className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
+                            textAnchor="middle" 
+                            transform={`rotate(-90, ${margin.left - 35}, ${margin.top + plotHeight / 2})`}
+                          >
+                            TAUX DE VRAIS POSITIFS (SENSIBILITÉ)
+                          </text>
+                        </svg>
+                      </div>
 
-  {/* Légende épurée */}
-  <div className="flex justify-center gap-8 mt-10 border-t border-slate-50 dark:border-slate-800 pt-6">
-    <div className="flex items-center gap-2">
-      <div className="w-4 h-1 bg-blue-500 rounded-full"></div>
-      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">Modèle Actuel</span>
-    </div>
-    <div className="flex items-center gap-2">
-      <div className="w-4 h-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600"></div>
-      <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Hasard</span>
-    </div>
-  </div>
-</div>
+                      {/* Legend */}
+                      <div className="flex justify-center gap-8 mt-10 border-t border-slate-50 dark:border-slate-800 pt-6">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-1 bg-blue-500 rounded-full"></div>
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">Modèle Actuel</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600"></div>
+                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Hasard</span>
+                        </div>
+                      </div>
+                    </div>
 
-                    {/* Résultats par cutoff (résumés) */}
+                    {/* Cutoff results */}
                     {results.cutoffs.map((c, index) => (
                       <div key={index} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
                         <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                         
                           Point de coupure {c.cutoff}
                         </h3>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
@@ -947,22 +960,58 @@ export default function ScreeningTest() {
                             </p>
                           </div>
                           <div>
+                            <p className="text-slate-400 text-xs">Exactitude</p>
+                            <p className="font-mono font-medium">
+                              {c.accuracy.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.accuracyLower.toFixed(2)}–{c.accuracyUpper.toFixed(2)})</span>
+                            </p>
+                          </div>
+                          <div>
                             <p className="text-slate-400 text-xs">LR+</p>
                             <p className="font-mono font-medium">
-                              {c.lrPositive.toFixed(2)} <span className="text-slate-400 text-[10px]">({c.lrPositiveLower.toFixed(2)}–{c.lrPositiveUpper.toFixed(2)})</span>
+                              {c.lrPositive.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.lrPositiveLower.toFixed(4)}–{c.lrPositiveUpper.toFixed(4)})</span>
                             </p>
                           </div>
                           <div>
                             <p className="text-slate-400 text-xs">LR-</p>
                             <p className="font-mono font-medium">
-                              {c.lrNegative.toFixed(2)} <span className="text-slate-400 text-[10px]">({c.lrNegativeLower.toFixed(2)}–{c.lrNegativeUpper.toFixed(2)})</span>
+                              {c.lrNegative.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.lrNegativeLower.toFixed(4)}–{c.lrNegativeUpper.toFixed(4)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">Odds Ratio</p>
+                            <p className="font-mono font-medium">
+                              {c.oddsRatio.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.oddsRatioLower.toFixed(4)}–{c.oddsRatioUpper.toFixed(4)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">Kappa</p>
+                            <p className="font-mono font-medium">
+                              {c.kappa.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.kappaLower.toFixed(4)}–{c.kappaUpper.toFixed(4)})</span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">Entropie +</p>
+                            <p className="font-mono font-medium">
+                              {c.entropyPositive.toFixed(2)}%
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">Entropie -</p>
+                            <p className="font-mono font-medium">
+                              {c.entropyNegative.toFixed(2)}%
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-xs">Biais</p>
+                            <p className="font-mono font-medium">
+                              {c.biasIndex.toFixed(4)}
                             </p>
                           </div>
                         </div>
                       </div>
                     ))}
 
-                    {/* Rapports de vraisemblance par niveau */}
+                    {/* Level‑specific likelihood ratios */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
                       <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4">Rapports de vraisemblance par niveau</h3>
                       <div className="overflow-x-auto">
@@ -995,149 +1044,178 @@ export default function ScreeningTest() {
           </div>
         </div>
 
-        {/* Modal d'aide */}
+        {/* Modal  */}
         {showHelpModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div
-      className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
-      onClick={() => setShowHelpModal(false)}
-    />
-    <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-      <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-          Guide rapide – Screening Test
-        </h3>
-        <button
-          onClick={() => setShowHelpModal(false)}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowHelpModal(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Guide : Screening Test
+                </h3>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-      <div className="p-6 md:p-8 space-y-8">
-        {/* 1. PRINCIPE */}
-        <section>
-          <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-              1
-            </div>
-            Le principe
-          </h4>
-          <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-            Ce module reproduit fidèlement l’outil <strong>« Screening Test » d’OpenEpi</strong>. 
-            Il évalue les performances d’un test diagnostique ou de dépistage à plusieurs niveaux 
-            (ordinal ou continu) en calculant pour chaque seuil les indicateurs classiques 
-            (sensibilité, spécificité, valeurs prédictives, rapports de vraisemblance, 
-            odds ratio, kappa, réduction d’entropie) et l’aire sous la courbe ROC (AUC).
-          </p>
-        </section>
+              <div className="p-6 md:p-8 space-y-8">
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      1
+                    </div>
+                    Principe du test de dépistage
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    Ce module reproduit fidèlement l’outil <strong>« Screening Test » d’OpenEpi</strong>. 
+                    Il évalue les performances d’un test diagnostique ou de dépistage à plusieurs niveaux 
+                    (ordinal ou continu). Pour chaque seuil de coupure, il calcule :
+                  </p>
+                  <ul className="list-disc pl-5 mt-2 text-sm text-slate-600 dark:text-slate-300">
+                    <li>Sensibilité, Spécificité, Valeurs prédictives</li>
+                    <li>Rapports de vraisemblance (LR+, LR–)</li>
+                    <li>Odds ratio diagnostique</li>
+                    <li>Coefficient Kappa de Cohen</li>
+                    <li>Réduction d’entropie (information gagnée)</li>
+                    <li>Index de biais</li>
+                  </ul>
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                    Il fournit également les rapports de vraisemblance spécifiques à chaque niveau 
+                    et l’aire sous la courbe ROC (AUC) avec son intervalle de confiance.
+                  </p>
+                </section>
 
-        {/* Cartes d'interprétation rapide */}
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-            <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-              AUC &gt; 0,70
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+                      AUC &gt; 0,70
+                    </div>
+                    <div className="text-xs text-slate-500">Test performant – discrimination acceptable à excellente</div>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+                      AUC &lt; 0,60
+                    </div>
+                    <div className="text-xs text-slate-500">Test peu informatif – proche du hasard</div>
+                  </div>
+                </div>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      2
+                    </div>
+                    Intervalles de confiance (IC 95 %)
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-3">
+                    Tous les intervalles sont calculés selon des méthodes reconnues, identiques à OpenEpi.
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-300 space-y-1">
+                    <li>
+                      <strong className="text-slate-900 dark:text-white">Wilson score</strong> – 
+                      Proportions (sensibilité, spécificité, VPP, VPN, exactitude)
+                    </li>
+                    <li>
+                      <strong className="text-slate-900 dark:text-white">Katz (log)</strong> – 
+                      Rapports de vraisemblance (LR+, LR–)
+                    </li>
+                    <li>
+                      <strong className="text-slate-900 dark:text-white">Hanley & McNeil (1982)</strong> – 
+                      Aire sous la courbe ROC (AUC)
+                    </li>
+                    <li>
+                      <strong className="text-slate-900 dark:text-white">Approximation normale</strong> – 
+                      Coefficient kappa de Cohen
+                    </li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      3
+                    </div>
+                    Méthodes de calcul
+                  </h4>
+                  <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Courbe ROC & AUC</strong> – 
+                      Les points sont générés en cumulant les effectifs des niveaux du plus pathologique 
+                      au moins pathologique. L’AUC est calculée par la méthode des trapèzes.
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Rapports de vraisemblance par niveau</strong> – 
+                      LR = (casᵢ / non‑casᵢ) / (total cas / total non‑cas). IC basé sur l’erreur‑type de log(LR) avec la formule de Katz.
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Diagnostic odds ratio (DOR)</strong> – 
+                      (TP·TN)/(FP·FN). IC par transformation logarithmique.
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Kappa de Cohen</strong> – 
+                      Mesure de l’accord au‑delà du hasard. IC = κ ± 1,96·SE(κ).
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Réduction d’entropie</strong> – 
+                      Pourcentage de réduction de l’incertitude (entropie de Shannon) après un test positif ou négatif.
+                    </p>
+                    <p>
+                      <strong className="text-slate-900 dark:text-white">Index de biais</strong> – 
+                      (TP + FP – FN – TN) / N. Reflète le déséquilibre global de classification.
+                    </p>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      4
+                    </div>
+                    Exemple concret
+                  </h4>
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-sm">
+                    <p className="mb-2">
+                      Supposons un test de glycémie pour diagnostiquer le diabète. On classe les patients en cinq niveaux de glycémie (1 = normale, 5 = très élevée). Les données saisies pourraient être :
+                    </p>
+                    <pre className="bg-white dark:bg-slate-900 p-2 rounded text-xs overflow-x-auto">
+                      {`Niveau    Cas (diabétiques)   Non-cas
+                      1               1                 2
+                      2               2                 3
+                      3               4                 5
+                      4               7                 8
+                      5               9                10`}
+                    </pre>
+                    <p className="mt-2">
+                      L’analyse produit une courbe ROC, une AUC de 0,5326 (IC 95% : 0,3728 – 0,6925), et pour chaque seuil les sensibilités, spécificités, etc. On peut ainsi choisir le meilleur compromis.
+                    </p>
+                  </div>
+                </section>
+
+                <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-400">
+                  <span className="font-bold">Ordre des niveaux</span> – Les niveaux doivent être saisis 
+                  du <strong>moins pathologique</strong> (première ligne) au <strong>plus pathologique</strong> 
+                  (dernière ligne). C’est essentiel pour une courbe ROC correcte.
+                </div>
+
+                <a
+                  href="https://www.openepi.com/DiagnosticTest/DiagnosticTest.htm"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
+                >
+                  Source officielle : OpenEpi – Screening Test
+                  <ArrowRight className="w-3 h-3 ml-1" />
+                </a>
+              </div>
             </div>
-            <div className="text-xs text-slate-500">Test performant – discrimination acceptable à excellente</div>
           </div>
-          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-            <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-              AUC &lt; 0,60
-            </div>
-            <div className="text-xs text-slate-500">Test peu informatif – proche du hasard</div>
-          </div>
-        </div>
-
-        {/* 2. INTERVALLES DE CONFIANCE */}
-        <section>
-          <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-              2
-            </div>
-            Intervalles de confiance (IC 95 %)
-          </h4>
-          <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-3">
-            Tous les intervalles sont calculés selon des méthodes reconnues, identiques à OpenEpi.
-          </p>
-          <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-300 space-y-1">
-            <li>
-              <strong className="text-slate-900 dark:text-white">Wilson score</strong> – 
-              Proportions (sensibilité, spécificité, VPP, VPN, exactitude)
-            </li>
-            <li>
-              <strong className="text-slate-900 dark:text-white">Taylor (log‑LR)</strong> – 
-              Rapports de vraisemblance (LR+, LR–)
-            </li>
-            <li>
-              <strong className="text-slate-900 dark:text-white">Hanley & McNeil (1982)</strong> – 
-              Aire sous la courbe ROC (AUC)
-            </li>
-            <li>
-              <strong className="text-slate-900 dark:text-white">Approximation normale</strong> – 
-              Coefficient kappa de Cohen
-            </li>
-          </ul>
-        </section>
-
-        {/* 3. MÉTHODES DE CALCUL AVANCÉES */}
-        <section>
-          <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-              3
-            </div>
-            Détail des calculs
-          </h4>
-          <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-            <p>
-              <strong className="text-slate-900 dark:text-white">Courbe ROC & AUC</strong> – 
-              Les points sont générés en cumulant les effectifs des niveaux du plus pathologique 
-              au moins pathologique. L’AUC est calculée par la méthode des trapèzes.
-            </p>
-            <p>
-              <strong className="text-slate-900 dark:text-white">Rapports de vraisemblance par niveau</strong> – 
-              LR = (casᵢ / non‑casᵢ) / (total cas / total non‑cas). IC basé sur l’erreur‑type de log(LR).
-            </p>
-            <p>
-              <strong className="text-slate-900 dark:text-white">Diagnostic odds ratio (DOR)</strong> – 
-              (TP·TN)/(FP·FN). IC par transformation logarithmique.
-            </p>
-            <p>
-              <strong className="text-slate-900 dark:text-white">Kappa de Cohen</strong> – 
-              Mesure de l’accord au‑delà du hasard. IC = κ ± 1,96·SE(κ).
-            </p>
-            <p>
-              <strong className="text-slate-900 dark:text-white">Réduction d’entropie</strong> – 
-              Pourcentage de réduction de l’incertitude (entropie de Shannon) après un test positif ou négatif.
-            </p>
-            <p>
-              <strong className="text-slate-900 dark:text-white">Index de biais</strong> – 
-              (TP + FP – FN – TN) / N. Reflète le déséquilibre global de classification.
-            </p>
-          </div>
-
-          {/* Lien OpenEpi */}
-          <a
-            href="https://www.openepi.com/DiagnosticTest/DiagnosticTest.htm"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
-          >
-            Source officielle : OpenEpi – Screening Test
-            <ArrowRight className="w-3 h-3 ml-1" />
-          </a>
-        </section>
-
-        {/* Note sur l'ordre des niveaux */}
-        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-400">
-          <span className="font-bold">Ordre des niveaux</span> – Les niveaux doivent être saisis 
-          du <strong>moins pathologique</strong> (première ligne) au <strong>plus pathologique</strong> 
-          (dernière ligne). C’est essentiel pour une courbe ROC correcte.
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+        )}
       </div>
     </div>
   );
