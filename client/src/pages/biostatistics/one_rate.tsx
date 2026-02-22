@@ -370,7 +370,7 @@ Rothman/Greenland : [${results.rothman.lower} – ${results.rothman.upper}]`;
               <div className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Nombre de cas <span className="text-blue-500">(numérateur)</span>
+                    Nombre de cas (numérateur)
                   </label>
                   <input
                     type="number"
@@ -384,7 +384,7 @@ Rothman/Greenland : [${results.rothman.lower} – ${results.rothman.upper}]`;
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Personne‑temps <span className="text-blue-500">(dénominateur)</span>
+                    Personne‑temps (dénominateur)
                   </label>
                   <input
                     type="number"
