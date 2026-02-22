@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   ChevronRight,
   Calculator,
-  BarChart3,
+  Presentation,
   Copy,
   FileDown,
   HelpCircle,
@@ -420,7 +420,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <BarChart3 className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
                 </h2>
                 {results && (
                   <div className="flex gap-2">
@@ -445,7 +445,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     
-                  <BarChart3 className="w-16 h-16 mb-4 text-slate-300" />
+                  <Presentation className="w-16 h-16 mb-4 text-slate-300" />
                   <p className="text-lg">Saisissez les données pour l'analyse</p>
                   <div className="text-4xl font-bold mt-2">
                     0.00

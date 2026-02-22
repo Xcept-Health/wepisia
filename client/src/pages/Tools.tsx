@@ -1,10 +1,10 @@
-import { BarChart3, Calculator, Zap, Users, TrendingUp, Activity, Layers, PieChart } from 'lucide-react';
+import { Presentation, Calculator, Zap, Users, TrendingUp, Activity, Layers, PieChart } from 'lucide-react';
 import { ToolCard } from '@/components/ToolCard';
 
 export default function Tools() {
   const allTools = [
     {
-      icon: BarChart3,
+      icon: Presentation,
       title: 'Tableaux 2×2',
       description: 'Calculs d\'odds ratio, risque relatif et chi-carré pour l\'analyse de tableaux de contingence.',
       href: '/tools/two-by-two',

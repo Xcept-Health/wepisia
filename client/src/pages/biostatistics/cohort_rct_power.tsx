@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  ChevronRight, Calculator, BarChart3, Copy, FileDown, 
+  ChevronRight, Calculator, Presentation, Copy, FileDown, 
   HelpCircle, X, Trash2, Users, Info,
   CheckCircle, Zap, TrendingUp
 } from 'lucide-react';
@@ -881,7 +881,7 @@ export default function CohortRCT() {
               <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
+                    <Presentation className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
                     Résultats
                   </h2>
                   {currentResults && (
@@ -1053,7 +1053,7 @@ export default function CohortRCT() {
                               {(powerResults?.power || 0) >= 0.8 ? 
                                 `<p> Excellente puissance ! Votre étude a ${((powerResults?.power || 0) * 100).toFixed(0)}% de chances de détecter le RR de ${(powerResults?.rr || 0).toFixed(2)} s'il existe.</p>` :
                                 (powerResults?.power || 0) >= 0.7 ?
-                                `<p>⚠️ Puissance acceptable mais pourrait être améliorée. Considérez augmenter la taille d'échantillon pour atteindre 80%.</p>` :
+                                `<p> Puissance acceptable mais pourrait être améliorée. Considérez augmenter la taille d'échantillon pour atteindre 80%.</p>` :
                                 `<p>❌ Puissance insuffisante (${((powerResults?.power || 0) * 100).toFixed(0)}%). Augmentez significativement la taille d'échantillon ou reconsidérez le RR à détecter.</p>`
                               }
                               <p className="mt-2">• Pour 80% de puissance, vous pourriez détecter un RR minimal de {(powerResults?.minDetectableRR || 0).toFixed(2)}</p>
@@ -1203,7 +1203,7 @@ export default function CohortRCT() {
                       // Empty State
                       <div className="text-center py-16">
                         <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                          <BarChart3 className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
+                          <Presentation className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
                         </div>
                         <p className="text-gray-500 dark:text-gray-400 text-lg">Saisissez vos paramètres pour voir les résultats</p>
                         <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">La puissance ou la taille d'échantillon apparaîtra automatiquement</p>
@@ -1312,7 +1312,7 @@ export default function CohortRCT() {
 
                   <section>
                     <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                      <BarChart3 className="w-6 h-6 mr-3" strokeWidth={1.5} />
+                      <Presentation className="w-6 h-6 mr-3" strokeWidth={1.5} />
                       Ressources & Tutoriels
                     </h4>
                     <div className="space-y-5">

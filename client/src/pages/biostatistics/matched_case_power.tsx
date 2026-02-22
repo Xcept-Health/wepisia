@@ -3,7 +3,7 @@ import {
   Calculator,
   Trash2,
   HelpCircle,
-  BarChart3,
+  Presentation,
   Copy,
   Download,
   X,
@@ -934,7 +934,7 @@ export default function PowerCaseControl() {
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700">
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center justify-between">
                     <div className="flex items-center">
-                      <BarChart3 className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
+                      <Presentation className="w-5 h-5 mr-2 text-indigo-500" strokeWidth={1.5} />
                       Résultats
                     </div>
                     {(powerResults || sampleSizeResults) && (
@@ -1107,7 +1107,7 @@ export default function PowerCaseControl() {
                               {powerResults.power >= 0.8 ? 
                                 <p>Excellente puissance ! Votre étude a {(powerResults.power * 100).toFixed(0)}% de chances de détecter l'OR de {powerResults.or.toFixed(2)} s'il existe.</p> :
                                 powerResults.power >= 0.7 ?
-                                <p>⚠️ Puissance acceptable mais pourrait être améliorée. Considérez augmenter la taille d'échantillon pour atteindre 80%.</p> :
+                                <p> Puissance acceptable mais pourrait être améliorée. Considérez augmenter la taille d'échantillon pour atteindre 80%.</p> :
                                 <p>❌ Puissance insuffisante ({(powerResults.power * 100).toFixed(0)}%). Augmentez significativement la taille d'échantillon ou reconsidérez l'OR à détecter.</p>
                               }
                               <p className="mt-2">• Pour 80% de puissance, vous pourriez détecter un OR minimal de {powerResults.minDetectableOR.toFixed(2)}</p>

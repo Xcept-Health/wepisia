@@ -12,7 +12,7 @@ import {
   BookOpen,
   Quote,
   Loader2,
-  BarChart3,
+  Presentation,
   ArrowRight,
   Copy,
   ChevronRight as SearchButtonIcon,
@@ -91,7 +91,7 @@ const TrendChart = React.memo(({ data }: { data: PubMedArticle[] }) => {
     <div role="region" aria-label="Graphique de distribution temporelle" className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700  mb-6 animate-in fade-in zoom-in duration-500">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-indigo-500" />
+          <Presentation className="w-4 h-4 text-indigo-500" />
           Distribution temporelle
         </h3>
         <span className="text-xs font-medium text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full">

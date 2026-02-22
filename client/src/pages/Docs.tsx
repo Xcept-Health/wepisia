@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import {
-  HelpCircle, ChevronRight, BookOpen, Calculator, BarChart3,
+  HelpCircle, ChevronRight, BookOpen, Calculator, Presentation,
   Table2, Activity, Map, Cpu, FileText, Scale, Users,
   Divide, Sigma, TestTube, Globe, PieChart, Target, Box,
   TrendingUp, Layers, Sliders, Grid, Hash, ListChecks,
@@ -185,7 +185,7 @@ export default function DocumentationPage() {
                 {/* ANOVA */}
                 <div id="anova" className="p-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
                   <div className="flex items-center gap-2 mb-4">
-                    <BarChart3 className="w-5 h-5 text-blue-500" />
+                    <Presentation className="w-5 h-5 text-blue-500" />
                     <h4 className="font-bold text-slate-900 dark:text-white">2.2 ANOVA un Facteur</h4>
                   </div>
                   <p className="text-sm leading-relaxed mb-4">Comparaison de moyennes pour 3 groupes ou plus.</p>

@@ -5,7 +5,7 @@ import {
   MessageCircle, X, Send, Bot, User, Maximize2, Minimize2,
   GripVertical, Trash2, Clock, Copy, Loader2, Globe, Mic,
   Paperclip, Brain, Calculator, FileText, MessageSquare,
-  Settings, FileCode, BookOpen, Database, BarChart3, ExternalLink
+  Settings, FileCode, BookOpen, Database, Presentation, ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -236,7 +236,7 @@ export function ChatbotSidebar({
               {[
                 { label: 'Calculs', icon: Calculator, color: 'text-blue-500' },
                 { label: 'Stats R', icon: FileCode, color: 'text-purple-500' },
-                { label: 'Graphiques', icon: BarChart3, color: 'text-emerald-500' },
+                { label: 'Graphiques', icon: Presentation, color: 'text-emerald-500' },
                 { label: 'Données', icon: Database, color: 'text-orange-500' }
               ].map((item, idx) => (
                 <button key={idx} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 hover:border-blue-200 transition-colors group">

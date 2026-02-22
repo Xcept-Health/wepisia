@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   ChevronRight, 
   Calculator, 
-  BarChart3, 
+  Presentation, 
   Copy, 
   FileDown, 
   HelpCircle, 
@@ -947,7 +947,7 @@ export default function MeanDifferencePower() {
               <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-violet-500" strokeWidth={1.5} />
+                    <Presentation className="w-5 h-5 mr-2 text-violet-500" strokeWidth={1.5} />
                     Résultats
                   </h2>
                   {results && (
@@ -1163,7 +1163,7 @@ export default function MeanDifferencePower() {
                     ) : (
                       <div className="text-center py-16">
                         <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                          <BarChart3 className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
+                          <Presentation className="w-8 h-8 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
                         </div>
                         <p className="text-gray-500 dark:text-gray-400 text-lg">
                           Saisissez vos données pour voir les résultats
@@ -1307,7 +1307,7 @@ export default function MeanDifferencePower() {
 
                   <section>
                     <h4 className="text-xl font-semibold mb-4 flex items-center text-blue-700 dark:text-blue-400">
-                      <BarChart3 className="w-6 h-6 mr-3" strokeWidth={1.5} />
+                      <Presentation className="w-6 h-6 mr-3" strokeWidth={1.5} />
                       Références & Documentation
                     </h4>
                     <div className="space-y-5">

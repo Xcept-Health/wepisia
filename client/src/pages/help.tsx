@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { useState, useEffect } from "react";
 import {
-  HelpCircle, ChevronRight, BookOpen, Calculator, BarChart3,
+  HelpCircle, ChevronRight, BookOpen, Calculator, Presentation,
   Table2, Activity, Map, Cpu, FileText, Scale, Users,
   Divide, Sigma, TestTube, Globe, PieChart, Target, Box,
   TrendingUp, Layers, Sliders, Grid, Hash, ListChecks,
@@ -182,7 +182,7 @@ export default function HelpPage() {
 
   // Table of contents items – all blue
   const tocItems = [
-    { id: "biostatistics", label: "Biostatistiques", icon: <BarChart3 className="w-4 h-4" /> },
+    { id: "biostatistics", label: "Biostatistiques", icon: <Presentation className="w-4 h-4" /> },
     { id: "descriptive", label: "Descriptive", parent: "biostatistics" },
     { id: "proportions", label: "Proportions", parent: "biostatistics" },
     { id: "rates", label: "Taux", parent: "biostatistics" },
