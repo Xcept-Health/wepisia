@@ -736,7 +736,7 @@ export default function RxcTable() {
                       </div>
                     </div>
 
-                    {/* Collapsible expected frequencies */}
+                    {/* expected frequencies */}
                     <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
                      
                   
@@ -806,7 +806,7 @@ export default function RxcTable() {
               </div>
 
               <div className="p-6 md:p-8 space-y-8">
-                {/* Section 1 : Principe général */}
+                {/* Section 1  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
@@ -831,7 +831,7 @@ export default function RxcTable() {
                   </div>
                 </section>
 
-                {/* Section 2 : Conditions d'application */}
+                {/* Section 2  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
@@ -854,7 +854,7 @@ export default function RxcTable() {
                   </ul>
                 </section>
 
-                {/* Section 3 : Statistiques fournies */}
+                {/* Section 3  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
@@ -899,7 +899,7 @@ export default function RxcTable() {
                   </div>
                 </section>
 
-                {/* Section 4 : Méthodes avancées */}
+                {/* Section 4  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
@@ -923,7 +923,7 @@ export default function RxcTable() {
                   </p>
                 </section>
 
-                {/* Section 5 : Exemple et référence */}
+                {/* Section 5  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
