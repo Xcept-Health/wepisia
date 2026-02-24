@@ -97,7 +97,20 @@ export default function ScreeningTest() {
   ]);
   const [results, setResults] = useState<ScreeningResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [isRocModalOpen, setIsRocModalOpen] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (isRocModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isRocModalOpen]);
 
   // Recalculate whenever input data changes
   useEffect(() => {
@@ -168,7 +181,7 @@ export default function ScreeningTest() {
     let cumCasesPositive = 0;
     let cumNonCasesPositive = 0;
 
-    // Parcourir du plus pathologique (dernier niveau) au moins pathologique (premier)
+    // Traverse from most pathological (last level) to least (first)
     for (let i = levels.length - 1; i >= 0; i--) {
       cumCasesPositive += levels[i].cases;
       cumNonCasesPositive += levels[i].nonCases;
@@ -177,8 +190,7 @@ export default function ScreeningTest() {
         tpr: cumCasesPositive / totalCases,
       });
     }
-    // Ajouter le point (1,1) si nécessaire (déjà atteint)
-    // Trier par fpr croissant (au cas où)
+    // Sort by fpr ascending (just in case)
     rocPoints.sort((a, b) => a.fpr - b.fpr);
 
     // --- AUC via trapezoidal rule ---
@@ -231,7 +243,7 @@ export default function ScreeningTest() {
       // LR+ and its CI (Katz method)
       let lrPos = 0, lrPosLower = 0, lrPosUpper = 0;
       if (tp > 0 && fp > 0) {
-        lrPos = sens / (1 - spec); // équivalent à (tp/(tp+fn)) / (fp/(fp+tn))
+        lrPos = sens / (1 - spec); // equivalent to (tp/(tp+fn)) / (fp/(fp+tn))
         const seLRPos = Math.sqrt(1 / tp - 1 / (tp + fn) + 1 / fp - 1 / (fp + tn));
         const lnLRPos = Math.log(lrPos);
         lrPosLower = Math.exp(lnLRPos - 1.96 * seLRPos);
@@ -241,7 +253,7 @@ export default function ScreeningTest() {
       // LR- and its CI (Katz method)
       let lrNeg = 0, lrNegLower = 0, lrNegUpper = 0;
       if (fn > 0 && tn > 0) {
-        lrNeg = (1 - sens) / spec; // équivalent à (fn/(tp+fn)) / (tn/(tn+fp))
+        lrNeg = (1 - sens) / spec; // equivalent to (fn/(tp+fn)) / (tn/(tn+fp))
         const seLRNeg = Math.sqrt(1 / fn - 1 / (tp + fn) + 1 / tn - 1 / (tn + fp));
         const lnLRNeg = Math.log(lrNeg);
         lrNegLower = Math.exp(lnLRNeg - 1.96 * seLRNeg);
@@ -258,7 +270,7 @@ export default function ScreeningTest() {
         oddsUpper = Math.exp(lnOdds + 1.96 * seOdds);
       }
 
-      // Kappa de Cohen
+      // Cohen's Kappa
       const observedAcc = acc;
       const expectedAcc = ((tp + fp) / total) * ((tp + fn) / total) +
                          ((fn + tn) / total) * ((fp + tn) / total);
@@ -267,7 +279,7 @@ export default function ScreeningTest() {
       const kappaLower = kappa - 1.96 * seKappa;
       const kappaUpper = kappa + 1.96 * seKappa;
 
-      // Réduction d'entropie (Shannon, log naturel)
+      // Entropy reduction (Shannon, natural log)
       const prev = totalCases / total;
       const hPre = prev > 0 && prev < 1
         ? -prev * Math.log(prev) - (1 - prev) * Math.log(1 - prev)
@@ -281,7 +293,7 @@ export default function ScreeningTest() {
       const entropyPos = hPre > 0 ? 100 * (hPre - hPostPos) / hPre : 0;
       const entropyNeg = hPre > 0 ? 100 * (hPre - hPostNeg) / hPre : 0;
 
-      // Indice de biais
+      // Bias index
       const bias = (tp + fp - fn - tn) / total;
 
       cutoffs.push({
@@ -776,8 +788,8 @@ export default function ScreeningTest() {
                 ) : (
                   <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     
-                        {/* ROC Curve SVG */}
-                        <div className="bg-white dark:bg-slate-900">
+                    {/* ROC Curve SVG - Clickable */}
+                    <div className="bg-white dark:bg-slate-900">
                       <div className="flex justify-between items-start mb-8">
                         <div>
                           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
@@ -792,7 +804,17 @@ export default function ScreeningTest() {
                         </div>
                       </div>
 
-                      <div className="relative flex justify-center">
+                      <div
+                        className="relative flex justify-center cursor-pointer group"
+                        onClick={() => setIsRocModalOpen(true)}
+                      >
+                        {/* Zoom indicator on hover */}
+                        <div className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                          </svg>
+                        </div>
+
                         <svg width={svgWidth} height={svgHeight} className="overflow-visible">
                           <defs>
                             <linearGradient id="rocGradient" x1="0" y1="0" x2="0" y2="1">
@@ -929,8 +951,6 @@ export default function ScreeningTest() {
                       </span>
                     </div>
 
-                
-
                     {/* Cutoff results */}
                     {results.cutoffs.map((c, index) => (
                       <div key={index} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
@@ -1047,7 +1067,161 @@ export default function ScreeningTest() {
           </div>
         </div>
 
-        {/* Modal  */}
+        {/* ROC Modal */}
+        {isRocModalOpen && results && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => setIsRocModalOpen(false)}
+          >
+            <div
+              className="relative bg-white dark:bg-slate-900 rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-auto p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setIsRocModalOpen(false)}
+                className="absolute top-4 right-4 p-2 bg-slate-200 dark:bg-slate-800 rounded-full hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors z-10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Title and AUC */}
+              <div className="flex justify-between items-start mb-6 pr-12">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                    Analyse de Performance ROC
+                  </h3>
+                  <p className="text-sm text-slate-500">Compromis Sensibilité vs Spécificité</p>
+                </div>
+                <div >
+                  <span className="text-blue-600 dark:text-blue-400 font-bold">AUC: {results.auc.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* SVG with viewBox for scalability */}
+              <svg
+                viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                className="w-full h-auto"
+                style={{ maxHeight: '65vh' }}
+              >
+                <defs>
+                  <linearGradient id="rocGradientModal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+
+                {/* Grid lines */}
+                {[0.25, 0.5, 0.75, 1].map((tick) => (
+                  <g key={tick}>
+                    <line
+                      x1={margin.left}
+                      y1={pointToSVG(0, tick).y}
+                      x2={margin.left + plotWidth}
+                      y2={pointToSVG(0, tick).y}
+                      stroke="currentColor"
+                      className="text-slate-100 dark:text-slate-800"
+                      strokeWidth={1}
+                    />
+                    <line
+                      x1={pointToSVG(tick, 0).x}
+                      y1={margin.top}
+                      x2={pointToSVG(tick, 0).x}
+                      y2={margin.top + plotHeight}
+                      stroke="currentColor"
+                      className="text-slate-100 dark:text-slate-800"
+                      strokeWidth={1}
+                    />
+                  </g>
+                ))}
+
+                {/* Chance line */}
+                <line
+                  x1={margin.left}
+                  y1={margin.top + plotHeight}
+                  x2={margin.left + plotWidth}
+                  y2={margin.top}
+                  stroke="currentColor"
+                  className="text-slate-300 dark:text-slate-700"
+                  strokeWidth={1.5}
+                  strokeDasharray="6 4"
+                />
+
+                {/* Area under the curve */}
+                <path
+                  d={`
+                    M ${pointToSVG(0, 0).x} ${pointToSVG(0, 0).y}
+                    ${results.rocPoints.map(p => `L ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`).join(' ')}
+                    L ${pointToSVG(1, 0).x} ${pointToSVG(1, 0).y}
+                    Z
+                  `}
+                  fill="url(#rocGradientModal)"
+                />
+
+                {/* Main ROC curve */}
+                <path
+                  d={results.rocPoints
+                    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${pointToSVG(p.fpr, p.tpr).x} ${pointToSVG(p.fpr, p.tpr).y}`)
+                    .join(' ')}
+                  fill="none"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+
+                {/* Cutoff points */}
+                {results.rocPoints.map((p, i) => (
+                  <circle
+                    key={i}
+                    cx={pointToSVG(p.fpr, p.tpr).x}
+                    cy={pointToSVG(p.fpr, p.tpr).y}
+                    r={4}
+                    className="fill-white stroke-blue-600 dark:fill-slate-900"
+                    strokeWidth={2}
+                  />
+                ))}
+
+                {/* Axis labels */}
+                <text
+                  x={margin.left + plotWidth / 2}
+                  y={margin.top + plotHeight + 35}
+                  className="fill-slate-400 dark:fill-slate-500 text-[10px] font-medium "
+                  textAnchor="middle"
+                >
+                  TAUX DE FAUX POSITIFS (1 - SPÉCIFICITÉ)
+                </text>
+                <text
+                  x={margin.left - 35}
+                  y={margin.top + plotHeight / 2}
+                  className="fill-slate-400 dark:fill-slate-500 text-[10px] font-medium"
+                  textAnchor="middle"
+                  transform={`rotate(-90, ${margin.left - 35}, ${margin.top + plotHeight / 2})`}
+                >
+                  TAUX DE VRAIS POSITIFS (SENSIBILITÉ)
+                </text>
+              </svg>
+
+              {/* Legend */}
+              <div className="flex justify-center gap-8 mt-4 pt-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-1 bg-blue-500 rounded-full" />
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">
+                    Modèle Actuel
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600" />
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">
+                    Hasard
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Help Modal */}
         {showHelpModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
