@@ -775,31 +775,9 @@ export default function ScreeningTest() {
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* AUC card */}
-                    <div
-                      className={`p-6 rounded-3xl text-center border ${
-                        results.auc > 0.7
-                          ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
-                          : 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-800/30'
-                      }`}
-                    >
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Aire sous la courbe ROC (AUC)
-                      </p>
-                      <div
-                        className={`text-4xl font-bold tracking-tight mb-2 ${
-                          results.auc > 0.7 ? 'text-emerald-600' : 'text-amber-600'
-                        }`}
-                      >
-                        {results.auc.toFixed(4)}
-                      </div>
-                      <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
-                        IC 95% : [{results.aucLower.toFixed(4)} – {results.aucUpper.toFixed(4)}]
-                      </span>
-                    </div>
-
-                    {/* ROC Curve SVG */}
-                    <div className="bg-white dark:bg-slate-900">
+                    
+                        {/* ROC Curve SVG */}
+                        <div className="bg-white dark:bg-slate-900">
                       <div className="flex justify-between items-start mb-8">
                         <div>
                           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
@@ -927,6 +905,31 @@ export default function ScreeningTest() {
                         </div>
                       </div>
                     </div>
+                    
+                    {/* AUC card */}
+                    <div
+                      className={`p-6 rounded-3xl text-center border ${
+                        results.auc > 0.7
+                          ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                          : 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-800/30'
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                        Aire sous la courbe ROC (AUC)
+                      </p>
+                      <div
+                        className={`text-4xl font-bold tracking-tight mb-2 ${
+                          results.auc > 0.7 ? 'text-emerald-600' : 'text-amber-600'
+                        }`}
+                      >
+                        {results.auc.toFixed(4)}
+                      </div>
+                      <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
+                        IC 95% : [{results.aucLower.toFixed(4)} – {results.aucUpper.toFixed(4)}]
+                      </span>
+                    </div>
+
+                
 
                     {/* Cutoff results */}
                     {results.cutoffs.map((c, index) => (

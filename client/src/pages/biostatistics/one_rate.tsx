@@ -347,7 +347,7 @@ Rothman/Greenland : [${results.rothman.lower} – ${results.rothman.upper}]`;
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">OneRate</h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Analyse d'un taux et de son intervalle de confiance – PersonTime1 (OpenEpi)
+                Analyse d'un taux et de son intervalle de confiance – PersonTime1
               </p>
             </div>
           </div>
@@ -563,7 +563,7 @@ Rothman/Greenland : [${results.rothman.lower} – ${results.rothman.upper}]`;
           </div>
         </div>
 
-        {/* Sophisticated help modal (RMS style) */}
+        {/* help modal */}
         {showHelpModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
@@ -662,7 +662,7 @@ Rothman/Greenland : [${results.rothman.lower} – ${results.rothman.upper}]`;
                   </div>
                 </section>
 
-                {/* Section 4 : Concrete example */}
+                {/* Section 4 : example */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
