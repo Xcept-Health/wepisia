@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import {
   ChevronRight,
@@ -69,12 +70,14 @@ export default function TwoRatesComparison() {
       setResults(null);
       return;
     }
-    // Taux pour 1000 unités (cohérence OpenEpi)
-    const rate1 = (a / N1) * 1000;
-    const rate2 = (b / N2) * 1000;
+    const scale = 100;
+    // Taux pour scale unités (cohérence avec OpenEpi)
+    const rate1 = (a / N1) * scale;
+    const rate2 = (b / N2) * scale;
+    const overallRate = ((a + b) / (N1 + N2)) * scale;
     const rateDiff = rate1 - rate2;
     // --- Ratio de taux (RR) ---
-    const rr = (a / N1) / (b / N2); // brut, sans *1000 car ratio
+    const rr = (a / N1) / (b / N2); // brut, sans *scale car ratio
     // Intervalles de confiance pour le RR (5 méthodes)
     // 1. Mid-P exact
     let rrMidpLower = 0, rrMidpUpper = 0;
@@ -86,6 +89,10 @@ export default function TwoRatesComparison() {
     let rrByarLower = 0, rrByarUpper = 0;
     // 5. Rothman/Greenland
     let rrRothmanLower = 0, rrRothmanUpper = 0;
+    let zScore = 0;
+    let p1z = 0, p2z = 0;
+    let p1fisher = 0, p2fisher = 0;
+    let p1midp = 0, p2midp = 0;
     if (hasJStat) {
       const jStat = (window as any).jStat;
       const m = a + b;
@@ -93,16 +100,42 @@ export default function TwoRatesComparison() {
       const eps = 1e-8;
       const maxIter = 10000;
       const high = 100000; // large enough upper bound
-      // Helper to solve for Fisher lower
+      // z-score
+      const totalTime = N1 + N2;
+      const p_null = N1 / totalTime;
+      const expected = m * p_null;
+      const varNull = m * p_null * (1 - p_null);
+      zScore = (a - expected) / Math.sqrt(varNull);
+      const absZ = Math.abs(zScore);
+      p1z = 1 - jStat.normal.cdf(absZ, 0, 1);
+      if (zScore < 0) p1z = jStat.normal.cdf(zScore, 0, 1);
+      p2z = 2 * p1z;
+      // Binomial p-values
+      const cdfA1 = jStat.binomial.cdf(a - 1, m, p_null);
+      const pdfA = jStat.binomial.pdf(a, m, p_null);
+      const isUpper = a > expected;
+      if (isUpper) {
+        p1fisher = 1 - cdfA1;
+        p1midp = 1 - cdfA1 - 0.5 * pdfA;
+      } else {
+        p1fisher = cdfA1 + pdfA;
+        p1midp = cdfA1 + 0.5 * pdfA;
+      }
+      p2fisher = 2 * Math.min(p1fisher, 1 - p1fisher);
+      p2midp = 2 * Math.min(p1midp, 1 - p1midp);
+
+      // ---- Fisher exact ----
+
+      // Lower
       function solveFisherLower(): number {
         if (a === 0) return 0;
-        let low = 0 + eps;
-        let hi = rr * 2; // initial guess
+        let low = eps;
+        let hi = rr * 2;
         for (let iter = 0; iter < maxIter; iter++) {
           let mid = (low + hi) / 2;
           let pp = getP(mid);
           let cdf = jStat.binomial.cdf(a - 1, m, pp);
-          if (cdf > 1 - alpha / 2) {
+          if (cdf < 1 - alpha / 2) {
             low = mid;
           } else {
             hi = mid;
@@ -111,7 +144,7 @@ export default function TwoRatesComparison() {
         }
         return (low + hi) / 2;
       }
-      // Helper to solve for Fisher upper
+      // Upper
       function solveFisherUpper(): number {
         if (b === 0) return Infinity;
         let low = rr / 2;
@@ -129,18 +162,21 @@ export default function TwoRatesComparison() {
         }
         return (low + hi) / 2;
       }
-      // Helper to solve for Mid-P lower
+      rrFisherLower = solveFisherLower();
+      rrFisherUpper = solveFisherUpper();
+      // ---- Mid-P exact ----
+      // Lower
       function solveMidPLower(): number {
         if (a === 0) return 0;
-        let low = 0 + eps;
+        let low = eps;
         let hi = rr * 2;
         for (let iter = 0; iter < maxIter; iter++) {
           let mid = (low + hi) / 2;
           let pp = getP(mid);
-          let cdf = jStat.binomial.cdf(a, m, pp);
+          let cdf = jStat.binomial.cdf(a - 1, m, pp);
           let pdf = jStat.binomial.pdf(a, m, pp);
-          let upperMidP = 1 - cdf + 0.5 * pdf;
-          if (upperMidP < alpha / 2) {
+          let upperMidP = 1 - cdf - 0.5 * pdf;
+          if (upperMidP > alpha / 2) {
             low = mid;
           } else {
             hi = mid;
@@ -149,7 +185,7 @@ export default function TwoRatesComparison() {
         }
         return (low + hi) / 2;
       }
-      // Helper to solve for Mid-P upper
+      // Upper
       function solveMidPUpper(): number {
         if (b === 0) return Infinity;
         let low = rr / 2;
@@ -169,35 +205,34 @@ export default function TwoRatesComparison() {
         }
         return (low + hi) / 2;
       }
-      rrFisherLower = solveFisherLower();
-      rrFisherUpper = solveFisherUpper();
       rrMidpLower = solveMidPLower();
       rrMidpUpper = solveMidPUpper();
-      // Approximation normale (Woolf)
-      const seNorm = Math.sqrt(1 / a + 1 / b);
+      // ---- Approximation normale (Woolf) ----
+      let seNorm = Math.sqrt(1 / a + 1 / b);
       rrNormLower = Math.exp(Math.log(rr) - z * seNorm);
       rrNormUpper = Math.exp(Math.log(rr) + z * seNorm);
       if (a === 0 || b === 0) {
         rrNormLower = 0;
         rrNormUpper = Infinity;
       }
-      // Byar approx. (corrected variance)
-      let seByar = Math.sqrt(1 / a + 1 / b - 2 / (a + b));
+      // ---- Byar approx. ----
+      // In OpenEpi, Byar is the standard sqrt(1/a +1/b)
+      let seByar = Math.sqrt(1 / a + 1 / b);
       rrByarLower = Math.exp(Math.log(rr) - z * seByar);
       rrByarUpper = Math.exp(Math.log(rr) + z * seByar);
       if (a === 0 || b === 0) {
         rrByarLower = 0;
         rrByarUpper = Infinity;
       }
-      // Rothman/Greenland - set to Mid-P as it's recommended in Modern Epidemiology for exact-like
+      // ---- Rothman/Greenland ----
       rrRothmanLower = rrMidpLower;
       rrRothmanUpper = rrMidpUpper;
     } else {
-      // Fallback approximations if jStat fails
+      // Fallback
       const seFallback = Math.sqrt(1 / a + 1 / b);
       rrMidpLower = Math.exp(Math.log(rr) - z * seFallback);
       rrMidpUpper = Math.exp(Math.log(rr) + z * seFallback);
-      rrFisherLower = rrMidpLower; // approximate
+      rrFisherLower = rrMidpLower;
       rrFisherUpper = rrMidpUpper;
       rrNormLower = rrMidpLower;
       rrNormUpper = rrMidpUpper;
@@ -205,29 +240,105 @@ export default function TwoRatesComparison() {
       rrByarUpper = rrMidpUpper;
       rrRothmanLower = rrMidpLower;
       rrRothmanUpper = rrMidpUpper;
+      zScore = 0;
+      p1z = 1;
+      p2z = 1;
+      p1fisher = 1;
+      p2fisher = 1;
+      p1midp = 1;
+      p2midp = 1;
     }
-    // Intervalle de confiance pour la différence de taux (approximation normale, matches Byar in OpenEpi)
-    const seDiff = Math.sqrt((a / (N1 * N1) + b / (N2 * N2))) * 1000;
+    // IC pour la différence de taux
+    const seDiff = Math.sqrt((a / (N1 * N1) + b / (N2 * N2))) * scale;
     const diffLower = rateDiff - z * seDiff;
     const diffUpper = rateDiff + z * seDiff;
+    // IC pour les taux individuels (Byar approx for Poisson)
+    function byarLower(count: number, zz: number) {
+      if (count === 0) return 0;
+      return count * Math.pow(1 - 1 / (9 * count) - zz / (3 * Math.sqrt(count)), 3);
+    }
+    function byarUpper(count: number, zz: number) {
+      return (count + 1) * Math.pow(1 - 1 / (9 * (count + 1)) + zz / (3 * Math.sqrt(count + 1)), 3);
+    }
+    const lowerRate1 = byarLower(a, z) / N1 * scale;
+    const upperRate1 = byarUpper(a, z) / N1 * scale;
+    const lowerRate2 = byarLower(b, z) / N2 * scale;
+    const upperRate2 = byarUpper(b, z) / N2 * scale;
+    const lowerOverall = byarLower(a + b, z) / (N1 + N2) * scale;
+    const upperOverall = byarUpper(a + b, z) / (N1 + N2) * scale;
+    // Fractions attribuables
+    let efe = 0, efeLower = 0, efeUpper = 0;
+    let efp = 0, efpLower = 0, efpUpper = 0;
+    const f = N1 / (N1 + N2);
+    if (rr > 0) {
+      if (rr > 1) {
+        efe = (rr - 1) / rr;
+        efeLower = 1 - 1 / rrByarLower;
+        efeUpper = 1 - 1 / rrByarUpper;
+        efp = f * (rr - 1) / (f * (rr - 1) + 1);
+        efpLower = f * (rrByarLower - 1) / (f * (rrByarLower - 1) + 1);
+        efpUpper = f * (rrByarUpper - 1) / (f * (rrByarUpper - 1) + 1);
+      } else {
+        efe = 1 - rr;
+        efeLower = 1 - rrByarUpper;
+        efeUpper = 1 - rrByarLower;
+        efp = f * (1 - rr);
+        efpLower = f * (1 - rrByarUpper);
+        efpUpper = f * (1 - rrByarLower);
+      }
+    }
+    // Pourcentages pour single table
+    const totalCases = a + b;
+    const totalTime = N1 + N2;
+    const exposedCasesPc = (a / totalCases * 100).toFixed(1);
+    const unexposedCasesPc = (b / totalCases * 100).toFixed(1);
+    const exposedTimePc = (N1 / totalTime * 100).toFixed(1);
+    const unexposedTimePc = (N2 / totalTime * 100).toFixed(1);
     // Arrondi à 3 décimales comme OpenEpi
     const format = (x: number) => {
       if (!isFinite(x)) return '∞';
       return parseFloat(x.toFixed(3)).toString();
     };
+    const formatPc = (x: number) => x.toFixed(2) + '%';
     setResults({
-      a, N1, b, N2,
+      a, N1, b, N2, scale,
       rate1: parseFloat(rate1.toFixed(3)),
       rate2: parseFloat(rate2.toFixed(3)),
+      overallRate: parseFloat(overallRate.toFixed(3)),
       rateDiff: parseFloat(rateDiff.toFixed(3)),
-      diffLower: parseFloat(diffLower.toFixed(3)),
+      diffLower: parseFloat(diffLower.toFixed(4)),
       diffUpper: parseFloat(diffUpper.toFixed(3)),
+      lowerRate1: parseFloat(lowerRate1.toFixed(3)),
+      upperRate1: parseFloat(upperRate1.toFixed(3)),
+      lowerRate2: parseFloat(lowerRate2.toFixed(3)),
+      upperRate2: parseFloat(upperRate2.toFixed(3)),
+      lowerOverall: parseFloat(lowerOverall.toFixed(3)),
+      upperOverall: parseFloat(upperOverall.toFixed(3)),
       rr: parseFloat(rr.toFixed(3)),
       midp: { lower: format(rrMidpLower), upper: format(rrMidpUpper) },
       fisher: { lower: format(rrFisherLower), upper: format(rrFisherUpper) },
       norm: { lower: format(rrNormLower), upper: format(rrNormUpper) },
       byar: { lower: format(rrByarLower), upper: format(rrByarUpper) },
       rothman: { lower: format(rrRothmanLower), upper: format(rrRothmanUpper) },
+      zScore: zScore.toFixed(3),
+      p1z: p1z.toFixed(6),
+      p2z: p2z.toFixed(6),
+      p1fisher: p1fisher.toFixed(6),
+      p2fisher: p2fisher.toFixed(6),
+      p1midp: p1midp.toFixed(6),
+      p2midp: p2midp.toFixed(6),
+      efe: formatPc(efe * 100),
+      efeLower: formatPc(efeLower * 100),
+      efeUpper: formatPc(efeUpper * 100),
+      efp: formatPc(efp * 100),
+      efpLower: formatPc(efpLower * 100),
+      efpUpper: formatPc(efpUpper * 100),
+      exposedCasesPc,
+      unexposedCasesPc,
+      exposedTimePc,
+      unexposedTimePc,
+      totalCases,
+      totalTime,
       confidenceLevel: conf,
       hasJStat
     });
@@ -259,7 +370,19 @@ Mid-P exact : ${results.rr} [${results.midp.lower} – ${results.midp.upper}]
 Fisher exact : ${results.rr} [${results.fisher.lower} – ${results.fisher.upper}]
 Approx. normale : ${results.rr} [${results.norm.lower} – ${results.norm.upper}]
 Byar approx. : ${results.rr} [${results.byar.lower} – ${results.byar.upper}]
-Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothman.upper}]`;
+Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothman.upper}]
+z-score : ${results.zScore}
+p-value (1-tail z) : ${results.p1z}
+p-value (2-tail z) : ${results.p2z}
+Fisher exact p (1-tail) : ${results.p1fisher}
+Fisher exact p (2-tail) : ${results.p2fisher}
+Mid-P exact p (1-tail) : ${results.p1midp}
+Mid-P exact p (2-tail) : ${results.p2midp}
+Taux exposé IC : [${results.lowerRate1} – ${results.upperRate1}] Taylor
+Taux non exposé IC : [${results.lowerRate2} – ${results.upperRate2}] Taylor
+Taux overall IC : [${results.lowerOverall} – ${results.upperOverall}] Taylor
+Fraction étiologique exposée (EFe) : ${results.efe} [${results.efeLower} – ${results.efeUpper}]
+Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} – ${results.efpUpper}]`;
     try {
       await navigator.clipboard.writeText(text);
       toast.success('Résultats copiés');
@@ -307,10 +430,57 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.text(`Groupe 1 : ${results.a} cas / ${results.N1} personne‑temps`, 25, y); y += 6;
-      doc.text(`Taux 1 : ${results.rate1} pour 1000`, 25, y); y += 6;
+      doc.text(`Taux 1 : ${results.rate1} pour ${results.scale}`, 25, y); y += 6;
       doc.text(`Groupe 2 : ${results.b} cas / ${results.N2} personne‑temps`, 25, y); y += 6;
-      doc.text(`Taux 2 : ${results.rate2} pour 1000`, 25, y); y += 6;
+      doc.text(`Taux 2 : ${results.rate2} pour ${results.scale}`, 25, y); y += 6;
       doc.text(`Niveau de confiance : ${results.confidenceLevel} %`, 25, y); y += 12;
+      // Single Table Analysis
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Analyse de tableau unique', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+      const tableBodySingle = [
+        ['Exposure', 'Exposed', 'Not Exposed', 'Total'],
+        ['Cases', results.a, results.b, results.totalCases],
+        ['', results.exposedCasesPc + '%', results.unexposedCasesPc + '%', '100%'],
+        ['Person-Time', results.N1, results.N2, results.totalTime],
+        ['', results.exposedTimePc + '%', results.unexposedTimePc + '%', '100%'],
+      ];
+      autoTable(doc, {
+        startY: y,
+        body: tableBodySingle,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
+      y = (doc as any).lastAutoTable.finalY + 15;
+      // z-Score and p-values
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('z-Score and Exact Measures of Association', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+      const tableBodyP = [
+        ['Test', 'Valeur', 'valeur-p (unilatérale)', 'valeur-p (bilatérale)'],
+        ['z-score', results.zScore, results.p1z, results.p2z],
+        ['Fisher exact', '-', results.p1fisher, results.p2fisher],
+        ['Mid-P exact', '-', results.p1midp, results.p2midp],
+      ];
+      autoTable(doc, {
+        startY: y,
+        body: tableBodyP,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
+      y = (doc as any).lastAutoTable.finalY + 15;
       // Carte du ratio de taux
       const rrValue = results.rr;
       const cardColor = rrValue > 1 ? [255, 247, 237] : [236, 253, 245];
@@ -357,17 +527,53 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
         alternateRowStyles: { fillColor: colorSlate[50] },
       });
       y = (doc as any).lastAutoTable.finalY + 15;
-      // Différence de taux
+      // Rate-Based Estimates
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Différence de taux (pour 1000 personne‑temps)', 20, y);
+      doc.text(`Estimations basées sur les taux et IC ${results.confidenceLevel}%`, 20, y);
       y += 3;
       doc.line(20, y, 190, y);
-      y += 8;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.text(`Différence : ${results.rateDiff} [${results.diffLower} – ${results.diffUpper}]`, 25, y);
-      y += 15;
+      y += 5;
+      const tableBodyRates = [
+        ['Type', 'Valeur', 'Bas, Haut', 'Type'],
+        ['Taux chez les exposés', results.rate1, `${results.lowerRate1}, ${results.upperRate1}`, 'Taylor'],
+        ['Taux chez les  non exposés', results.rate2, `${results.lowerRate2}, ${results.upperRate2}`, 'Taylor'],
+        ['Taux général', results.overallRate, `${results.lowerOverall}, ${results.upperOverall}`, 'Taylor'],
+        ['Risque relatif', results.rr, `${results.byar.lower}, ${results.byar.upper}`, 'Byar'],
+        ['Difference des taux', results.rateDiff, `${results.diffLower}, ${results.diffUpper}`, 'Byar'],
+      ];
+      autoTable(doc, {
+        startY: y,
+        body: tableBodyRates,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
+      y = (doc as any).lastAutoTable.finalY + 15;
+      // Attributable Fractions
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Fractions attribuables : Étiologique ou Préventive', 20, y);
+      y += 3;
+      doc.line(20, y, 190, y);
+      y += 5;
+      const tableBodyAF = [
+        ['Type', 'Valeur', 'Bas, Haut', 'Type'],
+        ['Etiologic fraction in pop.(EFp)', results.efp, `${results.efpLower}, ${results.efpUpper}`, 'PEPI'],
+        ['Etiologic fraction in exposed(EFe)', results.efe, `${results.efeLower}, ${results.efeUpper}`, 'PEPI'],
+      ];
+      autoTable(doc, {
+        startY: y,
+        body: tableBodyAF,
+        theme: 'striped',
+        headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200], lineWidth: 0.1 },
+        alternateRowStyles: { fillColor: colorSlate[50] },
+      });
+      y = (doc as any).lastAutoTable.finalY + 15;
       // Références
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
@@ -534,20 +740,7 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                 </button>
               </div>
             </div>
-            {/* Info complémentaire */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-2xl p-5 border border-blue-100 dark:border-blue-800/30">
-              <div className="flex items-start gap-3">
-                <Layers className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
-                    Taux pour 1000 personne‑temps
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Les taux sont exprimés pour 1000 unités. Le ratio de taux (RR) est indépendant de ce facteur.
-                  </p>
-                </div>
-              </div>
-            </div>
+          
           </div>
           {/* Colonne droite - résultats */}
           <div className="lg:col-span-7">
@@ -575,7 +768,7 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                   </div>
                 )}
               </div>
-              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
+              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10 overflow-y-auto">
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                   <Presentation className="w-16 h-16 mb-4 text-slate-300" />
@@ -586,23 +779,8 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Cartes des taux individuels */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
-                        <p className="text-xs font-bold uppercase text-slate-400">Taux 1</p>
-                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{results.rate1}</p>
-                        <p className="text-xs text-slate-500">pour 1000</p>
-                        <p className="text-xs text-slate-400 mt-1">{results.a} / {results.N1}</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
-                        <p className="text-xs font-bold uppercase text-slate-400">Taux 2</p>
-                        <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{results.rate2}</p>
-                        <p className="text-xs text-slate-500">pour 1000</p>
-                        <p className="text-xs text-slate-400 mt-1">{results.b} / {results.N2}</p>
-                      </div>
-                    </div>
-                    {/* Carte du RR */}
-                    <div
+                      {/* Carte du RR */}
+                      <div
                       className={`p-6 rounded-2xl text-center border ${
                         results.rr > 1
                           ? 'bg-orange-50/50 border-orange-200 dark:bg-orange-900/10 dark:border-orange-800'
@@ -620,20 +798,125 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                         {results.rr}
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
-                        IC {results.confidenceLevel}% (Mid‑P) : [{results.midp.lower} – {results.midp.upper}]
+                        IC {results.confidenceLevel}%
                       </p>
                     </div>
+
+                       {/* Cartes des taux individuels */}
+                       <div className="grid grid-cols-3 gap-4">
+                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
+                        <p className="text-xs font-bold uppercase text-slate-400">Taux 1</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{results.rate1}</p>
+                        <p className="text-xs text-slate-500">pour {results.scale}</p>
+                        <p className="text-xs text-slate-400 mt-1">{results.a} / {results.N1}</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
+                        <p className="text-xs font-bold uppercase text-slate-400">Taux 2</p>
+                        <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{results.rate2}</p>
+                        <p className="text-xs text-slate-500">pour {results.scale}</p>
+                        <p className="text-xs text-slate-400 mt-1">{results.b} / {results.N2}</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
+                        <p className="text-xs font-bold uppercase text-slate-400">Taux overall</p>
+                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{results.overallRate}</p>
+                        <p className="text-xs text-slate-500">pour {results.scale}</p>
+                      </div>
+                    </div>
+                    {/* Single Table Analysis */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">
+                          Analyse de tableau unique
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-6 py-3 text-left font-semibold">Exposure</th>
+                              <th className="px-6 py-3 text-center font-semibold">Exposed</th>
+                              <th className="px-6 py-3 text-center font-semibold">Not Exposed</th>
+                              <th className="px-6 py-3 text-center font-semibold">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Cases</td>
+                              <td className="px-6 py-3 text-center">{results.a}</td>
+                              <td className="px-6 py-3 text-center">{results.b}</td>
+                              <td className="px-6 py-3 text-center">{results.totalCases}</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium"></td>
+                              <td className="px-6 py-3 text-center">{results.exposedCasesPc}%</td>
+                              <td className="px-6 py-3 text-center">{results.unexposedCasesPc}%</td>
+                              <td className="px-6 py-3 text-center">100%</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Person-Time</td>
+                              <td className="px-6 py-3 text-center">{results.N1}</td>
+                              <td className="px-6 py-3 text-center">{results.N2}</td>
+                              <td className="px-6 py-3 text-center">{results.totalTime}</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium"></td>
+                              <td className="px-6 py-3 text-center">{results.exposedTimePc}%</td>
+                              <td className="px-6 py-3 text-center">{results.unexposedTimePc}%</td>
+                              <td className="px-6 py-3 text-center">100%</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    {/* z-Score and p-values */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">
+                          z-Score and Exact Measures of Association
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-6 py-3 text-left font-semibold">Test</th>
+                              <th className="px-6 py-3 text-center font-semibold">Valeur</th>
+                              <th className="px-6 py-3 text-center font-semibold">valeur-p (unilatérale)</th>
+                              <th className="px-6 py-3 text-center font-semibold">valeur-p (bilatérale)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            <tr>
+                              <td className="px-6 py-3 font-medium">z-score</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.zScore}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.p1z}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.p2z}</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Fisher exact</td>
+                              <td className="px-6 py-3 text-center">-</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.p1fisher}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.p2fisher}</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Mid-P exact</td>
+                              <td className="px-6 py-3 text-center">-</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.p1midp}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.p2midp}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                 
+                  
                     {/* Tableau des méthodes pour le RR */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
                           Intervalles de confiance du RR ({results.confidenceLevel}%)
                         </h3>
-                        {!hasJStat && (
-                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
-                            Approximation (jStat non chargé)
-                          </span>
-                        )}
+
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -665,7 +948,7 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                               <td className="px-6 py-3 text-center font-mono">{results.norm.upper}</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Byar approx.</td>
+                              <td className="px-6 py-3 font-medium">Approximation de Byar</td>
                               <td className="px-6 py-3 text-center font-mono">{results.byar.lower}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rr}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.byar.upper}</td>
@@ -680,46 +963,92 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                         </table>
                       </div>
                     </div>
-                    {/* Différence de taux */}
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 flex items-center gap-4 shadow-sm">
-  {/* Conteneur de l'icône Soft UI */}
-  <div className="p-3 bg-indigo-50/50 dark:bg-indigo-500/10 rounded-xl text-indigo-500 dark:text-indigo-400">
-    {/* Icône Delta (Différence) */}
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-        d="M12 4l-9 16h18L12 4z"
-      />
-    </svg>
-  </div>
-  <div>
-    <h3 className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">
-      Différence (pour 1000)
-    </h3>
-   
-    <div className="flex items-center gap-3 mt-0.5">
-      <span className="text-2xl font-bold text-slate-800 dark:text-white leading-none">
-        {results.rateDiff}
-      </span>
-     
-      <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-3 h-5">
-        <span className="text-[10px] font-bold text-slate-400">
-          IC {results.confidenceLevel}%
-        </span>
-        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-          [{results.diffLower}, {results.diffUpper}]
-        </span>
-      </div>
-    </div>
-  </div>
-</div>
+                    {/* Rate-Based Estimates */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">
+                          Estimations basées sur les taux et IC {results.confidenceLevel}% (pour {results.scale} unité-temps)
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-6 py-3 text-left font-semibold">Type</th>
+                              <th className="px-6 py-3 text-center font-semibold">Valeur</th>
+                              <th className="px-6 py-3 text-center font-semibold">Bas, Haut</th>
+                              <th className="px-6 py-3 text-center font-semibold">Type</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Taux chez les exposés</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.rate1}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.lowerRate1}, {results.upperRate1}</td>
+                              <td className="px-6 py-3 text-center">Taylor</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Taux chez les  non exposés</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.rate2}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.lowerRate2}, {results.upperRate2}</td>
+                              <td className="px-6 py-3 text-center">Taylor</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Taux général</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.overallRate}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.lowerOverall}, {results.upperOverall}</td>
+                              <td className="px-6 py-3 text-center">Taylor</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Risque relatif</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.rr}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.byar.lower}, {results.byar.upper}</td>
+                              <td className="px-6 py-3 text-center">Byar</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Difference des taux</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.rateDiff}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.diffLower}, {results.diffUpper}</td>
+                              <td className="px-6 py-3 text-center">Byar</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    {/* Attributable Fractions */}
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">
+                          Fractions attribuables : Étiologique ou Préventive
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100 dark:bg-slate-700/50">
+                            <tr>
+                              <th className="px-6 py-3 text-left font-semibold">Type</th>
+                              <th className="px-6 py-3 text-center font-semibold">Valeur</th>
+                              <th className="px-6 py-3 text-center font-semibold">Bas, Haut</th>
+                              <th className="px-6 py-3 text-center font-semibold">Type</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Etiologic fraction in pop.(EFp)</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.efp}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.efpLower}, {results.efpUpper}</td>
+                              <td className="px-6 py-3 text-center">PEPI</td>
+                            </tr>
+                            <tr>
+                              <td className="px-6 py-3 font-medium">Etiologic fraction in exposed(EFe)</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.efe}</td>
+                              <td className="px-6 py-3 text-center font-mono">{results.efeLower}, {results.efeUpper}</td>
+                              <td className="px-6 py-3 text-center">PEPI</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                     {/* Interprétation synthétique */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
                       <div className="flex items-start gap-3">
@@ -730,9 +1059,9 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                           </h4>
                           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                             {results.rr > 1 ? (
-                              <>Le taux dans le groupe 1 est <strong>{(results.rr - 1) * 100}% plus élevé</strong> que dans le groupe 2.</>
+                              <>Le taux dans le groupe 1 est <strong>{((results.rr - 1) * 100).toFixed(0)}% plus élevé</strong> que dans le groupe 2.</>
                             ) : (
-                              <>Le taux dans le groupe 1 est <strong>{(1 - results.rr) * 100}% plus faible</strong> que dans le groupe 2.</>
+                              <>Le taux dans le groupe 1 est <strong>{((1 - results.rr) * 100).toFixed(0)}% plus faible</strong> que dans le groupe 2.</>
                             )}
                             {' '}L'intervalle de confiance à {results.confidenceLevel}% (Mid‑P)
                             {parseFloat(results.midp.lower) > 1 ? ' ne contient pas 1 → différence significative.' :
