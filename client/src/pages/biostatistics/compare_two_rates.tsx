@@ -21,7 +21,6 @@ import { Link } from 'wouter';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-
 export default function TwoRatesComparison() {
   const [events1, setEvents1] = useState<string>('');
   const [personTime1, setPersonTime1] = useState<string>('');
@@ -32,10 +31,8 @@ export default function TwoRatesComparison() {
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showMethodDetails, setShowMethodDetails] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
-
   // Vérification de la disponibilité de jStat
   const hasJStat = typeof (window as any).jStat !== 'undefined';
-
   // Chargement des scripts externes
   useEffect(() => {
     const loadScripts = async () => {
@@ -47,38 +44,37 @@ export default function TwoRatesComparison() {
     };
     loadScripts();
   }, []);
-
   // Recalcul automatique
   useEffect(() => {
     if (events1 && personTime1 && events2 && personTime2) {
       calculateTwoRates();
     }
   }, [events1, personTime1, events2, personTime2, confidenceLevel]);
-
   // Fonction de calcul conforme à OpenEpi PersonTime2
   const calculateTwoRates = () => {
-    const a = parseFloat(events1) || 0;     // cas groupe 1
+    const a = parseFloat(events1) || 0; // cas groupe 1
     const N1 = parseFloat(personTime1) || 0; // temps groupe 1
-    const b = parseFloat(events2) || 0;     // cas groupe 2
+    const b = parseFloat(events2) || 0; // cas groupe 2
     const N2 = parseFloat(personTime2) || 0; // temps groupe 2
     const conf = parseInt(confidenceLevel);
     const alpha = (100 - conf) / 100;
     const z = conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
-
     if (N1 <= 0 || N2 <= 0) {
       toast.error('Le temps-personne doit être positif.');
       setResults(null);
       return;
     }
-
+    if (a === 0 && b === 0) {
+      toast.error('Au moins un groupe doit avoir des cas.');
+      setResults(null);
+      return;
+    }
     // Taux pour 1000 unités (cohérence OpenEpi)
     const rate1 = (a / N1) * 1000;
     const rate2 = (b / N2) * 1000;
     const rateDiff = rate1 - rate2;
-
     // --- Ratio de taux (RR) ---
     const rr = (a / N1) / (b / N2); // brut, sans *1000 car ratio
-
     // Intervalles de confiance pour le RR (5 méthodes)
     // 1. Mid-P exact
     let rrMidpLower = 0, rrMidpUpper = 0;
@@ -90,44 +86,94 @@ export default function TwoRatesComparison() {
     let rrByarLower = 0, rrByarUpper = 0;
     // 5. Rothman/Greenland
     let rrRothmanLower = 0, rrRothmanUpper = 0;
-
     if (hasJStat) {
       const jStat = (window as any).jStat;
-
-      // ---- Mid-P exact (basé sur Poisson conditionnel) ----
-      // Approximation : on utilise la méthode de l'intervalle de confiance pour le ratio de deux poisson
-      // avec correction de continuité Mid-P
-      const rateRatioMidP = (a / N1) / (b / N2);
-      const seLogMidP = Math.sqrt(1 / Math.max(a, 0.5) + 1 / Math.max(b, 0.5));
-      rrMidpLower = Math.exp(Math.log(rateRatioMidP) - z * seLogMidP);
-      rrMidpUpper = Math.exp(Math.log(rateRatioMidP) + z * seLogMidP);
-      // Ajustement pour zéro événement
-      if (a === 0 || b === 0) {
-        const corr = 0.5;
-        const rrCorr = ((a + corr) / N1) / ((b + corr) / N2);
-        const seCorr = Math.sqrt(1 / (a + corr) + 1 / (b + corr));
-        rrMidpLower = Math.exp(Math.log(rrCorr) - z * seCorr);
-        rrMidpUpper = Math.exp(Math.log(rrCorr) + z * seCorr);
+      const m = a + b;
+      const getP = (r: number) => (r * N1) / (r * N1 + N2);
+      const eps = 1e-8;
+      const maxIter = 10000;
+      const high = 100000; // large enough upper bound
+      // Helper to solve for Fisher lower
+      function solveFisherLower(): number {
+        if (a === 0) return 0;
+        let low = 0 + eps;
+        let hi = rr * 2; // initial guess
+        for (let iter = 0; iter < maxIter; iter++) {
+          let mid = (low + hi) / 2;
+          let pp = getP(mid);
+          let cdf = jStat.binomial.cdf(a - 1, m, pp);
+          if (cdf > 1 - alpha / 2) {
+            low = mid;
+          } else {
+            hi = mid;
+          }
+          if (hi - low < eps) break;
+        }
+        return (low + hi) / 2;
       }
-
-      // ---- Fisher exact (chi² conditionnel) ----
-      // Basé sur la distribution hypergéométrique conditionnelle (test de Mantel-Haenszel pour un seul 2x2)
-      // On utilise l'approximation du chi² de Mantel-Haenszel avec correction de continuité
-      // Intervalle de confiance par la méthode de Cornfield (approche chi²)
-      const totalCases = a + b;
-      const totalTime1 = N1;
-      const totalTime2 = N2;
-      // Fonction de recherche de l'intervalle par méthode de Cornfield (simplifiée)
-      // Ici, on utilise l'approximation de Woolf (log RR ± z * SE)
-      const seFisher = Math.sqrt(1 / a + 1 / b);
-      rrFisherLower = Math.exp(Math.log(rr) - z * seFisher);
-      rrFisherUpper = Math.exp(Math.log(rr) + z * seFisher);
-      if (a === 0 || b === 0) {
-        rrFisherLower = 0;
-        rrFisherUpper = Infinity;
+      // Helper to solve for Fisher upper
+      function solveFisherUpper(): number {
+        if (b === 0) return Infinity;
+        let low = rr / 2;
+        let hi = high;
+        for (let iter = 0; iter < maxIter; iter++) {
+          let mid = (low + hi) / 2;
+          let pp = getP(mid);
+          let cdf = jStat.binomial.cdf(a, m, pp);
+          if (cdf < alpha / 2) {
+            hi = mid;
+          } else {
+            low = mid;
+          }
+          if (hi - low < eps) break;
+        }
+        return (low + hi) / 2;
       }
-
-      // ---- Approximation normale (Woolf) ----
+      // Helper to solve for Mid-P lower
+      function solveMidPLower(): number {
+        if (a === 0) return 0;
+        let low = 0 + eps;
+        let hi = rr * 2;
+        for (let iter = 0; iter < maxIter; iter++) {
+          let mid = (low + hi) / 2;
+          let pp = getP(mid);
+          let cdf = jStat.binomial.cdf(a, m, pp);
+          let pdf = jStat.binomial.pdf(a, m, pp);
+          let upperMidP = 1 - cdf + 0.5 * pdf;
+          if (upperMidP < alpha / 2) {
+            low = mid;
+          } else {
+            hi = mid;
+          }
+          if (hi - low < eps) break;
+        }
+        return (low + hi) / 2;
+      }
+      // Helper to solve for Mid-P upper
+      function solveMidPUpper(): number {
+        if (b === 0) return Infinity;
+        let low = rr / 2;
+        let hi = high;
+        for (let iter = 0; iter < maxIter; iter++) {
+          let mid = (low + hi) / 2;
+          let pp = getP(mid);
+          let cdf = jStat.binomial.cdf(a - 1, m, pp);
+          let pdf = jStat.binomial.pdf(a, m, pp);
+          let lowerMidP = cdf + 0.5 * pdf;
+          if (lowerMidP < alpha / 2) {
+            hi = mid;
+          } else {
+            low = mid;
+          }
+          if (hi - low < eps) break;
+        }
+        return (low + hi) / 2;
+      }
+      rrFisherLower = solveFisherLower();
+      rrFisherUpper = solveFisherUpper();
+      rrMidpLower = solveMidPLower();
+      rrMidpUpper = solveMidPUpper();
+      // Approximation normale (Woolf)
       const seNorm = Math.sqrt(1 / a + 1 / b);
       rrNormLower = Math.exp(Math.log(rr) - z * seNorm);
       rrNormUpper = Math.exp(Math.log(rr) + z * seNorm);
@@ -135,51 +181,40 @@ export default function TwoRatesComparison() {
         rrNormLower = 0;
         rrNormUpper = Infinity;
       }
-
-      // ---- Byar (Poisson approximation) ----
-      // Utilise la formule de Byar pour l'IC du ratio de deux poisson
-      const rrByar = rr;
-      if (a > 0 && b > 0) {
-        const logRR = Math.log(rrByar);
-        const seByar = Math.sqrt(1 / a - 1 / (a + b) + 1 / b - 1 / (a + b));
-        rrByarLower = Math.exp(logRR - z * seByar);
-        rrByarUpper = Math.exp(logRR + z * seByar);
-      } else {
+      // Byar approx. (corrected variance)
+      let seByar = Math.sqrt(1 / a + 1 / b - 2 / (a + b));
+      rrByarLower = Math.exp(Math.log(rr) - z * seByar);
+      rrByarUpper = Math.exp(Math.log(rr) + z * seByar);
+      if (a === 0 || b === 0) {
         rrByarLower = 0;
         rrByarUpper = Infinity;
       }
-
-      // ---- Rothman/Greenland (modern epidemiology) ----
-      // Intervalle de confiance basé sur le score
-      // On utilise l'approximation de Miettinen : RR^(1 ± z/χ)
-      // Simplifié ici par la méthode de Woolf
-      rrRothmanLower = rrNormLower;
-      rrRothmanUpper = rrNormUpper;
+      // Rothman/Greenland - set to Mid-P as it's recommended in Modern Epidemiology for exact-like
+      rrRothmanLower = rrMidpLower;
+      rrRothmanUpper = rrMidpUpper;
     } else {
-      // Fallback
-      rrMidpLower = rr * 0.8;
-      rrMidpUpper = rr * 1.2;
-      rrFisherLower = rr * 0.8;
-      rrFisherUpper = rr * 1.2;
-      rrNormLower = rr * 0.8;
-      rrNormUpper = rr * 1.2;
-      rrByarLower = rr * 0.8;
-      rrByarUpper = rr * 1.2;
-      rrRothmanLower = rr * 0.8;
-      rrRothmanUpper = rr * 1.2;
+      // Fallback approximations if jStat fails
+      const seFallback = Math.sqrt(1 / a + 1 / b);
+      rrMidpLower = Math.exp(Math.log(rr) - z * seFallback);
+      rrMidpUpper = Math.exp(Math.log(rr) + z * seFallback);
+      rrFisherLower = rrMidpLower; // approximate
+      rrFisherUpper = rrMidpUpper;
+      rrNormLower = rrMidpLower;
+      rrNormUpper = rrMidpUpper;
+      rrByarLower = rrMidpLower;
+      rrByarUpper = rrMidpUpper;
+      rrRothmanLower = rrMidpLower;
+      rrRothmanUpper = rrMidpUpper;
     }
-
-    // Intervalle de confiance pour la différence de taux (approximation normale)
+    // Intervalle de confiance pour la différence de taux (approximation normale, matches Byar in OpenEpi)
     const seDiff = Math.sqrt((a / (N1 * N1) + b / (N2 * N2))) * 1000;
     const diffLower = rateDiff - z * seDiff;
     const diffUpper = rateDiff + z * seDiff;
-
     // Arrondi à 3 décimales comme OpenEpi
     const format = (x: number) => {
       if (!isFinite(x)) return '∞';
       return parseFloat(x.toFixed(3)).toString();
     };
-
     setResults({
       a, N1, b, N2,
       rate1: parseFloat(rate1.toFixed(3)),
@@ -197,7 +232,6 @@ export default function TwoRatesComparison() {
       hasJStat
     });
   };
-
   // Handlers
   const clear = () => {
     setEvents1('');
@@ -207,7 +241,6 @@ export default function TwoRatesComparison() {
     setResults(null);
     toast.info('Champs réinitialisés');
   };
-
   const loadExample = () => {
     setEvents1('50');
     setPersonTime1('1000');
@@ -215,14 +248,12 @@ export default function TwoRatesComparison() {
     setPersonTime2('1200');
     toast.success('Exemple chargé (taux 50/1000 vs 30/1200)');
   };
-
   const copyResults = async () => {
     if (!results) return;
     const text = `Comparaison de deux taux – OpenEpi PersonTime2
 Taux 1 : ${results.rate1} pour 1000 (${results.a} / ${results.N1})
 Taux 2 : ${results.rate2} pour 1000 (${results.b} / ${results.N2})
 Différence : ${results.rateDiff} [${results.diffLower} – ${results.diffUpper}]
-
 Ratio de taux (RR) et IC ${results.confidenceLevel}% :
 Mid-P exact : ${results.rr} [${results.midp.lower} – ${results.midp.upper}]
 Fisher exact : ${results.rr} [${results.fisher.lower} – ${results.fisher.upper}]
@@ -236,13 +267,11 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       toast.error('Échec de la copie');
     }
   };
-
   const exportPDF = () => {
     if (!results) {
       toast.error('Veuillez d’abord effectuer un calcul');
       return;
     }
-
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const colorPrimary: [number, number, number] = [59, 130, 246];
@@ -254,7 +283,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
         700: [51, 65, 85] as [number, number, number],
         900: [15, 23, 42] as [number, number, number],
       };
-
       // En-tête
       doc.setFillColor(...colorSlate[50]);
       doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
@@ -267,7 +295,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       doc.setTextColor(...colorSlate[500]);
       doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
       doc.text('TwoRates – OpenEpi PersonTime2', 190, 32, { align: 'right' });
-
       // Données saisies
       let y = 55;
       doc.setFont('helvetica', 'bold');
@@ -284,7 +311,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       doc.text(`Groupe 2 : ${results.b} cas / ${results.N2} personne‑temps`, 25, y); y += 6;
       doc.text(`Taux 2 : ${results.rate2} pour 1000`, 25, y); y += 6;
       doc.text(`Niveau de confiance : ${results.confidenceLevel} %`, 25, y); y += 12;
-
       // Carte du ratio de taux
       const rrValue = results.rr;
       const cardColor = rrValue > 1 ? [255, 247, 237] : [236, 253, 245];
@@ -300,7 +326,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       doc.setFontSize(26);
       doc.text(results.rr.toString(), 105, y + 26, { align: 'center' });
       y += 45;
-
       // Tableau des IC pour le RR
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -308,7 +333,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
-
       const tableBody = [
         ['Mid-P exact', results.midp.lower, results.rr, results.midp.upper],
         ['Fisher exact', results.fisher.lower, results.rr, results.fisher.upper],
@@ -316,7 +340,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
         ['Byar approx.', results.byar.lower, results.rr, results.byar.upper],
         ['Rothman/Greenland', results.rothman.lower, results.rr, results.rothman.upper],
       ];
-
       autoTable(doc, {
         startY: y,
         head: [['Méthode', 'CL bas', 'RR', 'CL haut']],
@@ -333,9 +356,7 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
         styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200], lineWidth: 0.1 },
         alternateRowStyles: { fillColor: colorSlate[50] },
       });
-
       y = (doc as any).lastAutoTable.finalY + 15;
-
       // Différence de taux
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -347,7 +368,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       doc.setFontSize(10);
       doc.text(`Différence : ${results.rateDiff} [${results.diffLower} – ${results.diffUpper}]`, 25, y);
       y += 15;
-
       // Références
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
@@ -357,7 +377,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       doc.text('Approximation normale: Rosner – Fondamentaux de Biostatistiques (5e Éd.)', 20, y); y += 4;
       doc.text('Coef. Poisson approx. Byar: Rothman & Boice – Analyse épidémiologique avec calculateur programmable, 1979', 20, y); y += 4;
       doc.text('Rothman/Greenland: Modern Epidemiology (2e Éd.)', 20, y); y += 4;
-
       // Pied de page
       const footerY = 280;
       doc.setDrawColor(...colorSlate[200]);
@@ -367,7 +386,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       doc.setTextColor(...colorSlate[500]);
       doc.text('TwoRates – conforme OpenEpi PersonTime2', 20, footerY + 5);
       doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
-
       doc.save(`TwoRates_${results.a}_${results.b}.pdf`);
       toast.success('Rapport PDF exporté');
     } catch (error) {
@@ -375,7 +393,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
       toast.error('Erreur PDF');
     }
   };
-
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
@@ -387,7 +404,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
             <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">TwoRates</span></li>
           </ol>
         </nav>
-
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
@@ -408,7 +424,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
             <HelpCircle className="w-4 h-4" />
           </button>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Colonne gauche - saisie */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
@@ -453,7 +468,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                     </div>
                   </div>
                 </div>
-
                 {/* Groupe 2 */}
                 <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
@@ -490,7 +504,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                     </div>
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
                     Niveau de confiance
@@ -506,7 +519,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                   </select>
                 </div>
               </div>
-
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
                 <button
                   onClick={loadExample}
@@ -522,7 +534,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                 </button>
               </div>
             </div>
-
             {/* Info complémentaire */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-2xl p-5 border border-blue-100 dark:border-blue-800/30">
               <div className="flex items-start gap-3">
@@ -538,7 +549,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
               </div>
             </div>
           </div>
-
           {/* Colonne droite - résultats */}
           <div className="lg:col-span-7">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
@@ -591,7 +601,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                         <p className="text-xs text-slate-400 mt-1">{results.b} / {results.N2}</p>
                       </div>
                     </div>
-
                     {/* Carte du RR */}
                     <div
                       className={`p-6 rounded-2xl text-center border ${
@@ -614,7 +623,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                         IC {results.confidenceLevel}% (Mid‑P) : [{results.midp.lower} – {results.midp.upper}]
                       </p>
                     </div>
-
                     {/* Tableau des méthodes pour le RR */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -672,50 +680,46 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                         </table>
                       </div>
                     </div>
-
                     {/* Différence de taux */}
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                        <Scale className="w-4 h-4 text-blue-500" />
-                        Différence de taux (pour 1000)
-                      </h3>
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                          {results.rateDiff}
-                        </span>
-                        <span className="text-sm text-slate-500">
-                          IC {results.confidenceLevel}% : [{results.diffLower} – {results.diffUpper}]
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Détails des méthodes (repliable) */}
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-                      <button
-                        onClick={() => setShowMethodDetails(!showMethodDetails)}
-                        className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
-                      >
-                        <ChevronDown
-                          className={`w-4 h-4 transition-transform ${
-                            showMethodDetails ? 'rotate-180' : ''
-                          }`}
-                        />
-                        {showMethodDetails ? 'Masquer' : 'Afficher'} les références des méthodes
-                      </button>
-                      {showMethodDetails && (
-                        <div className="mt-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 animate-in slide-in-from-top-2">
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Mid-P exact test</span> – Miettinen (1974d), modification décrite dans « Analyse épidémiologique avec calculateur programmable, 1979 ».</p>
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Test exact de Fisher</span> – Armitage (1971), Snedecor & Cochran (1965) ; repris dans « Analyse épidémiologique avec calculateur programmable, 1979 ».</p>
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Approximation normale</span> – Rosner, « Fondamentaux de Biostatistiques » (5e Éd.).</p>
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Coef. Poisson approx. Byar</span> – Rothman & Boice, « Analyse épidémiologique avec calculateur programmable, 1979 ».</p>
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Rothman/Greenland</span> – « Modern Epidemiology » (2e Éd.).</p>
-                          <p className="mt-2 text-blue-600 dark:text-blue-400 italic">
-                            Résultats tirés de OpenEpi, version 3, logiciel libre de calcul – PersonTime2.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 flex items-center gap-4 shadow-sm">
+  {/* Conteneur de l'icône Soft UI */}
+  <div className="p-3 bg-indigo-50/50 dark:bg-indigo-500/10 rounded-xl text-indigo-500 dark:text-indigo-400">
+    {/* Icône Delta (Différence) */}
+    <svg
+      className="w-6 h-6"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        d="M12 4l-9 16h18L12 4z"
+      />
+    </svg>
+  </div>
+  <div>
+    <h3 className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">
+      Différence (pour 1000)
+    </h3>
+   
+    <div className="flex items-center gap-3 mt-0.5">
+      <span className="text-2xl font-bold text-slate-800 dark:text-white leading-none">
+        {results.rateDiff}
+      </span>
+     
+      <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-3 h-5">
+        <span className="text-[10px] font-bold text-slate-400">
+          IC {results.confidenceLevel}%
+        </span>
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          [{results.diffLower}, {results.diffUpper}]
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
                     {/* Interprétation synthétique */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
                       <div className="flex items-start gap-3">
@@ -730,9 +734,9 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                             ) : (
                               <>Le taux dans le groupe 1 est <strong>{(1 - results.rr) * 100}% plus faible</strong> que dans le groupe 2.</>
                             )}
-                            {' '}L'intervalle de confiance à {results.confidenceLevel}% (Mid‑P) 
-                            {parseFloat(results.midp.lower) > 1 ? ' ne contient pas 1 → différence significative.' : 
-                             parseFloat(results.midp.upper) < 1 ? ' ne contient pas 1 → différence significative.' : 
+                            {' '}L'intervalle de confiance à {results.confidenceLevel}% (Mid‑P)
+                            {parseFloat(results.midp.lower) > 1 ? ' ne contient pas 1 → différence significative.' :
+                             parseFloat(results.midp.upper) < 1 ? ' ne contient pas 1 → différence significative.' :
                              ' contient 1 → non significatif.'}
                           </p>
                         </div>
@@ -744,7 +748,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
             </div>
           </div>
         </div>
-
         {/* Modal d'aide - style RMS */}
         {showHelpModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -764,7 +767,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
               <div className="p-6 md:p-8 space-y-8">
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
@@ -779,7 +781,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                     de confiance par plusieurs méthodes (exactes et approchées).
                   </p>
                 </section>
-
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
@@ -794,7 +795,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                     <div className="text-xs text-slate-500">Effet protecteur dans le groupe 1</div>
                   </div>
                 </div>
-
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
@@ -818,7 +818,6 @@ Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothma
                     Source : OpenEpi – RateRatio / PersonTime2 <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
-
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
