@@ -4,36 +4,34 @@ import {
   Play, Loader2, Terminal, Image as ImageIcon, 
   AlertCircle, FileCode2, Code2, Download,
   X, ChevronLeft, ChevronRight, Maximize2, Layers,
-  Package, DownloadCloud, Pause, Film
+  Package, DownloadCloud, Pause, Film, RotateCcw
 } from 'lucide-react';
+
+const STORAGE_KEY = 'webr_editor_code';
 
 export default function UltraRStudio() {
   const [webR, setWebR] = useState(null);
-  const [code, setCode] = useState(`# --- Moving Epidemic Curve ---
+  const [code, setCode] = useState(() => {
+    // Restaurer depuis localStorage au chargement
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved || `# --- Moving Epidemic Curve ---
 par(mar=c(2, 2, 2, 1), bg=NA)
 x <- seq(-5, 10, length.out = 200)
 
 for (i in 1:40) {
-  # The mean moves from 0 to 5
   mu <- i / 8
   y <- dnorm(x, mean = mu, sd = 1.5)
   
-  # Base plot
   plot(x, y, type="n", ylim=c(0, 0.3), axes=FALSE, ann=FALSE)
-  
-  # Soft Blue Area (Tailwind blue-500 with alpha)
   polygon(c(x, rev(x)), c(y, rep(0, 200)), col="#3b82f622", border=NA)
-  
-  # Stronger blue line
   lines(x, y, col="#3b82f6", lwd=3)
-  
-  # Minimalist markers
   axis(1, at=c(-5, 0, 5, 10), col="#cbd5e1", col.axis="#94a3b8", cex.axis=0.7)
   title(main="Projected Trend Analysis", adj=0, col.main="#1e293b", cex.main=0.8)
   
   Sys.sleep(0.04)
 }
-`);
+`;
+  });
 
   const [output, setOutput] = useState('');
   const [plotUrls, setPlotUrls] = useState([]);
@@ -53,6 +51,11 @@ for (i in 1:40) {
   const [selectedImgIndex, setSelectedImgIndex] = useState(null);
 
   const textareaRef = useRef(null);
+
+  // Sauvegarder le code dans localStorage à chaque changement
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, code);
+  }, [code]);
 
   // Clean R code
   const cleanRCode = (rawCode) => {
@@ -83,16 +86,11 @@ for (i in 1:40) {
   useEffect(() => {
     if (isPlaying && plotUrls.length > 0) {
       const animate = () => {
-        setCurrentFrame((prev) => {
-          const next = (prev + 1) % plotUrls.length;
-          return next;
-        });
+        setCurrentFrame((prev) => (prev + 1) % plotUrls.length);
       };
-      animationRef.current = setInterval(animate, 150); // 150ms par frame
+      animationRef.current = setInterval(animate, 150);
     } else {
-      if (animationRef.current) {
-        clearInterval(animationRef.current);
-      }
+      if (animationRef.current) clearInterval(animationRef.current);
     }
     return () => {
       if (animationRef.current) clearInterval(animationRef.current);
@@ -105,8 +103,18 @@ for (i in 1:40) {
     setIsPlaying(false);
   }, [plotUrls]);
 
+  // Fonction pour réinitialiser l'état d'erreur
+  const resetError = () => {
+    setStatus('Actif');
+    setErrorMsg('');
+  };
+
   const execute = async () => {
-    if (!webR || status !== 'Actif') return;
+    // Si en erreur, on réinitialise automatiquement avant d'exécuter
+    if (status === 'error') resetError();
+    
+    if (!webR || (status !== 'Actif' && status !== 'error')) return;
+    
     setStatus('execution');
     setPlotUrls([]);
     setErrorMsg('');
@@ -186,6 +194,7 @@ for (i in 1:40) {
   };
 
   const installPackage = async () => {
+    if (status === 'error') resetError();
     if (!webR || status !== 'Actif' || !installPkg.trim()) return;
     setInstalling(true);
     setErrorMsg('');
@@ -290,12 +299,12 @@ for (i in 1:40) {
             </div>
 
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase">
-              <div className={`w-2 h-2 rounded-full ${status === 'Actif' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+              <div className={`w-2 h-2 rounded-full ${status === 'Actif' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-amber-500 animate-pulse'}`} />
               {status}
             </div>
             <button
               onClick={execute}
-              disabled={status !== 'Actif'}
+              disabled={status === 'execution' || installing}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-95"
             >
               {status === 'execution' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} fill="currentColor" />}
@@ -328,9 +337,19 @@ for (i in 1:40) {
               
               {/* Console Output */}
               <div>
-                <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <Terminal size={14} /> Console
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Terminal size={14} /> Console
+                  </h3>
+                  {errorMsg && (
+                    <button
+                      onClick={resetError}
+                      className="flex items-center gap-1 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                    >
+                      <RotateCcw size={14} /> Réinitialiser
+                    </button>
+                  )}
+                </div>
                 <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800">
                   {errorMsg ? (
                     <div className="text-red-500 font-mono text-sm flex gap-3">
@@ -432,7 +451,7 @@ for (i in 1:40) {
         </main>
       </div>
 
-      {/* Lightbox Modal (amélioré pour afficher la frame courante si en animation) */}
+      {/* Lightbox Modal */}
       {selectedImgIndex !== null && (
         <div className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-xl flex flex-col animate-in fade-in duration-300">
           <header className="flex justify-between items-center p-6 text-white">
