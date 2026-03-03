@@ -50,8 +50,26 @@ import {
 
 /**
  * Home page – Landing page of the OpenEPI application.
- * Displays a hero section, a command palette (⌘K), a bento grid of featured modules,
- * and a full list of available tools in a responsive card layout.
+ * 
+ * This component serves as the main entry point of the application. It provides:
+ * - A hero section with a title and a search bar that opens a command palette (⌘K).
+ * - A command palette listing all available modules with categories for quick navigation.
+ * - A bento grid highlighting featured modules (Biostatistics, AI, Geospatial, Simulation).
+ * - A comprehensive grid of all tools (epidemiological calculators, sample size, power, etc.)
+ *   with responsive card layout and hover effects.
+ * - A floating navigation bar (desktop) and a mobile drawer menu.
+ * - An interactive 3D globe in the Geospatial card to illustrate mapping capabilities.
+ * - A footer with branding and links.
+ * 
+ * The component uses Framer Motion for animations, Lucide icons, and a custom command palette
+ * from shadcn/ui. All links are handled by wouter's Link component for client-side routing.
+ * 
+ * Implementation notes:
+ * - The command palette is triggered by Cmd+K / Ctrl+K and contains all modules.
+ * - Tools are defined in a constant array with metadata (title, description, href, icon, color).
+ * - The globe auto-rotates using the globeRef and its controls.
+ * - Responsive design: mobile menu slides in from the right, grid adapts using col-span classes.
+ * - Dark mode support via Tailwind's dark: variants.
  */
 export default function Home() {
   // --- State ---
@@ -334,58 +352,84 @@ export default function Home() {
       </div>
 
       {/* Floating navigation bar */}
-      <nav className="fixed top-6 inset-x-0 z-[100] max-w-5xl mx-auto px-4">
-        <div className="bg-white/70 dark:bg-black/70 backdrop-blur-2xl border border-white/20 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.05)] rounded-3xl h-16 flex items-center justify-between px-6">
-          <div className="flex items-center gap-2">
-            <span className="font-bold tracking-tighter text-lg">
-              OpenEPI <span className="font-light opacity-50">Reedited</span>
-            </span>
-          </div>
+{/* Floating navigation bar */}
+<nav className="fixed top-6 inset-x-0 z-[100] max-w-5xl mx-auto px-4">
+  <div className={`
+    flex items-center justify-between px-6 h-16
+    /* Sur mobile : pas de fond, pas de bordure, pas d'ombre */
+    bg-transparent dark:bg-transparent border-none shadow-none
+    /* À partir de md : fond semi-transparent, flou, bordure, ombre */
+    md:bg-white/70 md:dark:bg-black/70 md:backdrop-blur-2xl 
+    md:border md:border-white/20 md:dark:border-white/10 
+    md:shadow-[0_8px_32px_rgba(0,0,0,0.05)] md:rounded-3xl
+  `}>
+    {/* Logo - caché sur mobile */}
+    <div className="hidden md:flex items-center gap-2">
+      <span className="font-bold tracking-tighter text-lg">
+        OpenEPI <span className="font-light opacity-50">Reedited</span>
+      </span>
+    </div>
 
-          {/* Desktop navigation links */}
-          <div className="hidden md:flex items-center gap-6">
-            {navLinks.map((item) => (
-              <a
-                key={item}
-                href="#"
-                className="text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
-              >
-                {item}
-              </a>
-            ))}
-            <button className="bg-slate-900 dark:bg-white dark:text-black text-white px-5 py-2 rounded-2xl text-xs font-bold hover:scale-105 transition-transform active:scale-95">
-              Aide
-            </button>
-          </div>
+    {/* Liens desktop (toujours cachés sur mobile) */}
+    <div className="hidden md:flex items-center gap-6">
+      {navLinks.map((item) => (
+        <a
+          key={item}
+          href="#"
+          className="text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
+        >
+          {item}
+        </a>
+      ))}
+      <button className="bg-slate-900 dark:bg-white dark:text-black text-white px-5 py-2 rounded-2xl text-xs font-bold hover:scale-105 transition-transform active:scale-95">
+        Aide
+      </button>
+    </div>
 
-          {/* Mobile menu button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-slate-900 dark:text-white"
-          >
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
+    {/* Bouton hamburger - ml-auto pour le pousser à droite sur mobile */}
+    <button
+      onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      className="md:hidden p-2 text-slate-900 dark:text-white ml-auto z-50"
+      aria-label="Menu"
+    >
+      {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+    </button>
+  </div>
 
-        {/* Mobile menu dropdown */}
-        {mobileMenuOpen && (
-          <div className="md:hidden mt-2 bg-white/90 dark:bg-black/90 backdrop-blur-2xl border border-white/20 rounded-3xl p-4 shadow-xl flex flex-col gap-4 animate-in fade-in zoom-in duration-200">
-            {navLinks.map((item) => (
-              <a
-                key={item}
-                href="#"
-                onClick={() => setMobileMenuOpen(false)}
-                className="px-4 py-2 text-sm font-medium border-b border-gray-100 dark:border-white/5 last:border-none"
-              >
-                {item}
-              </a>
-            ))}
-            <button className="w-full bg-slate-900 dark:bg-white dark:text-black text-white py-3 rounded-xl text-sm font-bold">
-              Aide
-            </button>
-          </div>
-        )}
-      </nav>
+  {/* Overlay mobile */}
+  {mobileMenuOpen && (
+    <div
+      className="fixed inset-0 bg-black/20 backdrop-blur-sm md:hidden z-40 animate-fade-in"
+      onClick={() => setMobileMenuOpen(false)}
+    />
+  )}
+
+  {/* Drawer mobile – glisse depuis la droite */}
+  <div
+    className={`
+      fixed top-0 right-0 h-full w-64 bg-white dark:bg-slate-900 shadow-xl z-50
+      transform transition-transform duration-300 ease-in-out
+      ${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}
+      md:hidden
+    `}
+  >
+    <div className="flex flex-col p-6 pt-20 gap-4">
+      {navLinks.map((item) => (
+        <a
+          key={item}
+          href="#"
+          onClick={() => setMobileMenuOpen(false)}
+          className="text-lg font-medium py-2 border-b border-gray-100 dark:border-white/10"
+        >
+          {item}
+        </a>
+      ))}
+      <button className="w-full bg-slate-900 dark:bg-white dark:text-black text-white py-3 rounded-xl text-sm font-bold mt-4">
+        Aide
+      </button>
+    </div>
+  </div>
+</nav>
 
       {/* Hero section */}
       <header className="relative z-10 pt-45 pb-30 px-6">
@@ -585,16 +629,15 @@ export default function Home() {
                 <X size={24} />
               </button>
               <nav className="flex flex-col gap-8">
-                {['Introduction', 'Biostatistiques', 'Simulation', 'Géospatial', 'Workspace'].map(
-                  (item) => (
-                    <button
-                      key={item}
-                      className="text-3xl font-bold tracking-tighter text-left hover:text-blue-600 transition-colors"
-                    >
-                      {item}
-                    </button>
-                  )
-                )}
+                      {navLinks.map((item) => (
+                <a
+                  key={item}
+                  href="#"
+                  className="text-base font-medium opacity-60 hover:opacity-100 transition-opacity"
+                >
+                  {item}
+                </a>
+              ))}
               </nav>
             </motion.div>
           </>
