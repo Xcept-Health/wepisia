@@ -8,14 +8,10 @@ import {
   FileDown,
   HelpCircle,
   X,
-  Trash2,
   Info,
   RotateCcw,
   ArrowRight,
-  ChevronDown,
   TrendingUp,
-  Scale,
-  Layers,
   Activity
 } from 'lucide-react';
 import { Link } from 'wouter';
@@ -71,11 +67,13 @@ export default function TwoRatesComparison() {
       return;
     }
     const scale = 100;
+
     // Taux pour scale unités (cohérence avec OpenEpi)
     const rate1 = (a / N1) * scale;
     const rate2 = (b / N2) * scale;
     const overallRate = ((a + b) / (N1 + N2)) * scale;
     const rateDiff = rate1 - rate2;
+
     // --- Ratio de taux (RR) ---
     const rr = (a / N1) / (b / N2); // brut, sans *scale car ratio
     // Intervalles de confiance pour le RR (5 méthodes)
@@ -110,6 +108,7 @@ export default function TwoRatesComparison() {
       p1z = 1 - jStat.normal.cdf(absZ, 0, 1);
       if (zScore < 0) p1z = jStat.normal.cdf(zScore, 0, 1);
       p2z = 2 * p1z;
+
       // Binomial p-values
       const cdfA1 = jStat.binomial.cdf(a - 1, m, p_null);
       const pdfA = jStat.binomial.pdf(a, m, p_null);
@@ -639,7 +638,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
               </h2>
               <div className="space-y-6">
                 {/* Groupe 1 */}
-                <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl">
+                <div className="space-y-4 p-4  rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <Activity className="w-4 h-4 text-blue-500" /> Groupe 1
                   </h3>
@@ -675,7 +674,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                   </div>
                 </div>
                 {/* Groupe 2 */}
-                <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl">
+                <div className="space-y-4 p-4  rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <Activity className="w-4 h-4 text-indigo-500" /> Groupe 2
                   </h3>
@@ -1087,7 +1086,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide – TwoRates (PersonTime2)
+                  Guide : TwoRates (PersonTime2)
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}

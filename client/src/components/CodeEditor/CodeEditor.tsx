@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 
 interface CodeEditorProps {
