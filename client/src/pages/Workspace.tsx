@@ -6,7 +6,7 @@ import {
   X, ChevronLeft, ChevronRight, Maximize2, Layers,
   Package, DownloadCloud, Pause, Film, RotateCcw,
   Plus, FolderOpen, Save, HelpCircle, CornerDownRight,
-  ArrowRight
+  Menu, Edit2, Copy, Trash2, Check, X as XIcon
 } from 'lucide-react';
 
 // ----- Types -----
@@ -16,6 +16,13 @@ interface RFile {
   code: string;
   language: 'r';
   saved?: boolean;
+}
+
+interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  fileId: string;
 }
 
 const STORAGE_KEY = 'webr_editor_state';
@@ -89,9 +96,14 @@ for (i in 1:40) {
   const [consoleHistory, setConsoleHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, fileId: '' });
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
+  const [newFileName, setNewFileName] = useState('');
+  const [showMobileExplorer, setShowMobileExplorer] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const consoleInputRef = useRef<HTMLInputElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // ----- Persistence -----
   useEffect(() => {
@@ -342,14 +354,14 @@ for (i in 1:40) {
     input.click();
   };
 
-  const saveFile = () => {
-    const active = files.find(f => f.id === activeFileId);
-    if (!active) return;
-    const blob = new Blob([active.code], { type: 'text/plain' });
+  const saveFile = (fileId?: string) => {
+    const file = fileId ? files.find(f => f.id === fileId) : files.find(f => f.id === activeFileId);
+    if (!file) return;
+    const blob = new Blob([file.code], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = active.name;
+    a.download = file.name;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -369,9 +381,58 @@ for (i in 1:40) {
     }
   };
 
+  const renameFile = (id: string, newName: string) => {
+    setFiles(prev => prev.map(f => f.id === id ? { ...f, name: newName } : f));
+    setRenamingFileId(null);
+  };
+
+  const copyFile = (id: string) => {
+    const original = files.find(f => f.id === id);
+    if (!original) return;
+    // Trouver un nom unique
+    let newName = original.name.replace(/(\.[^.]*)$/, '-copie$1');
+    if (newName === original.name) newName = original.name + '-copie';
+    let counter = 1;
+    while (files.some(f => f.name === newName)) {
+      newName = original.name.replace(/(\.[^.]*)$/, `-copie${counter}$1`);
+      counter++;
+    }
+    const newId = Date.now().toString();
+    const newFile: RFile = {
+      id: newId,
+      name: newName,
+      code: original.code,
+      language: 'r',
+      saved: true
+    };
+    setFiles([...files, newFile]);
+    setActiveFileId(newId);
+  };
+
   const updateCode = (value: string) => {
     setFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, code: value, saved: false } : f));
   };
+
+  // ----- Context menu -----
+  const handleContextMenu = (e: React.MouseEvent, fileId: string) => {
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      fileId
+    });
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(prev => ({ ...prev, visible: false }));
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // ----- Keyboard shortcuts -----
   useEffect(() => {
@@ -465,7 +526,10 @@ for (i in 1:40) {
           <Terminal size={24} />
         </button>
         <button 
-          onClick={() => setShowFileExplorer(!showFileExplorer)}
+          onClick={() => {
+            setShowFileExplorer(!showFileExplorer);
+            setShowMobileExplorer(false);
+          }}
           className={`p-3 rounded-xl transition-all ${showFileExplorer ? 'text-indigo-600' : 'text-slate-400'}`}
           title="Explorateur de fichiers"
         >
@@ -478,11 +542,19 @@ for (i in 1:40) {
         >
           <HelpCircle size={24} />
         </button>
+        {/* Bouton pour mobile */}
+        <button 
+          onClick={() => setShowMobileExplorer(!showMobileExplorer)}
+          className="lg:hidden p-3 text-slate-400 hover:text-indigo-600"
+          title="Menu"
+        >
+          <Menu size={24} />
+        </button>
       </nav>
 
-      {/* File Explorer Panel (simplifié, liste plate) */}
+      {/* File Explorer Panel (desktop) */}
       {showFileExplorer && (
-        <div className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col">
+        <div className="hidden lg:flex w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col">
           <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase text-slate-500">Explorateur</h3>
             <button onClick={addNewFile} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded">
@@ -492,22 +564,151 @@ for (i in 1:40) {
           <div className="flex-1 overflow-y-auto p-2 text-sm">
             {files.map(file => (
               <div key={file.id} 
-                   className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 ${
-                     activeFileId === file.id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : ''
-                   }`}
-                   onClick={() => setActiveFileId(file.id)}>
+                onContextMenu={(e) => handleContextMenu(e, file.id)}
+                className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  activeFileId === file.id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : ''
+                }`}
+                onClick={() => setActiveFileId(file.id)}>
                 <FileCode2 size={14} />
-                <span className="flex-1 truncate">{file.name}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); closeFile(file.id); }}
-                  className="text-slate-400 hover:text-red-500"
-                  title="Supprimer"
-                >
-                  <X size={14} />
-                </button>
+                {renamingFileId === file.id ? (
+                  <form className="flex-1 flex items-center gap-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (newFileName.trim()) renameFile(file.id, newFileName.trim());
+                    }}>
+                    <input
+                      type="text"
+                      value={newFileName}
+                      onChange={(e) => setNewFileName(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 px-1 py-0.5 text-xs rounded border border-indigo-300 outline-none"
+                      autoFocus
+                      onBlur={() => setRenamingFileId(null)}
+                    />
+                    <button type="submit" className="text-green-600"><Check size={14} /></button>
+                    <button type="button" onClick={() => setRenamingFileId(null)} className="text-red-600"><XIcon size={14} /></button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="flex-1 truncate">{file.name}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); closeFile(file.id); }}
+                      className="text-slate-400 hover:text-red-500"
+                      title="Supprimer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Mobile File Explorer (overlay) */}
+      {showMobileExplorer && (
+        <div className="lg:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={() => setShowMobileExplorer(false)}>
+          <div className="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-slate-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase text-slate-500">Explorateur</h3>
+              <button onClick={addNewFile} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded">
+                <Plus size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 text-sm">
+              {files.map(file => (
+                <div key={file.id} 
+                  onContextMenu={(e) => handleContextMenu(e, file.id)}
+                  className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                    activeFileId === file.id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : ''
+                  }`}
+                  onClick={() => {
+                    setActiveFileId(file.id);
+                    setShowMobileExplorer(false);
+                  }}>
+                  <FileCode2 size={14} />
+                  {renamingFileId === file.id ? (
+                    <form className="flex-1 flex items-center gap-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (newFileName.trim()) renameFile(file.id, newFileName.trim());
+                      }}>
+                      <input
+                        type="text"
+                        value={newFileName}
+                        onChange={(e) => setNewFileName(e.target.value)}
+                        className="w-full bg-white dark:bg-slate-800 px-1 py-0.5 text-xs rounded border border-indigo-300 outline-none"
+                        autoFocus
+                        onBlur={() => setRenamingFileId(null)}
+                      />
+                      <button type="submit" className="text-green-600"><Check size={14} /></button>
+                      <button type="button" onClick={() => setRenamingFileId(null)} className="text-red-600"><XIcon size={14} /></button>
+                    </form>
+                  ) : (
+                    <>
+                      <span className="flex-1 truncate">{file.name}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeFile(file.id); }}
+                        className="text-slate-400 hover:text-red-500"
+                        title="Supprimer"
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu.visible && (
+        <div
+          ref={contextMenuRef}
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl py-1 min-w-40"
+        >
+          <button
+            className="w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            onClick={() => {
+              setRenamingFileId(contextMenu.fileId);
+              const file = files.find(f => f.id === contextMenu.fileId);
+              setNewFileName(file?.name || '');
+              setContextMenu({ ...contextMenu, visible: false });
+            }}
+          >
+            <Edit2 size={14} /> Renommer
+          </button>
+          <button
+            className="w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            onClick={() => {
+              copyFile(contextMenu.fileId);
+              setContextMenu({ ...contextMenu, visible: false });
+            }}
+          >
+            <Copy size={14} /> Copier
+          </button>
+          <button
+            className="w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            onClick={() => {
+              saveFile(contextMenu.fileId);
+              setContextMenu({ ...contextMenu, visible: false });
+            }}
+          >
+            <Save size={14} /> Sauvegarder
+          </button>
+          <hr className="my-1 border-slate-200 dark:border-slate-700" />
+          <button
+            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+            onClick={() => {
+              closeFile(contextMenu.fileId);
+              setContextMenu({ ...contextMenu, visible: false });
+            }}
+          >
+            <Trash2 size={14} /> Supprimer
+          </button>
         </div>
       )}
 
@@ -519,6 +720,7 @@ for (i in 1:40) {
           <div className="flex items-center gap-2 overflow-x-auto">
             {files.map(file => (
               <div key={file.id}
+                onContextMenu={(e) => handleContextMenu(e, file.id)}
                 onClick={() => setActiveFileId(file.id)}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-t-lg text-sm border-b-2 cursor-pointer ${
                   activeFileId === file.id 
@@ -527,14 +729,34 @@ for (i in 1:40) {
                 }`}
               >
                 <FileCode2 size={14} />
-                <span className="max-w-[120px] truncate">{file.name}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); closeFile(file.id); }}
-                  className="ml-1 text-slate-400 hover:text-red-500 rounded-full hover:bg-red-50 p-0.5"
-                  title="Supprimer"
-                >
-                  <X size={12} />
-                </button>
+                {renamingFileId === file.id ? (
+                  <form className="flex items-center gap-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (newFileName.trim()) renameFile(file.id, newFileName.trim());
+                    }}>
+                    <input
+                      type="text"
+                      value={newFileName}
+                      onChange={(e) => setNewFileName(e.target.value)}
+                      className="w-20 bg-white dark:bg-slate-800 px-1 py-0.5 text-xs rounded border border-indigo-300 outline-none"
+                      autoFocus
+                      onBlur={() => setRenamingFileId(null)}
+                    />
+                    <button type="submit" className="text-green-600"><Check size={12} /></button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="max-w-[120px] truncate">{file.name}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); closeFile(file.id); }}
+                      className="ml-1 text-slate-400 hover:text-red-500 rounded-full hover:bg-red-50 p-0.5"
+                      title="Supprimer"
+                    >
+                      <X size={12} />
+                    </button>
+                  </>
+                )}
               </div>
             ))}
             <button onClick={addNewFile} className="p-1.5 text-slate-400 hover:text-indigo-600" title="Nouveau fichier">
@@ -546,7 +768,7 @@ for (i in 1:40) {
             <button onClick={openFile} className="p-2 text-slate-400 hover:text-indigo-600" title="Ouvrir un fichier">
               <FolderOpen size={18} />
             </button>
-            <button onClick={saveFile} className="p-2 text-slate-400 hover:text-indigo-600" title="Sauvegarder (Ctrl+S)">
+            <button onClick={() => saveFile()} className="p-2 text-slate-400 hover:text-indigo-600" title="Sauvegarder (Ctrl+S)">
               <Save size={18} />
             </button>
             <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-1" />
