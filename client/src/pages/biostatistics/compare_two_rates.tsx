@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import {
   ChevronRight,
@@ -18,19 +17,37 @@ import { Link } from 'wouter';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+/**
+ * Two Rates Comparison (PersonTime2)
+ * 
+ * This component replicates OpenEpi's PersonTime2 module for comparing two incidence rates.
+ * It computes rate ratio (RR), rate difference, confidence intervals using multiple methods
+ * (Mid‑P exact, Fisher exact, normal approximation, Byar, Rothman/Greenland), and hypothesis tests.
+ * 
+ * All exact calculations rely on the jStat library for binomial and normal distributions.
+ * The component dynamically loads jStat from a CDN if not already present.
+ * 
+ * Outputs are formatted to match OpenEpi's presentation, including single‑table analysis,
+ * z‑scores, p‑values, and attributable fractions.
+ */
+
 export default function TwoRatesComparison() {
-  const [events1, setEvents1] = useState<string>('');
-  const [personTime1, setPersonTime1] = useState<string>('');
-  const [events2, setEvents2] = useState<string>('');
-  const [personTime2, setPersonTime2] = useState<string>('');
-  const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
-  const [results, setResults] = useState<any>(null);
-  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
-  const [showMethodDetails, setShowMethodDetails] = useState<boolean>(false);
-  const resultsRef = useRef<HTMLDivElement>(null);
-  // Vérification de la disponibilité de jStat
+  // ----- State declarations -----
+  const [events1, setEvents1] = useState<string>('');           // Cases in group 1
+  const [personTime1, setPersonTime1] = useState<string>('');   // Person‑time in group 1
+  const [events2, setEvents2] = useState<string>('');           // Cases in group 2
+  const [personTime2, setPersonTime2] = useState<string>('');   // Person‑time in group 2
+  const [confidenceLevel, setConfidenceLevel] = useState<string>('95'); // Confidence level (90,95,99)
+  const [results, setResults] = useState<any>(null);            // Computed results object
+  const [showHelpModal, setShowHelpModal] = useState<boolean>(false); // Help modal visibility
+  const [showMethodDetails, setShowMethodDetails] = useState<boolean>(false); // (Unused) kept for consistency
+  const resultsRef = useRef<HTMLDivElement>(null);              // Reference to results container
+
+  // Check if jStat is already available (e.g., from global scope)
   const hasJStat = typeof (window as any).jStat !== 'undefined';
-  // Chargement des scripts externes
+
+  // ----- Dynamic loading of jStat -----
   useEffect(() => {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
@@ -40,22 +57,27 @@ export default function TwoRatesComparison() {
       }
     };
     loadScripts();
-  }, []);
-  // Recalcul automatique
+  }, []); // Runs once on mount
+
+  // ----- Automatic recalculation whenever inputs change -----
   useEffect(() => {
     if (events1 && personTime1 && events2 && personTime2) {
       calculateTwoRates();
     }
   }, [events1, personTime1, events2, personTime2, confidenceLevel]);
-  // Fonction de calcul conforme à OpenEpi PersonTime2
+
+  // ----- Core calculation function (matches OpenEpi PersonTime2) -----
   const calculateTwoRates = () => {
-    const a = parseFloat(events1) || 0; // cas groupe 1
-    const N1 = parseFloat(personTime1) || 0; // temps groupe 1
-    const b = parseFloat(events2) || 0; // cas groupe 2
-    const N2 = parseFloat(personTime2) || 0; // temps groupe 2
+    const a = parseFloat(events1) || 0;   // cases group 1
+    const N1 = parseFloat(personTime1) || 0; // person‑time group 1
+    const b = parseFloat(events2) || 0;   // cases group 2
+    const N2 = parseFloat(personTime2) || 0; // person‑time group 2
     const conf = parseInt(confidenceLevel);
     const alpha = (100 - conf) / 100;
+    // z‑score for the chosen confidence level (two‑tailed)
     const z = conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
+
+    // Input validation
     if (N1 <= 0 || N2 <= 0) {
       toast.error('Le temps-personne doit être positif.');
       setResults(null);
@@ -66,42 +88,46 @@ export default function TwoRatesComparison() {
       setResults(null);
       return;
     }
-    const scale = 100;
 
-    // Taux pour scale unités (cohérence avec OpenEpi)
+    const scale = 100; // Rates are expressed per `scale` units (e.g., per 100 person‑years)
+
+    // ----- Basic rates (per scale units) -----
     const rate1 = (a / N1) * scale;
     const rate2 = (b / N2) * scale;
     const overallRate = ((a + b) / (N1 + N2)) * scale;
     const rateDiff = rate1 - rate2;
 
-    // --- Ratio de taux (RR) ---
-    const rr = (a / N1) / (b / N2); // brut, sans *scale car ratio
-    // Intervalles de confiance pour le RR (5 méthodes)
-    // 1. Mid-P exact
+    // ----- Rate ratio (RR) -----
+    const rr = (a / N1) / (b / N2); // raw ratio (no scale factor)
+
+    // ----- Confidence intervals for RR (5 methods) -----
     let rrMidpLower = 0, rrMidpUpper = 0;
-    // 2. Fisher exact (chi² conditionnel)
     let rrFisherLower = 0, rrFisherUpper = 0;
-    // 3. Approximation normale (log)
     let rrNormLower = 0, rrNormUpper = 0;
-    // 4. Byar approx.
     let rrByarLower = 0, rrByarUpper = 0;
-    // 5. Rothman/Greenland
     let rrRothmanLower = 0, rrRothmanUpper = 0;
+
+    // Hypothesis test statistics
     let zScore = 0;
-    let p1z = 0, p2z = 0;
-    let p1fisher = 0, p2fisher = 0;
-    let p1midp = 0, p2midp = 0;
+    let p1z = 0, p2z = 0;          // one‑ and two‑tailed z‑test p‑values
+    let p1fisher = 0, p2fisher = 0; // Fisher exact p‑values
+    let p1midp = 0, p2midp = 0;     // Mid‑P exact p‑values
+
     if (hasJStat) {
       const jStat = (window as any).jStat;
-      const m = a + b;
+      const m = a + b; // total cases
+
+      // Helper to compute the probability of exposure given a rate ratio r
       const getP = (r: number) => (r * N1) / (r * N1 + N2);
-      const eps = 1e-8;
-      const maxIter = 10000;
-      const high = 100000; // large enough upper bound
-      // z-score
+
+      const eps = 1e-8;         // tolerance for root finding
+      const maxIter = 10000;     // maximum iterations
+      const high = 100000;       // large upper bound for ratio
+
+      // ----- z‑score and p‑values (normal approximation) -----
       const totalTime = N1 + N2;
-      const p_null = N1 / totalTime;
-      const expected = m * p_null;
+      const p_null = N1 / totalTime; // proportion of person‑time in group 1 under H0
+      const expected = m * p_null;    // expected cases in group 1 under H0
       const varNull = m * p_null * (1 - p_null);
       zScore = (a - expected) / Math.sqrt(varNull);
       const absZ = Math.abs(zScore);
@@ -109,7 +135,7 @@ export default function TwoRatesComparison() {
       if (zScore < 0) p1z = jStat.normal.cdf(zScore, 0, 1);
       p2z = 2 * p1z;
 
-      // Binomial p-values
+      // ----- Binomial p‑values (Fisher and Mid‑P) -----
       const cdfA1 = jStat.binomial.cdf(a - 1, m, p_null);
       const pdfA = jStat.binomial.pdf(a, m, p_null);
       const isUpper = a > expected;
@@ -123,10 +149,9 @@ export default function TwoRatesComparison() {
       p2fisher = 2 * Math.min(p1fisher, 1 - p1fisher);
       p2midp = 2 * Math.min(p1midp, 1 - p1midp);
 
-      // ---- Fisher exact ----
-
-      // Lower
-      function solveFisherLower(): number {
+      // ----- Fisher exact confidence interval (conditional on total cases) -----
+      // Lower bound: solve P(X ≤ a-1 | m, p(r)) = 1 - α/2
+      const solveFisherLower = (): number => {
         if (a === 0) return 0;
         let low = eps;
         let hi = rr * 2;
@@ -142,9 +167,9 @@ export default function TwoRatesComparison() {
           if (hi - low < eps) break;
         }
         return (low + hi) / 2;
-      }
-      // Upper
-      function solveFisherUpper(): number {
+      };
+      // Upper bound: solve P(X ≥ a | m, p(r)) = α/2  ⇔  P(X ≤ a-1) = 1 - α/2
+      const solveFisherUpper = (): number => {
         if (b === 0) return Infinity;
         let low = rr / 2;
         let hi = high;
@@ -160,12 +185,13 @@ export default function TwoRatesComparison() {
           if (hi - low < eps) break;
         }
         return (low + hi) / 2;
-      }
+      };
       rrFisherLower = solveFisherLower();
       rrFisherUpper = solveFisherUpper();
-      // ---- Mid-P exact ----
-      // Lower
-      function solveMidPLower(): number {
+
+      // ----- Mid‑P exact confidence interval -----
+      // Lower bound: solve (P(X ≥ a) - 0.5·P(X=a)) = α/2  ⇔ 1 - CDF(a-1) - 0.5·pmf(a) = α/2
+      const solveMidPLower = (): number => {
         if (a === 0) return 0;
         let low = eps;
         let hi = rr * 2;
@@ -174,7 +200,7 @@ export default function TwoRatesComparison() {
           let pp = getP(mid);
           let cdf = jStat.binomial.cdf(a - 1, m, pp);
           let pdf = jStat.binomial.pdf(a, m, pp);
-          let upperMidP = 1 - cdf - 0.5 * pdf;
+          let upperMidP = 1 - cdf - 0.5 * pdf; // P(X ≥ a) - 0.5·P(X=a)
           if (upperMidP > alpha / 2) {
             low = mid;
           } else {
@@ -183,9 +209,9 @@ export default function TwoRatesComparison() {
           if (hi - low < eps) break;
         }
         return (low + hi) / 2;
-      }
-      // Upper
-      function solveMidPUpper(): number {
+      };
+      // Upper bound: solve (P(X ≤ a-1) + 0.5·P(X=a)) = α/2
+      const solveMidPUpper = (): number => {
         if (b === 0) return Infinity;
         let low = rr / 2;
         let hi = high;
@@ -194,7 +220,7 @@ export default function TwoRatesComparison() {
           let pp = getP(mid);
           let cdf = jStat.binomial.cdf(a - 1, m, pp);
           let pdf = jStat.binomial.pdf(a, m, pp);
-          let lowerMidP = cdf + 0.5 * pdf;
+          let lowerMidP = cdf + 0.5 * pdf; // P(X ≤ a-1) + 0.5·P(X=a)
           if (lowerMidP < alpha / 2) {
             hi = mid;
           } else {
@@ -203,10 +229,11 @@ export default function TwoRatesComparison() {
           if (hi - low < eps) break;
         }
         return (low + hi) / 2;
-      }
+      };
       rrMidpLower = solveMidPLower();
       rrMidpUpper = solveMidPUpper();
-      // ---- Approximation normale (Woolf) ----
+
+      // ----- Normal approximation (Woolf) -----
       let seNorm = Math.sqrt(1 / a + 1 / b);
       rrNormLower = Math.exp(Math.log(rr) - z * seNorm);
       rrNormUpper = Math.exp(Math.log(rr) + z * seNorm);
@@ -214,8 +241,9 @@ export default function TwoRatesComparison() {
         rrNormLower = 0;
         rrNormUpper = Infinity;
       }
-      // ---- Byar approx. ----
-      // In OpenEpi, Byar is the standard sqrt(1/a +1/b)
+
+      // ----- Byar approximation (based on Poisson) -----
+      // In OpenEpi, Byar uses the same formula as normal approximation for RR.
       let seByar = Math.sqrt(1 / a + 1 / b);
       rrByarLower = Math.exp(Math.log(rr) - z * seByar);
       rrByarUpper = Math.exp(Math.log(rr) + z * seByar);
@@ -223,11 +251,14 @@ export default function TwoRatesComparison() {
         rrByarLower = 0;
         rrByarUpper = Infinity;
       }
-      // ---- Rothman/Greenland ----
+
+      // ----- Rothman/Greenland (score method) -----
+      // OpenEpi uses Mid‑P results for this column.
       rrRothmanLower = rrMidpLower;
       rrRothmanUpper = rrMidpUpper;
+
     } else {
-      // Fallback
+      // ----- Fallback when jStat is not available -----
       const seFallback = Math.sqrt(1 / a + 1 / b);
       rrMidpLower = Math.exp(Math.log(rr) - z * seFallback);
       rrMidpUpper = Math.exp(Math.log(rr) + z * seFallback);
@@ -247,30 +278,36 @@ export default function TwoRatesComparison() {
       p1midp = 1;
       p2midp = 1;
     }
-    // IC pour la différence de taux
+
+    // ----- Confidence interval for rate difference (normal approximation) -----
     const seDiff = Math.sqrt((a / (N1 * N1) + b / (N2 * N2))) * scale;
     const diffLower = rateDiff - z * seDiff;
     const diffUpper = rateDiff + z * seDiff;
-    // IC pour les taux individuels (Byar approx for Poisson)
-    function byarLower(count: number, zz: number) {
+
+    // ----- Confidence intervals for individual rates (Byar's method for Poisson) -----
+    const byarLower = (count: number, zz: number) => {
       if (count === 0) return 0;
       return count * Math.pow(1 - 1 / (9 * count) - zz / (3 * Math.sqrt(count)), 3);
-    }
-    function byarUpper(count: number, zz: number) {
+    };
+    const byarUpper = (count: number, zz: number) => {
       return (count + 1) * Math.pow(1 - 1 / (9 * (count + 1)) + zz / (3 * Math.sqrt(count + 1)), 3);
-    }
+    };
+
     const lowerRate1 = byarLower(a, z) / N1 * scale;
     const upperRate1 = byarUpper(a, z) / N1 * scale;
     const lowerRate2 = byarLower(b, z) / N2 * scale;
     const upperRate2 = byarUpper(b, z) / N2 * scale;
     const lowerOverall = byarLower(a + b, z) / (N1 + N2) * scale;
     const upperOverall = byarUpper(a + b, z) / (N1 + N2) * scale;
-    // Fractions attribuables
-    let efe = 0, efeLower = 0, efeUpper = 0;
-    let efp = 0, efpLower = 0, efpUpper = 0;
-    const f = N1 / (N1 + N2);
+
+    // ----- Attributable fractions (etiologic or preventive) -----
+    let efe = 0, efeLower = 0, efeUpper = 0;   // fraction among exposed
+    let efp = 0, efpLower = 0, efpUpper = 0;   // fraction in population
+    const f = N1 / (N1 + N2);                   // proportion of person‑time in exposed group
+
     if (rr > 0) {
       if (rr > 1) {
+        // Excess risk (etiologic)
         efe = (rr - 1) / rr;
         efeLower = 1 - 1 / rrByarLower;
         efeUpper = 1 - 1 / rrByarUpper;
@@ -278,6 +315,7 @@ export default function TwoRatesComparison() {
         efpLower = f * (rrByarLower - 1) / (f * (rrByarLower - 1) + 1);
         efpUpper = f * (rrByarUpper - 1) / (f * (rrByarUpper - 1) + 1);
       } else {
+        // Protective effect (preventive fraction)
         efe = 1 - rr;
         efeLower = 1 - rrByarUpper;
         efeUpper = 1 - rrByarLower;
@@ -286,19 +324,23 @@ export default function TwoRatesComparison() {
         efpUpper = f * (1 - rrByarLower);
       }
     }
-    // Pourcentages pour single table
+
+    // ----- Percentages for single‑table display -----
     const totalCases = a + b;
     const totalTime = N1 + N2;
     const exposedCasesPc = (a / totalCases * 100).toFixed(1);
     const unexposedCasesPc = (b / totalCases * 100).toFixed(1);
     const exposedTimePc = (N1 / totalTime * 100).toFixed(1);
     const unexposedTimePc = (N2 / totalTime * 100).toFixed(1);
-    // Arrondi à 3 décimales comme OpenEpi
+
+    // ----- Formatting helpers (match OpenEpi's 3‑decimal style) -----
     const format = (x: number) => {
       if (!isFinite(x)) return '∞';
       return parseFloat(x.toFixed(3)).toString();
     };
     const formatPc = (x: number) => x.toFixed(2) + '%';
+
+    // ----- Assemble results object -----
     setResults({
       a, N1, b, N2, scale,
       rate1: parseFloat(rate1.toFixed(3)),
@@ -342,7 +384,10 @@ export default function TwoRatesComparison() {
       hasJStat
     });
   };
-  // Handlers
+
+  // ----- UI handlers -----
+
+  // Reset all input fields
   const clear = () => {
     setEvents1('');
     setPersonTime1('');
@@ -351,13 +396,17 @@ export default function TwoRatesComparison() {
     setResults(null);
     toast.info('Champs réinitialisés');
   };
+
+  // Load an example dataset (from OpenEpi typical demo)
   const loadExample = () => {
     setEvents1('50');
     setPersonTime1('1000');
     setEvents2('30');
     setPersonTime2('1200');
-    toast.success('Exemple chargé (taux 50/1000 vs 30/1200)');
+    toast.success('Exemple chargé');
   };
+
+  // Copy results to clipboard as formatted text
   const copyResults = async () => {
     if (!results) return;
     const text = `Comparaison de deux taux – OpenEpi PersonTime2
@@ -389,14 +438,19 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       toast.error('Échec de la copie');
     }
   };
+
+  // Export a comprehensive PDF report (styled similarly to OpenEpi output)
   const exportPDF = () => {
     if (!results) {
       toast.error('Veuillez d’abord effectuer un calcul');
       return;
     }
+
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const colorPrimary: [number, number, number] = [59, 130, 246];
+
+      // Colour definitions (Tailwind slate palette)
+      const colorPrimary: [number, number, number] = [59, 130, 246]; // blue-500
       const colorSlate = {
         50: [248, 250, 252] as [number, number, number],
         100: [241, 245, 249] as [number, number, number],
@@ -405,7 +459,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
         700: [51, 65, 85] as [number, number, number],
         900: [15, 23, 42] as [number, number, number],
       };
-      // En-tête
+
+      // ----- Header -----
       doc.setFillColor(...colorSlate[50]);
       doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
       doc.setFont('helvetica', 'bold');
@@ -417,7 +472,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.setTextColor(...colorSlate[500]);
       doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
       doc.text('TwoRates – OpenEpi PersonTime2', 190, 32, { align: 'right' });
-      // Données saisies
+
+      // ----- Input data summary -----
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -433,7 +489,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.text(`Groupe 2 : ${results.b} cas / ${results.N2} personne‑temps`, 25, y); y += 6;
       doc.text(`Taux 2 : ${results.rate2} pour ${results.scale}`, 25, y); y += 6;
       doc.text(`Niveau de confiance : ${results.confidenceLevel} %`, 25, y); y += 12;
-      // Single Table Analysis
+
+      // ----- Single Table Analysis (2×2 style) -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text('Analyse de tableau unique', 20, y);
@@ -457,7 +514,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
         alternateRowStyles: { fillColor: colorSlate[50] },
       });
       y = (doc as any).lastAutoTable.finalY + 15;
-      // z-Score and p-values
+
+      // ----- z‑Score and exact p‑values -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text('z-Score and Exact Measures of Association', 20, y);
@@ -480,7 +538,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
         alternateRowStyles: { fillColor: colorSlate[50] },
       });
       y = (doc as any).lastAutoTable.finalY + 15;
-      // Carte du ratio de taux
+
+      // ----- RR card -----
       const rrValue = results.rr;
       const cardColor = rrValue > 1 ? [255, 247, 237] : [236, 253, 245];
       const borderColor = rrValue > 1 ? [234, 88, 12] : [5, 150, 105];
@@ -495,7 +554,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.setFontSize(26);
       doc.text(results.rr.toString(), 105, y + 26, { align: 'center' });
       y += 45;
-      // Tableau des IC pour le RR
+
+      // ----- Confidence intervals for RR (all methods) -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text(`Intervalles de confiance à ${results.confidenceLevel}% – Ratio de taux`, 20, y);
@@ -526,7 +586,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
         alternateRowStyles: { fillColor: colorSlate[50] },
       });
       y = (doc as any).lastAutoTable.finalY + 15;
-      // Rate-Based Estimates
+
+      // ----- Rate‑based estimates with CIs -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text(`Estimations basées sur les taux et IC ${results.confidenceLevel}%`, 20, y);
@@ -551,7 +612,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
         alternateRowStyles: { fillColor: colorSlate[50] },
       });
       y = (doc as any).lastAutoTable.finalY + 15;
-      // Attributable Fractions
+
+      // ----- Attributable fractions -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text('Fractions attribuables : Étiologique ou Préventive', 20, y);
@@ -573,7 +635,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
         alternateRowStyles: { fillColor: colorSlate[50] },
       });
       y = (doc as any).lastAutoTable.finalY + 15;
-      // Références
+
+      // ----- References (as in OpenEpi output) -----
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
@@ -582,7 +645,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.text('Approximation normale: Rosner – Fondamentaux de Biostatistiques (5e Éd.)', 20, y); y += 4;
       doc.text('Coef. Poisson approx. Byar: Rothman & Boice – Analyse épidémiologique avec calculateur programmable, 1979', 20, y); y += 4;
       doc.text('Rothman/Greenland: Modern Epidemiology (2e Éd.)', 20, y); y += 4;
-      // Pied de page
+
+      // ----- Footer -----
       const footerY = 280;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, footerY, 190, footerY);
@@ -591,6 +655,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.setTextColor(...colorSlate[500]);
       doc.text('TwoRates – conforme OpenEpi PersonTime2', 20, footerY + 5);
       doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
+
       doc.save(`TwoRates_${results.a}_${results.b}.pdf`);
       toast.success('Rapport PDF exporté');
     } catch (error) {
@@ -598,10 +663,12 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       toast.error('Erreur PDF');
     }
   };
+
+  // ----- Render (JSX) -----
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
-        {/* Breadcrumb */}
+        {/* Breadcrumb navigation */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
@@ -609,7 +676,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
             <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">TwoRates</span></li>
           </ol>
         </nav>
-        {/* Header */}
+
+        {/* Page header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
@@ -629,15 +697,16 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
             <HelpCircle className="w-4 h-4" />
           </button>
         </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-          {/* Colonne gauche - saisie */}
+          {/* Left column – input form */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
                 <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
               </h2>
               <div className="space-y-6">
-                {/* Groupe 1 */}
+                {/* Group 1 inputs */}
                 <div className="space-y-4 p-4  rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <Activity className="w-4 h-4 text-blue-500" /> Groupe 1
@@ -673,7 +742,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     </div>
                   </div>
                 </div>
-                {/* Groupe 2 */}
+
+                {/* Group 2 inputs */}
                 <div className="space-y-4 p-4  rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <Activity className="w-4 h-4 text-indigo-500" /> Groupe 2
@@ -709,6 +779,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     </div>
                   </div>
                 </div>
+
+                {/* Confidence level dropdown */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
                     Niveau de confiance
@@ -724,6 +796,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                   </select>
                 </div>
               </div>
+
+              {/* Action buttons */}
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
                 <button
                   onClick={loadExample}
@@ -739,9 +813,9 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                 </button>
               </div>
             </div>
-          
           </div>
-          {/* Colonne droite - résultats */}
+
+          {/* Right column – results display */}
           <div className="lg:col-span-7">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
@@ -767,19 +841,22 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                   </div>
                 )}
               </div>
+
               <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10 overflow-y-auto">
                 {!results ? (
+                  // Placeholder when no results
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-                  <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                  <p className="text-lg">Saisissez les données pour l'analyse</p>
-                  <div className="text-4xl font-bold mt-2">
-                    0.00
-                  </div>
+                    <Presentation className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <div className="text-4xl font-bold mt-2">
+                      0.00
+                    </div>
                   </div>
                 ) : (
+                  // Results area
                   <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                      {/* Carte du RR */}
-                      <div
+                    {/* RR card */}
+                    <div
                       className={`p-6 rounded-2xl text-center border ${
                         results.rr > 1
                           ? 'bg-orange-50/50 border-orange-200 dark:bg-orange-900/10 dark:border-orange-800'
@@ -801,8 +878,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                       </p>
                     </div>
 
-                       {/* Cartes des taux individuels */}
-                       <div className="grid grid-cols-3 gap-4">
+                    {/* Individual rate cards */}
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
                         <p className="text-xs font-bold uppercase text-slate-400">Taux 1</p>
                         <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{results.rate1}</p>
@@ -821,6 +898,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         <p className="text-xs text-slate-500">pour {results.scale}</p>
                       </div>
                     </div>
+
                     {/* Single Table Analysis */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
@@ -867,7 +945,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         </table>
                       </div>
                     </div>
-                    {/* z-Score and p-values */}
+
+                    {/* z‑Score and p‑values */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
@@ -907,15 +986,13 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         </table>
                       </div>
                     </div>
-                 
-                  
-                    {/* Tableau des méthodes pour le RR */}
+
+                    {/* RR confidence intervals – all methods */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
                           Intervalles de confiance du RR ({results.confidenceLevel}%)
                         </h3>
-
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -962,7 +1039,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         </table>
                       </div>
                     </div>
-                    {/* Rate-Based Estimates */}
+
+                    {/* Rate‑based estimates with CIs */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
@@ -1014,6 +1092,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         </table>
                       </div>
                     </div>
+
                     {/* Attributable Fractions */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
@@ -1048,7 +1127,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         </table>
                       </div>
                     </div>
-                    {/* Interprétation synthétique */}
+
+                    {/* Brief interpretation */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
                       <div className="flex items-start gap-3">
                         <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
@@ -1076,7 +1156,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
             </div>
           </div>
         </div>
-        {/* Modal d'aide - style RMS */}
+
+        {/* Help modal*/}
         {showHelpModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
@@ -1095,6 +1176,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                   <X className="w-5 h-5" />
                 </button>
               </div>
+
               <div className="p-6 md:p-8 space-y-8">
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
@@ -1109,6 +1191,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     de confiance par plusieurs méthodes (exactes et approchées).
                   </p>
                 </section>
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
@@ -1123,6 +1206,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="text-xs text-slate-500">Effet protecteur dans le groupe 1</div>
                   </div>
                 </div>
+
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
@@ -1146,6 +1230,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     Source : OpenEpi – RateRatio / PersonTime2 <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
+
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
