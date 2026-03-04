@@ -20,7 +20,7 @@ import { Link } from 'wouter';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import jStat from 'jstat'; // Static import like in the RMS component
+import jStat from 'jstat';
 
 /**
  * OneRate Component – Analysis of a single rate and its confidence intervals
