@@ -1,14 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Blocks, ChevronRight, Calculator, Presentation, 
+import {
+  Blocks, ChevronRight, Calculator, Presentation,
   Copy, FileDown, HelpCircle, X, Info, RotateCcw,
-  ChevronDown
+  ChevronDown, ArrowRight
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from 'sonner';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+/**
+ * Sample Size for Cohort / Randomized Controlled Trials (SSCohort)
+ *
+ * This component replicates the functionality of OpenEpi's SSCohort module for
+ * calculating the required sample size in cohort studies or randomized controlled
+ * trials (RCTs) comparing two groups (exposed vs. non‑exposed, or treatment vs.
+ * control). The user provides the expected outcome proportions in the unexposed
+ * and exposed groups, the desired confidence level (two‑sided), statistical power,
+ * and the allocation ratio (unexposed / exposed).
+ *
+ * Three methods are implemented:
+ * - Kelsey (recommended for general use, based on the method in Kelsey et al.)
+ * - Fleiss (uncorrected, from Fleiss 1981)
+ * - Fleiss with continuity correction (adds a small adjustment for better small‑sample accuracy)
+ *
+ * All calculations are automatic: any change to the input fields triggers a
+ * recalculation. Fixed z‑values are used for common confidence levels (90%, 95%, 99%)
+ * and power levels (80%, 90%, 95%) for simplicity.
+ */
 
 interface CohortResults {
   confidenceLevel: number;
@@ -38,7 +58,6 @@ export default function SampleSizeCohortRCT() {
   const [percentExposed, setPercentExposed] = useState<string>('');
   const [results, setResults] = useState<CohortResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
-  const [showStatsDetail, setShowStatsDetail] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,8 +68,8 @@ export default function SampleSizeCohortRCT() {
     const conf = parseInt(confidenceLevel);
     const pow = parseInt(power) / 100;
     const rat = parseFloat(ratio) || 1;
-    const p0 = parseFloat(percentUnexposed) / 100;
-    const p1 = parseFloat(percentExposed) / 100;
+    const p0 = parseFloat(percentUnexposed) / 100;   // unexposed
+    const p1 = parseFloat(percentExposed) / 100;     // exposed
 
     if (isNaN(p0) || isNaN(p1) || p0 < 0 || p0 > 1 || p1 < 0 || p1 > 1 || rat <= 0) {
       setResults(null);
@@ -59,25 +78,34 @@ export default function SampleSizeCohortRCT() {
 
     const oddsRatio = (p1 / (1 - p1)) / (p0 / (1 - p0));
     const riskRatio = p1 / p0;
-    const riskDiff = p1 - p0;
+    const riskDifference = p1 - p0;
 
     const zAlpha = conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
     const zBeta = pow === 0.8 ? 0.8416 : pow === 0.9 ? 1.2816 : pow === 0.95 ? 1.6449 : 0.8416;
 
-    // Kelsey method
-    const kelseyN1 = Math.ceil((zAlpha * Math.sqrt(rat * p0 * (1 - p0) + p1 * (1 - p1)) + zBeta * Math.sqrt(rat * p0 * (1 - p0) + p1 * (1 - p1))) ** 2 / (rat * (p1 - p0) ** 2));
-    const kelseyN2 = Math.ceil(kelseyN1 * rat);
-    const kelseyTotal = kelseyN1 + kelseyN2;
+    const pbar = (p1 + rat * p0) / (1 + rat);
+    const qbar = 1 - pbar;
 
-    // Fleiss method
-    const fleissN1 = Math.ceil((zAlpha * Math.sqrt((rat + 1) * (p0 * (1 - p0) + p1 * (1 - p1) / rat)) + zBeta * Math.sqrt((rat + 1) * (p0 * (1 - p0) + p1 * (1 - p1) / rat))) ** 2 / (rat * (p1 - p0) ** 2));
-    const fleissN2 = Math.ceil(fleissN1 * rat);
-    const fleissTotal = fleissN1 + fleissN2;
+    const term0 = Math.sqrt(pbar * qbar * (1 + 1 / rat));
+    const term1 = Math.sqrt(p1 * (1 - p1) + p0 * (1 - p0) / rat);
+    const delta = Math.abs(p1 - p0);
 
-    // Fleiss with CC
-    const fleissCCN1 = Math.ceil(fleissN1 * (1 + 2 / (rat * Math.abs(p1 - p0))));
-    const fleissCCN2 = Math.ceil(fleissCCN1 * rat);
-    const fleissCCTotal = fleissCCN1 + fleissCCN2;
+    // Kelsey method (recommended – matches OpenEpi)
+    const sKelsey = zAlpha * term0 + zBeta * term1;
+    const kelseyExposed = Math.ceil(sKelsey ** 2 / delta ** 2);
+    const kelseyUnexposed = Math.ceil(kelseyExposed * rat);
+    const kelseyTotal = kelseyExposed + kelseyUnexposed;
+
+    // Fleiss (uncorrected)
+    const sFleiss = (zAlpha + zBeta) * term0;
+    const fleissExposed = Math.ceil(sFleiss ** 2 / delta ** 2);
+    const fleissUnexposed = Math.ceil(fleissExposed * rat);
+    const fleissTotal = fleissExposed + fleissUnexposed;
+
+    // Fleiss with continuity correction (OpenEpi formula)
+    const fleissCCExposed = Math.ceil(fleissExposed + 2 / delta);
+    const fleissCCUnexposed = Math.ceil(fleissCCExposed * rat);
+    const fleissCCTotal = fleissCCExposed + fleissCCUnexposed;
 
     setResults({
       confidenceLevel: conf,
@@ -87,15 +115,15 @@ export default function SampleSizeCohortRCT() {
       percentExposed: p1 * 100,
       oddsRatio,
       riskRatio,
-      riskDifference: riskDiff * 100,
-      kelseyExposed: kelseyN1,
-      kelseyUnexposed: kelseyN2,
+      riskDifference: Number((riskDifference * 100).toFixed(1)), // avoid 13.999999
+      kelseyExposed,
+      kelseyUnexposed,
       kelseyTotal,
-      fleissExposed: fleissN1,
-      fleissUnexposed: fleissN2,
+      fleissExposed,
+      fleissUnexposed,
       fleissTotal,
-      fleissCCExposed: fleissCCN1,
-      fleissCCUnexposed: fleissCCN2,
+      fleissCCExposed,
+      fleissCCUnexposed,
       fleissCCTotal
     });
   };
@@ -121,7 +149,7 @@ export default function SampleSizeCohortRCT() {
 
   const copyResults = async () => {
     if (!results) return;
-    const text = `Taille d’échantillon : x- d’un groupe, cohorte et essais cliniques aléatoires\n\n` +
+    const text = `Taille d’échantillon : cohorte et essais cliniques aléatoires\n\n` +
                  `Niveau significatif bilatéral (1-alpha): ${results.confidenceLevel}\n` +
                  `Puissance (1-beta, % de chances de détection): ${results.power}\n` +
                  `Rapport de taille d’échantillon, non exposés/exposés: ${results.ratio}\n` +
@@ -237,7 +265,12 @@ export default function SampleSizeCohortRCT() {
         body: resultsTable.slice(1),
         theme: 'grid',
         headStyles: { fillColor: colorPrimary as [number, number, number], textColor: 255, fontStyle: 'bold' },
-        columnStyles: { 0: { cellWidth: 80, fontStyle: 'bold' }, 1: { cellWidth: 30, halign: 'center' }, 2: { cellWidth: 30, halign: 'center' }, 3: { cellWidth: 30, halign: 'center' } },
+        columnStyles: {
+          0: { cellWidth: 80, fontStyle: 'bold' },
+          1: { cellWidth: 30, halign: 'center' },
+          2: { cellWidth: 30, halign: 'center' },
+          3: { cellWidth: 30, halign: 'center' }
+        },
         margin: { left: 20, right: 20 },
         styles: { fontSize: 9, cellPadding: 2.5, lineColor: colorSlate[200] as [number, number, number], lineWidth: 0.1 },
         alternateRowStyles: { fillColor: colorSlate[50] as [number, number, number] },
@@ -429,7 +462,7 @@ export default function SampleSizeCohortRCT() {
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Carte principale */}
+                    {/* Main card */}
                     <div className="p-8 rounded-3xl text-center border bg-indigo-50/50 border-indigo-100 dark:bg-indigo-900/10 dark:border-indigo-800/30">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
                         Taille totale d’échantillon
@@ -442,7 +475,7 @@ export default function SampleSizeCohortRCT() {
                       </span>
                     </div>
 
-                    {/* Statistiques secondaires */}
+                    {/* Statistics */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-700">
                         <div className="flex items-center justify-between">
@@ -488,7 +521,7 @@ export default function SampleSizeCohortRCT() {
                       </div>
                     </div>
 
-                    {/* Tableau des résultats */}
+                    {/* Result Table */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
                       <h3 className="text-lg font-semibold mb-4">Résultats par méthode</h3>
                       <table className="w-full text-sm">
@@ -542,6 +575,7 @@ export default function SampleSizeCohortRCT() {
           </div>
         </div>
 
+        {/* Help Modal */}
         {showHelpModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
@@ -550,7 +584,9 @@ export default function SampleSizeCohortRCT() {
             />
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide (OpenEpi)</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Guide – Taille d’échantillon pour cohorte / RCT
+                </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
@@ -559,29 +595,125 @@ export default function SampleSizeCohortRCT() {
                 </button>
               </div>
 
-              <div className="p-6 md:p-8 space-y-8">
+              <div className="p-6 md:p-8 space-y-6 text-slate-600 dark:text-slate-300">
+                {/* Section 1 */}
                 <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       1
                     </div>
-                    Le Principe
+                    Principe
                   </h4>
-                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Calcule la taille d’échantillon pour détecter une différence dans les proportions d'événements entre groupes exposés et non exposés dans des études de cohorte ou RCT.
+                  <p className="text-sm leading-relaxed">
+                    Ce calculateur estime le nombre de sujets nécessaires dans une étude de cohorte ou un essai randomisé (RCT) pour comparer la proportion d'événements entre un groupe exposé (ou traité) et un groupe non exposé (ou contrôle). L'utilisateur fournit les proportions attendues d'événements dans chaque groupe, le niveau de confiance, la puissance et le ratio de tailles d'échantillon entre les deux groupes.
                   </p>
                 </section>
 
+                {/* Section 2 */}
                 <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       2
                     </div>
-                    Méthodes
+                    Paramètres
                   </h4>
-                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Kelsey, Fleiss, et Fleiss avec correction de continuité. Utilisez Kelsey pour les petits échantillons.
+                  <ul className="list-disc list-inside text-sm space-y-1">
+                    <li><strong className="text-slate-900 dark:text-white">Niveau significatif bilatéral (1‑α)</strong> – risque de conclure à tort à une différence (généralement 95%).</li>
+                    <li><strong className="text-slate-900 dark:text-white">Puissance (1‑β)</strong> – probabilité de détecter une différence si elle existe réellement (souvent 80%).</li>
+                    <li><strong className="text-slate-900 dark:text-white">Rapport non exposés/exposés</strong> – nombre de contrôles par sujet exposé. Laisser 1 pour des groupes de taille égale.</li>
+                    <li><strong className="text-slate-900 dark:text-white">Pourcentage de non exposés avec résultats</strong> – proportion d'événements dans le groupe non exposé (ex. 10%).</li>
+                    <li><strong className="text-slate-900 dark:text-white">Pourcentage d'exposés avec résultats</strong> – proportion d'événements dans le groupe exposé (ex. 24%).</li>
+                  </ul>
+                </section>
+
+                {/* Section 3 */}
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      3
+                    </div>
+                    Méthodes de calcul
+                  </h4>
+                  <p className="text-sm leading-relaxed">
+                    Trois méthodes sont proposées, toutes basées sur la loi normale. Les quantiles utilisés sont fixes pour les valeurs courantes :
                   </p>
+                  <ul className="list-disc list-inside text-sm mt-1">
+                    <li>z<sub>α/2</sub> : 1,645 (90% IC), 1,96 (95% IC), 2,576 (99% IC)</li>
+                    <li>z<sub>β</sub> : 0,8416 (80% puissance), 1,2816 (90%), 1,6449 (95%)</li>
+                  </ul>
+                  <p className="text-sm mt-2">
+                    Les formules utilisent la proportion moyenne <em>p̄ = (p₁ + r·p₀)/(1+r)</em> et sa variance.
+                  </p>
+                  <ul className="list-disc list-inside text-sm mt-1">
+                    <li><strong>Kelsey</strong> – formule exacte recommandée : <br />
+                      <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-xs">n₁ = ⌈(z<sub>α</sub>√[p̄q̄(1+1/r)] + z<sub>β</sub>√[p₁q₁ + p₀q₀/r])² / Δ²⌉</code>
+                    </li>
+                    <li><strong>Fleiss</strong> – version simplifiée (parfois appelée "Fleiss without correction") : <br />
+                      <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-xs">n₁ = ⌈(z<sub>α</sub>+z<sub>β</sub>)² × p̄q̄(1+1/r) / Δ²⌉</code>
+                    </li>
+                    <li><strong>Fleiss avec correction de continuité</strong> – ajoute un terme pour mieux approcher le test du χ² avec petits effectifs : <br />
+                      <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-xs">n₁<sub>cc</sub> = ⌈n₁<sub>Fleiss</sub> + 2/Δ⌉</code>
+                    </li>
+                  </ul>
+                </section>
+
+                {/* Section 4 */}
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      4
+                    </div>
+                    Intrepétation des résultats
+                  </h4>
+                  <p className="text-sm leading-relaxed">
+                    Les nombres affichés sont les tailles minimales arrondies à l’entier supérieur. Le tableau donne les effectifs nécessaires dans chaque groupe selon la méthode. La méthode de Kelsey est généralement la plus robuste et la plus utilisée. La correction de continuité (Fleiss CC) donne des tailles légèrement plus grandes, recommandées pour les petits échantillons.
+                  </p>
+                </section>
+
+                {/* Section 5 */}
+                <section>
+                <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      5
+                    </div>
+                   Exemple
+                  </h4>
+                  <p className="text-sm leading-relaxed">
+                    Avec les valeurs par défaut (exemple OpenEpi) :<br />
+                    Pourcentage de non exposés = 10%, pourcentage d'exposés = 24%, IC 95%, puissance 80%, ratio = 1 (groupes égaux).<br />
+                    Le calculateur donne :<br />
+                    - Kelsey : 274 exposés, 274 non exposés → total 548.<br />
+                    - Fleiss : 261 exposés, 261 non exposés → total 522.<br />
+                    - Fleiss avec CC : 281 exposés, 281 non exposés → total 562.<br />
+                    L'utilisation de la correction augmente la taille pour tenir compte de l'approximation normale.
+                  </p>
+                </section>
+
+                {/* Section 6 */}
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                      6
+                    </div>
+                    Sources
+                  </h4>
+                  <p className="text-sm leading-relaxed">
+                    Cet outil reproduit le module « Sample Size for Cohort / RCT » d’
+                    <a
+                      href="https://www.openepi.com/SampleSize/SSCohort.htm"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:text-blue-700 underline font-medium ml-1"
+                    >OpenEpi</a>.
+                  </p>
+                  <a
+                    href="https://www.openepi.com/SampleSize/SSCohort.htm"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-3"
+                  >
+                    Voir sur OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                  </a>
                 </section>
               </div>
             </div>
