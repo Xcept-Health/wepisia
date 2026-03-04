@@ -19,7 +19,6 @@ import jStat from 'jstat';
  * tools like OpenEpi.
  * 
  * All calculations are exact and reproducible thanks to jStat's direct use.
- * Fully internationalized (i18n) version.
  */
 
 export default function StdMortalityRatio() {
@@ -600,7 +599,7 @@ export default function StdMortalityRatio() {
                         </div>
                       </div>
 
-                      {/* Visual scale (unchanged) */}
+                      {/* Visual scale  */}
                       <div className="relative h-24 mb-2">
                         <div className="absolute w-full h-2 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700 rounded-full top-8 shadow-inner"></div>
 
@@ -764,7 +763,7 @@ export default function StdMortalityRatio() {
                       </div>
                     </div>
 
-                    {/* Interpretation block - CORRIGÉ avec Trans sans enfants */}
+                    {/* Interpretation block */}
                     <div
                       className={`p-6 rounded-2xl ${
                         results.exact.lower > 1 || results.exact.upper < 1
