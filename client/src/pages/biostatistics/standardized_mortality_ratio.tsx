@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from 'sonner';
+import { useTranslation, Trans } from 'react-i18next';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,9 +19,11 @@ import jStat from 'jstat';
  * tools like OpenEpi.
  * 
  * All calculations are exact and reproducible thanks to jStat's direct use.
+ * Fully internationalized (i18n) version.
  */
 
 export default function StdMortalityRatio() {
+  const { t, i18n } = useTranslation(); // ← Correction : ajout de i18n
   const [observed, setObserved] = useState<string>('');
   const [expected, setExpected] = useState<string>('');
   const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
@@ -29,7 +32,7 @@ export default function StdMortalityRatio() {
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // jStat is not available via ES import – we rely on it for exact computations.
+  // jStat is available – we rely on it for exact computations.
   const hasJStat = true;
 
   // Preview SMR as soon as inputs change (without full statistical details)
@@ -154,28 +157,28 @@ export default function StdMortalityRatio() {
     calculate();
   }, [observed, expected, confidenceLevel]);
 
-  // --- UI handlers ---
+  // --- UI handlers with translated toasts ---
   const clear = () => {
     setObserved('');
     setExpected('');
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('stdMortalityCalculator.clearMessage'));
   };
 
   const loadExample = () => {
     setObserved('4');
     setExpected('3.3');
-    toast.success('Exemple chargé');
+    toast.success(t('stdMortalityCalculator.exampleLoaded'));
   };
 
   const copyResults = async () => {
     if (!results) return;
     try {
-      const text = `SMR analysis: ${results.smr.toFixed(4)} [${results.confidenceLevel}% exact CI: ${results.exact.lower.toFixed(3)}–${results.exact.upper.toFixed(3)}]`;
+      const text = `${t('stdMortalityCalculator.copyPrefix')} ${results.smr.toFixed(4)} [${results.confidenceLevel}% ${t('stdMortalityCalculator.exactCI')}: ${results.exact.lower.toFixed(3)}–${results.exact.upper.toFixed(3)}]`;
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('stdMortalityCalculator.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('stdMortalityCalculator.copyError'));
     }
   };
 
@@ -215,19 +218,22 @@ export default function StdMortalityRatio() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'Analyse RMS", 20, 25);
+      doc.text(t('stdMortalityCalculator.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
-      doc.text('Calculateur RMS – Épidémiologie', 190, 32, { align: 'right' });
+
+      const dateStr = new Date().toLocaleDateString(i18n.language, { year: 'numeric', month: 'long', day: 'numeric' });
+      const timeStr = new Date().toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' });
+      doc.text(t('stdMortalityCalculator.reportGenerated', { date: dateStr, time: timeStr }), 20, 32);
+      doc.text(t('stdMortalityCalculator.reportSubtitle'), 190, 32, { align: 'right' });
 
       // ---------- Input data ----------
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Analysed data', 20, y);
+      doc.text(t('stdMortalityCalculator.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
@@ -235,10 +241,10 @@ export default function StdMortalityRatio() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
-      doc.text(`Décès observés (O) : ${results.observed}`, 25, y); y += 6;
-      doc.text(`Décès attendus (E) : ${results.expected.toFixed(4)}`, 25, y); y += 6;
-      doc.text(`Niveau de confiance : ${results.confidenceLevel} %`, 25, y); y += 6;
-      doc.text(`Méthode utilisée : ${hasJStat ? 'χ² exact' : 'Approximation (Byar)'}`, 25, y); y += 12;
+      doc.text(`${t('stdMortalityCalculator.observedLabel')} : ${results.observed}`, 25, y); y += 6;
+      doc.text(`${t('stdMortalityCalculator.expectedLabel')} : ${results.expected.toFixed(4)}`, 25, y); y += 6;
+      doc.text(`${t('stdMortalityCalculator.confidenceLabel')} : ${results.confidenceLevel} %`, 25, y); y += 6;
+      doc.text(`${t('stdMortalityCalculator.methodUsed')} : ${hasJStat ? 'χ² exact' : t('stdMortalityCalculator.approximation')}`, 25, y); y += 12;
 
       // ---------- SMR card ----------
       const cardX = 20, cardY = y, cardW = 170, cardH = 35;
@@ -248,7 +254,7 @@ export default function StdMortalityRatio() {
       doc.setTextColor(...colorPrimary.text);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text('RATIO DE MORTALITÉ STANDARDISÉ (RMS)', cardX + cardW / 2, cardY + 11, { align: 'center' });
+      doc.text(t('stdMortalityCalculator.smrCardLabel').toUpperCase(), cardX + cardW / 2, cardY + 11, { align: 'center' });
       doc.setFontSize(28);
       doc.text(results.smr.toFixed(4), cardX + cardW / 2, cardY + 28, { align: 'center' });
       y += cardH + 10;
@@ -257,7 +263,7 @@ export default function StdMortalityRatio() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text(`Intervalle de confiance à ${results.confidenceLevel}% (Exact)`, 20, y);
+      doc.text(t('stdMortalityCalculator.ciExactTitle', { confidence: results.confidenceLevel }), 20, y);
       y += 2;
       doc.line(20, y, 190, y);
       y += 10;
@@ -320,22 +326,27 @@ export default function StdMortalityRatio() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Détail des méthodes statistiques', 20, y);
+      doc.text(t('stdMortalityCalculator.statMethodsTitle'), 20, y);
       y += 2;
       doc.line(20, y, 190, y);
       y += 5;
 
       const tableBody = [
-        ['Exact (Fisher)', results.smr.toFixed(3), `[${results.exact.lower.toFixed(3)} – ${results.exact.upper.toFixed(3)}]`, results.exactPValue.toFixed(4)],
-        ['Mid-P exact', results.smr.toFixed(3), '—', results.midPValue.toFixed(4)],
-        ['Byar', results.smr.toFixed(3), `[${results.byar.lower.toFixed(3)} – ${results.byar.upper.toFixed(3)}]`, '—'],
-        ['Vandenbroucke', results.smr.toFixed(3), `[${results.vdb.lower.toFixed(3)} – ${results.vdb.upper.toFixed(3)}]`, '—'],
-        ['Test du χ² (1 ddl)', '—', '—', results.chiSquare.p.toFixed(4)],
+        [t('stdMortalityCalculator.methodExact'), results.smr.toFixed(3), `[${results.exact.lower.toFixed(3)} – ${results.exact.upper.toFixed(3)}]`, results.exactPValue.toFixed(4)],
+        [t('stdMortalityCalculator.methodMidP'), results.smr.toFixed(3), '—', results.midPValue.toFixed(4)],
+        [t('stdMortalityCalculator.methodByar'), results.smr.toFixed(3), `[${results.byar.lower.toFixed(3)} – ${results.byar.upper.toFixed(3)}]`, '—'],
+        [t('stdMortalityCalculator.methodVdb'), results.smr.toFixed(3), `[${results.vdb.lower.toFixed(3)} – ${results.vdb.upper.toFixed(3)}]`, '—'],
+        [t('stdMortalityCalculator.methodChi2'), '—', '—', results.chiSquare.p.toFixed(4)],
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Méthode', 'RMS', `IC ${results.confidenceLevel}%`, 'p-value']],
+        head: [[
+          t('stdMortalityCalculator.tableHeaderMethod'),
+          t('stdMortalityCalculator.tableHeaderSmr'),
+          t('stdMortalityCalculator.tableHeaderCi', { confidence: results.confidenceLevel }),
+          t('stdMortalityCalculator.tableHeaderP')
+        ]],
         body: tableBody,
         theme: 'striped',
         headStyles: {
@@ -361,25 +372,26 @@ export default function StdMortalityRatio() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Interprétation', 20, y);
+      doc.text(t('stdMortalityCalculator.interpretationTitle'), 20, y);
       y += 2;
       doc.line(20, y, 190, y);
       y += 8;
-  
+
       let interpretation = '';
       if (results.smr > 1) {
-        interpretation = `La mortalité est ${((results.smr - 1) * 100).toFixed(1)}% supérieure aux attendus. `;
+        interpretation = t('stdMortalityCalculator.interpretationHigher', { percent: ((results.smr - 1) * 100).toFixed(1) });
       } else {
-        interpretation = `La mortalité est ${((1 - results.smr) * 100).toFixed(1)}% inférieure aux attendus. `;
+        interpretation = t('stdMortalityCalculator.interpretationLower', { percent: ((1 - results.smr) * 100).toFixed(1) });
       }
+      interpretation += ' ';
       if (results.exact.lower > 1) {
-        interpretation += 'Surmortalité statistiquement significative.';
+        interpretation += t('stdMortalityCalculator.interpretationSignifHigh');
       } else if (results.exact.upper < 1) {
-        interpretation += 'Sous-mortalité statistiquement significative.';
+        interpretation += t('stdMortalityCalculator.interpretationSignifLow');
       } else {
-        interpretation += "L'écart n'est pas statistiquement significatif (l'IC contient 1.0).";
+        interpretation += t('stdMortalityCalculator.interpretationNotSignif');
       }
-  
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
@@ -394,17 +406,16 @@ export default function StdMortalityRatio() {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Calculateur RMS – Outil statistique pour épidémiologie', 20, footerY + 5);
-      doc.text(`Page 1 / 1`, 190, footerY + 5, { align: 'right' });
-      doc.text(`Méthode : ${hasJStat ? 'χ² exact (jStat)' : 'Approximation'}`, 20, footerY + 10);
+      doc.text(t('stdMortalityCalculator.reportFooter'), 20, footerY + 5);
+      doc.text(`1 / 1`, 190, footerY + 5, { align: 'right' });
+      doc.text(`${t('stdMortalityCalculator.methodUsed')} : ${hasJStat ? 'χ² exact (jStat)' : t('stdMortalityCalculator.approximation')}`, 20, footerY + 10);
 
       // Save the PDF
-
-      doc.save(`Rapport_RMS_${results.observed}_${results.expected.toFixed(1)}.pdf`);
-      toast.success('Rapport PDF exporté avec succès');
+      doc.save(`SMR_Report_${results.observed}_${results.expected.toFixed(1)}.pdf`);
+      toast.success(t('stdMortalityCalculator.exportSuccess'));
     } catch (error) {
-      console.error('Erreur PDF :', error);
-      toast.error('Erreur lors de la génération du PDF');
+      console.error('PDF error:', error);
+      toast.error(t('stdMortalityCalculator.exportError'));
     }
   };
 
@@ -424,11 +435,11 @@ export default function StdMortalityRatio() {
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb */}
-        <nav  className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Calculateur RMS</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">{t('stdMortalityCalculator.title')}</span></li>
           </ol>
         </nav>
 
@@ -439,8 +450,8 @@ export default function StdMortalityRatio() {
               <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Calculateur RMS</h1>
-              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Épidémiologie et statistiques de mortalité.</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{t('stdMortalityCalculator.title')}</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">{t('stdMortalityCalculator.subtitle')}</p>
             </div>
           </div>
           <button
@@ -456,36 +467,36 @@ export default function StdMortalityRatio() {
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('stdMortalityCalculator.parameters')}
               </h2>
               <div className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Décès Observés
+                    {t('stdMortalityCalculator.observedLabel')}
                   </label>
                   <input
                     type="number"
                     value={observed}
                     onChange={(e) => setObserved(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="ex. 4"
+                    placeholder={t('stdMortalityCalculator.observedPlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Décès Attendus
+                    {t('stdMortalityCalculator.expectedLabel')}
                   </label>
                   <input
                     type="number"
                     value={expected}
                     onChange={(e) => setExpected(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="ex. 3.3"
+                    placeholder={t('stdMortalityCalculator.expectedPlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Niveau de confiance
+                    {t('stdMortalityCalculator.confidenceLabel')}
                   </label>
                   <select
                     value={confidenceLevel}
@@ -493,7 +504,7 @@ export default function StdMortalityRatio() {
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
                     <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
+                    <option value="95">95% ({t('stdMortalityCalculator.standard')})</option>
                     <option value="99">99%</option>
                   </select>
                 </div>
@@ -503,7 +514,7 @@ export default function StdMortalityRatio() {
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Example
+                  <Info className="w-4 h-4" /> {t('stdMortalityCalculator.btnExample')}
                 </button>
                 <button
                   onClick={clear}
@@ -520,21 +531,21 @@ export default function StdMortalityRatio() {
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('stdMortalityCalculator.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier le résultat principalt"
+                      title={t('stdMortalityCalculator.btnCopy')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('stdMortalityCalculator.btnExport')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -546,7 +557,7 @@ export default function StdMortalityRatio() {
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('stdMortalityCalculator.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">
                       {calculatedSmr === '-' ? '0.00' : calculatedSmr}
                     </div>
@@ -562,7 +573,7 @@ export default function StdMortalityRatio() {
                       }`}
                     >
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Ratio Standardisé
+                        {t('stdMortalityCalculator.smrCardLabel')}
                       </p>
                       <div
                         className={`text-5xl font-bold tracking-tight mb-2 ${
@@ -572,7 +583,7 @@ export default function StdMortalityRatio() {
                         {results.smr.toFixed(4)}
                       </div>
                       <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
-                        {results.observed} obs / {results.expected.toFixed(1)} exp
+                        {results.observed} {t('stdMortalityCalculator.obsAbbr')} / {results.expected.toFixed(1)} {t('stdMortalityCalculator.expAbbr')}
                       </span>
                     </div>
 
@@ -580,16 +591,16 @@ export default function StdMortalityRatio() {
                     <div className="bg-white dark:bg-slate-800 rounded-2xl p-4">
                       <div className="flex justify-between items-center mb-8">
                         <span className="text-sm font-semibold text-slate-500">
-                          Intervalle de Confiance ({results.confidenceLevel}%) – Exact
+                          {t('stdMortalityCalculator.ciExactTitle', { confidence: results.confidenceLevel })}
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-600 rounded-full text-blue-700 dark:text-blue-300 font-bold shadow-sm border border-blue-200 dark:border-blue-800">
-                            {hasJStat ? 'χ² exact' : 'Approximation'}
+                            {hasJStat ? t('stdMortalityCalculator.exactMethod') : t('stdMortalityCalculator.approximation')}
                           </span>
                         </div>
                       </div>
 
-                      {/* Visual scale */}
+                      {/* Visual scale (unchanged) */}
                       <div className="relative h-24 mb-2">
                         <div className="absolute w-full h-2 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700 rounded-full top-8 shadow-inner"></div>
 
@@ -665,14 +676,14 @@ export default function StdMortalityRatio() {
                       <div className="flex justify-between items-end pt-4 border-t border-slate-100 dark:border-slate-700">
                         <div className="flex gap-6">
                           <div className="text-center">
-                            <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Borne inf.</p>
+                            <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">{t('stdMortalityCalculator.ciLower')}</p>
                             <p className="text-2xl font-mono font-bold text-slate-800 dark:text-slate-100 leading-tight">
                               {results.exact.lower.toFixed(3)}
                             </p>
                             <p className="text-[10px] text-slate-400">CI {results.confidenceLevel}%</p>
                           </div>
                           <div className="text-center">
-                            <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Borne sup.</p>
+                            <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">{t('stdMortalityCalculator.ciUpper')}</p>
                             <p className="text-2xl font-mono font-bold text-slate-800 dark:text-slate-100 leading-tight">
                               {results.exact.upper.toFixed(3)}
                             </p>
@@ -681,7 +692,7 @@ export default function StdMortalityRatio() {
                         </div>
 
                         <div className="text-right">
-                          <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Largeur</p>
+                          <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">{t('stdMortalityCalculator.ciWidth')}</p>
                           <p className="text-lg font-mono font-semibold text-slate-600 dark:text-slate-300">
                             {(results.exact.upper - results.exact.lower).toFixed(3)}
                           </p>
@@ -694,80 +705,66 @@ export default function StdMortalityRatio() {
                       <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
                         {!hasJStat && (
                           <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
-                             jStat library not detected – exact intervals and p‑values are replaced by approximations. For accurate calculations, include jStat in your project.
+                            {t('stdMortalityCalculator.jstatMissing')}
                           </div>
                         )}
                         <table className="w-full text-xs sm:text-sm">
                           <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
                             <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Méthode</th>
-                              <th className="px-3 py-2 text-center font-semibold">RMS</th>
+                              <th className="px-3 py-2 text-left font-semibold">{t('stdMortalityCalculator.tableHeaderMethod')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('stdMortalityCalculator.tableHeaderSmr')}</th>
                               <th className="px-3 py-2 text-center font-semibold">
-                                CI {results.confidenceLevel}%
+                                {t('stdMortalityCalculator.tableHeaderCi', { confidence: results.confidenceLevel })}
                               </th>
-                              <th className="px-3 py-2 text-center font-semibold">p‑value</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('stdMortalityCalculator.tableHeaderP')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                             <tr>
-                              <td className="px-3 py-2 font-medium">Exact (Poisson/χ²)</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.smr.toFixed(3)}
-                              </td>
+                              <td className="px-3 py-2 font-medium">{t('stdMortalityCalculator.methodExact')}</td>
+                              <td className="px-3 py-2 text-center font-mono">{results.smr.toFixed(3)}</td>
                               <td className="px-3 py-2 text-center font-mono">
                                 [{results.exact.lower.toFixed(3)} – {results.exact.upper.toFixed(3)}]
                               </td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.exactPValue.toFixed(4)}
-                              </td>
+                              <td className="px-3 py-2 text-center font-mono">{results.exactPValue.toFixed(4)}</td>
                             </tr>
                             <tr>
-                              <td className="px-3 py-2 font-medium">Mid‑P exact</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.smr.toFixed(3)}
-                              </td>
+                              <td className="px-3 py-2 font-medium">{t('stdMortalityCalculator.methodMidP')}</td>
+                              <td className="px-3 py-2 text-center font-mono">{results.smr.toFixed(3)}</td>
                               <td className="px-3 py-2 text-center font-mono">—</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.midPValue.toFixed(4)}
-                              </td>
+                              <td className="px-3 py-2 text-center font-mono">{results.midPValue.toFixed(4)}</td>
                             </tr>
                             <tr>
-                              <td className="px-3 py-2 font-medium">Byar (approx.)</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.smr.toFixed(3)}
-                              </td>
+                              <td className="px-3 py-2 font-medium">{t('stdMortalityCalculator.methodByar')}</td>
+                              <td className="px-3 py-2 text-center font-mono">{results.smr.toFixed(3)}</td>
                               <td className="px-3 py-2 text-center font-mono">
                                 [{results.byar.lower.toFixed(3)} – {results.byar.upper.toFixed(3)}]
                               </td>
                               <td className="px-3 py-2 text-center font-mono">—</td>
                             </tr>
                             <tr>
-                              <td className="px-3 py-2 font-medium">Vandenbroucke</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.smr.toFixed(3)}
-                              </td>
+                              <td className="px-3 py-2 font-medium">{t('stdMortalityCalculator.methodVdb')}</td>
+                              <td className="px-3 py-2 text-center font-mono">{results.smr.toFixed(3)}</td>
                               <td className="px-3 py-2 text-center font-mono">
                                 [{results.vdb.lower.toFixed(3)} – {results.vdb.upper.toFixed(3)}]
                               </td>
                               <td className="px-3 py-2 text-center font-mono">—</td>
                             </tr>
                             <tr>
-                              <td className="px-3 py-2 font-medium">χ² test (1 d.f.)</td>
+                              <td className="px-3 py-2 font-medium">{t('stdMortalityCalculator.methodChi2')}</td>
                               <td className="px-3 py-2 text-center font-mono">—</td>
                               <td className="px-3 py-2 text-center font-mono">—</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.chiSquare.p.toFixed(4)}
-                              </td>
+                              <td className="px-3 py-2 text-center font-mono">{results.chiSquare.p.toFixed(4)}</td>
                             </tr>
                           </tbody>
                         </table>
                         <p className="text-sm text-slate-400 mt-3 italic">
-                          * Pour les petits effectifs (observés ≤ 5), privilégiez les méthodes exactes (Fisher, Mid-P).
+                          {t('stdMortalityCalculator.footnote')}
                         </p>
                       </div>
                     </div>
 
-                    {/* Interpretation block */}
+                    {/* Interpretation block - CORRIGÉ avec Trans sans enfants */}
                     <div
                       className={`p-6 rounded-2xl ${
                         results.exact.lower > 1 || results.exact.upper < 1
@@ -776,32 +773,34 @@ export default function StdMortalityRatio() {
                       }`}
                     >
                       <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-500" /> Interpretation
+                        <Info className="w-4 h-4 text-blue-500" /> {t('stdMortalityCalculator.interpretationTitle')}
                       </h3>
                       <p className="text-sm leading-relaxed">
                         {results.smr > 1 ? (
-                          <>
-                            {' '} La mortalité est
-                            <strong>{((results.smr - 1) * 100).toFixed(1)}% supérieure</strong> aux attentes.
-                          </>
+                          <Trans
+                            i18nKey="stdMortalityCalculator.interpretationHigher"
+                            values={{ percent: ((results.smr - 1) * 100).toFixed(1) }}
+                            components={{ strong: <strong className="font-bold" /> }}
+                          />
                         ) : (
-                          <>
-                             La mortalité est{' '}
-                            <strong>{((1 - results.smr) * 100).toFixed(1)}% lower</strong> aux attentes.
-                          </>
+                          <Trans
+                            i18nKey="stdMortalityCalculator.interpretationLower"
+                            values={{ percent: ((1 - results.smr) * 100).toFixed(1) }}
+                            components={{ strong: <strong className="font-bold" /> }}
+                          />
                         )}
                         <br />
                         {results.exact.lower > 1 ? (
                           <span className="text-orange-600 font-bold mt-2 block">
-                            Surmortalité statistiquement significative.
+                            {t('stdMortalityCalculator.interpretationSignifHigh')}
                           </span>
                         ) : results.exact.upper < 1 ? (
                           <span className="text-emerald-600 font-bold mt-2 block">
-                            Sous-mortalité statistiquement significative.
+                            {t('stdMortalityCalculator.interpretationSignifLow')}
                           </span>
                         ) : (
                           <span className="text-slate-500 mt-2 block">
-                            L'écart n'est pas statistiquement significatif (contient 1.0).
+                            {t('stdMortalityCalculator.interpretationNotSignif')}
                           </span>
                         )}
                       </p>
@@ -822,7 +821,7 @@ export default function StdMortalityRatio() {
             />
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('stdMortalityCalculator.helpTitle')}</h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
@@ -837,24 +836,21 @@ export default function StdMortalityRatio() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       1
                     </div>
-                    Le Principe
+                    {t('stdMortalityCalculator.helpPrincipleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Le RMS (SMR) compare les décès observés dans une population spécifique aux décès
-                    attendus si cette population avait les mêmes taux de mortalité que la population
-                    générale.
-
+                    {t('stdMortalityCalculator.helpPrinciple')}
                   </p>
                 </section>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1">RMS &gt; 1.0</div>
-                    <div className="text-xs text-slate-500">Excès de risque</div>
+                    <div className="text-xs text-slate-500">{t('stdMortalityCalculator.helpRiskExcess')}</div>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1">RMS &lt; 1.0</div>
-                    <div className="text-xs text-slate-500">Effet protecteur</div>
+                    <div className="text-xs text-slate-500">{t('stdMortalityCalculator.helpProtective')}</div>
                   </div>
                 </div>
 
@@ -863,11 +859,10 @@ export default function StdMortalityRatio() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       2
                     </div>
-                    Intervalle de Confiance (IC)
+                    {t('stdMortalityCalculator.helpCiTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-3">
-                    L'IC indique la fiabilité du résultat. S'il contient la valeur 1, le résultat
-                    n'est pas statistiquement significatif.
+                    {t('stdMortalityCalculator.helpCi')}
                   </p>
                 </section>
 
@@ -876,28 +871,23 @@ export default function StdMortalityRatio() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       3
                     </div>
-                    Méthodes de calcul avancées
+                    {t('stdMortalityCalculator.helpMethodsTitle')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
                     <p>
-                      <strong className="text-slate-900 dark:text-white">Exact (Fisher)</strong> – Basé sur la
-                      distribution de Poisson et la loi du χ². Référence pour les petits effectifs.
+                      <strong className="text-slate-900 dark:text-white">{t('stdMortalityCalculator.methodExact')}</strong> – {t('stdMortalityCalculator.helpExactDesc')}
                     </p>
                     <p>
-                      <strong className="text-slate-900 dark:text-white">Mid‑P exact</strong> – Correction de
-                      continuité du test exact, moins conservateur.
+                      <strong className="text-slate-900 dark:text-white">{t('stdMortalityCalculator.methodMidP')}</strong> – {t('stdMortalityCalculator.helpMidPDesc')}
                     </p>
                     <p>
-                      <strong className="text-slate-900 dark:text-white">Byar</strong> – Approximation de
-                      Rothman & Boice (1979), très précise même pour O &gt; 5.
+                      <strong className="text-slate-900 dark:text-white">{t('stdMortalityCalculator.methodByar')}</strong> – {t('stdMortalityCalculator.helpByarDesc')}
                     </p>
                     <p>
-                      <strong className="text-slate-900 dark:text-white">Vandenbroucke</strong> – Méthode
-                      simplifiée (1982) : IC = SMR × (1 ± 1,96/√O).
+                      <strong className="text-slate-900 dark:text-white">{t('stdMortalityCalculator.methodVdb')}</strong> – {t('stdMortalityCalculator.helpVdbDesc')}
                     </p>
                     <p>
-                      <strong className="text-slate-900 dark:text-white">Test du χ²</strong> – (O‑E)²/E,
-                      compare l'adéquation à la distribution de Poisson.
+                      <strong className="text-slate-900 dark:text-white">{t('stdMortalityCalculator.methodChi2')}</strong> – {t('stdMortalityCalculator.helpChi2Desc')}
                     </p>
                   </div>
                   <a
@@ -906,7 +896,7 @@ export default function StdMortalityRatio() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Source: OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('stdMortalityCalculator.helpSource')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
               </div>
