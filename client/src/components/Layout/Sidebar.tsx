@@ -12,7 +12,8 @@ import {
   MapPinHouse, Biohazard, HeartHandshake, Moon, Sun,
   ChevronRight, Code, UsersRound, ChevronsLeft
 } from 'lucide-react';
-import { useSettings } from '@/contexts/SettingsContext'; 
+import { useSettings } from '@/contexts/SettingsContext';
+import { useTranslation } from 'react-i18next'; 
 
 interface SidebarProps {
   isOpen: boolean;
@@ -33,7 +34,8 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const { settings } = useSettings();
+  const { settings, updateSetting } = useSettings();
+  const { i18n, t } = useTranslation();
 
   const getFloatingButtonClasses = () => {
     switch (settings.floatingButtonPosition) {
@@ -60,97 +62,97 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
   const showLabels = !isCollapsed || (isMobile && isOpen);
 
   const mainItems: MenuItem[] = [
-    { id: 'home', label: 'Accueil', icon: Home, href: '/' },
+    { id: 'home', label: t('common.home'), icon: Home, href: '/' },
   ];
 
   const sections = [
     {
       id: 'numerotations',
-      title: 'Numérotations',
+      title: t('sidebar.numerotations'),
       items: [
-        { id: 'std_mortality_ratio', label: 'Rapport Std.Mort', icon: Blocks, href: '/biostatistics/std_mortality_ratio' },
-        { id: 'proportions', label: 'Proportions', icon: ProportionsIcon, href: '/biostatistics/proportions' },
-        { id: 'two_by_two', label: 'Tableaux 2×2', icon: Grid2x2, href: '/biostatistics/two_by_two' },
-        { id: 'dose_response', label: 'Dose-Réponse', icon: ChartNoAxesCombined, href: '/biostatistics/dose-response' },
-        { id: 'r_by_c', label: 'Tableaux R×C', icon: TableCellsSplit, href: '/biostatistics/r_by_c' },
-        { id: 'screening', label: 'Dépistage', icon: ScanEye, href: '/biostatistics/screening' },
+        { id: 'std_mortality_ratio', label: t('sidebar.stdMortalityRatio'), icon: Blocks, href: '/biostatistics/std_mortality_ratio' },
+        { id: 'proportions', label: t('sidebar.proportions'), icon: ProportionsIcon, href: '/biostatistics/proportions' },
+        { id: 'two_by_two', label: t('sidebar.twoByTwo'), icon: Grid2x2, href: '/biostatistics/two_by_two' },
+        { id: 'dose_response', label: t('sidebar.doseResponse'), icon: ChartNoAxesCombined, href: '/biostatistics/dose-response' },
+        { id: 'r_by_c', label: t('sidebar.rByC'), icon: TableCellsSplit, href: '/biostatistics/r_by_c' },
+        { id: 'screening', label: t('sidebar.screening'), icon: ScanEye, href: '/biostatistics/screening' },
       ]
     },
     {
       id: 'personnes_temps',
-      title: 'Personnes temps',
+      title: t('sidebar.personnesTemps'),
       items: [
-        { id: 'one_rate', label: 'Taux 1', icon: CirclePercent, href: '/biostatistics/one_rate' },
-        { id: 'compare_two_rates', label: 'Taux 2', icon: SquarePercent, href: '/biostatistics/compare_two_rates' },
+        { id: 'one_rate', label: t('sidebar.oneRate'), icon: CirclePercent, href: '/biostatistics/one_rate' },
+        { id: 'compare_two_rates', label: t('sidebar.twoRates'), icon: SquarePercent, href: '/biostatistics/compare_two_rates' },
       ]
     },
     {
       id: 'variables_continues',
-      title: 'Variables continues',
+      title: t('sidebar.variablesContinues'),
       items: [
-        { id: 'mean_confidence_interval', label: 'Mean CI', icon: BetweenHorizontalStart, href: '/biostatistics/mean_confidence_interval' },
-        { id: 'median_percentile_ci', label: 'Mean Percentile Chi', icon: BetweenVerticalEnd, href: '/biostatistics/median_percentile_ci' },
-        { id: 't_test', label: 'Test t', icon: AlignVerticalDistributeCenter, href: '/biostatistics/t_test' },
-        { id: 'anova', label: 'ANOVA', icon: AlignHorizontalDistributeCenter, href: '/biostatistics/anova' },
+        { id: 'mean_confidence_interval', label: t('sidebar.meanCI'), icon: BetweenHorizontalStart, href: '/biostatistics/mean_confidence_interval' },
+        { id: 'median_percentile_ci', label: t('sidebar.meanPercentileCI'), icon: BetweenVerticalEnd, href: '/biostatistics/median_percentile_ci' },
+        { id: 't_test', label: t('sidebar.tTest'), icon: AlignVerticalDistributeCenter, href: '/biostatistics/t_test' },
+        { id: 'anova', label: t('sidebar.anova'), icon: AlignHorizontalDistributeCenter, href: '/biostatistics/anova' },
       ]
     },
     {
       id: 'taille_echantillon',
-      title: "Taille d'échantillon",
+      title: t('sidebar.tailleEchantillon'),
       items: [
-        { id: 'proportions_sample', label: 'Proportions', icon: ChartPie, href: '/biostatistics/proportions_sample' },
-        { id: 'cohort_rct', label: 'Cohort RCT', icon: UsersRound, href: '/biostatistics/cohort_rct' },
-        { id: 'matched_case', label: 'Cas Non Apparié', icon: LinkIcon, href: '/biostatistics/unmatched_case' },
-        { id: 'mean_difference_sample', label: 'Mean difference', icon: AlignHorizontalSpaceAround, href: '/biostatistics/mean_difference_sample' },
+        { id: 'proportions_sample', label: t('sidebar.proportionsSample'), icon: ChartPie, href: '/biostatistics/proportions_sample' },
+        { id: 'cohort_rct', label: t('sidebar.cohortRCT'), icon: UsersRound, href: '/biostatistics/cohort_rct' },
+        { id: 'matched_case', label: t('sidebar.casNonApparie'), icon: LinkIcon, href: '/biostatistics/unmatched_case' },
+        { id: 'mean_difference_sample', label: t('sidebar.meanDifference'), icon: AlignHorizontalSpaceAround, href: '/biostatistics/mean_difference_sample' },
       ]
     },
     {
       id: 'puissance',
-      title: 'Puissance',
+      title: t('sidebar.puissance'),
       items: [
-        { id: 'random_numbers', label: 'Nombres Aléatoires', icon: Dices, href: '/biostatistics/random_numbers' },
+        { id: 'random_numbers', label: t('sidebar.nombresAleatoires'), icon: Dices, href: '/biostatistics/random_numbers' },
       ]
     },
     {
       id: 'Recherches',
-      title: 'Recherches',
+      title: t('sidebar.recherches'),
       items: [
-        { id: 'Explorer', label: 'Explorer', icon: Globe, href: '/explorer/search' },
+        { id: 'Explorer', label: t('sidebar.explorer'), icon: Globe, href: '/explorer/search' },
       ]
     },
 
     {
       id: 'geospatial',
-      title: 'GeoSpatial',
+      title: t('sidebar.geospatial'),
       items: [
-        { id: 'geospatial_module', label: 'GeoSpatial', icon: MapPinHouse, href: '/geospatial/map' },
+        { id: 'geospatial_module', label: t('sidebar.geospatialModule'), icon: MapPinHouse, href: '/geospatial/map' },
       ]
     },
     {
       id: 'simulation',
-      title: 'Simulation',
+      title: t('sidebar.simulation'),
       items: [
-        { id: 'epidemic_simulation', label: 'Simulateur', icon: Biohazard, href: '/simulation/dashboard' },
+        { id: 'epidemic_simulation', label: t('sidebar.simulateur'), icon: Biohazard, href: '/simulation/dashboard' },
       ]
     },
     {
       id: 'workspace',
       items: [
-        { id: 'Atelier code', label: 'Code Editor', icon: Code, href: '/workspace' },
+        { id: 'Atelier code', label: t('sidebar.codeEditor'), icon: Code, href: '/workspace' },
       ]
     },
     {
       id: 'support',
-      title: 'Support',
+      title: t('sidebar.support'),
       items: [
-        { id: 'help', label: 'Aide', icon: HeartHandshake, href: '/help' },
-        { id: 'docs', label: 'Documentation', icon: BookOpen, href: '/docs' },
+        { id: 'help', label: t('sidebar.help'), icon: HeartHandshake, href: '/help' },
+        { id: 'docs', label: t('sidebar.docs'), icon: BookOpen, href: '/docs' },
       ]
     }
   ];
 
   const footerItems = [
-    { id: 'settings', label: 'Paramètres', icon: Settings, href: '/settings' },
+    { id: 'settings', label: t('common.settings'), icon: Settings, href: '/settings' },
   ];
 
   const toggleDarkMode = () => {
@@ -313,12 +315,18 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
                 R1.0.0
               </div>
               <div className="flex items-center space-x-2">
-                <select className="text-xs bg-transparent border-none text-gray-500 dark:text-gray-400 focus:outline-none cursor-pointer">
+                <select 
+                  value={settings.language}
+                  onChange={(e) => {
+                    updateSetting('language', e.target.value as any);
+                    i18n.changeLanguage(e.target.value);
+                  }}
+                  className="text-xs bg-transparent border-none text-gray-500 dark:text-gray-400 focus:outline-none cursor-pointer"
+                >
                   <option value="fr">🇫🇷</option>
-                  <option value="en">🇺🇸</option>
+                  <option value="en">🇬🇧</option>
                   <option value="es">🇪🇸</option>
-                  <option value="pt">🇵🇹</option>
-                  <option value="it">🇮🇹</option>
+                  <option value="sw">🇹🇿</option>
                 </select>
                 
                 <button
