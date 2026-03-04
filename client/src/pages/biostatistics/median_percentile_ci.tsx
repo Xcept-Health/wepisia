@@ -22,19 +22,36 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-export default function MedianPercentileCI() {
-  const [sampleSize, setSampleSize] = useState<string>('');
-  const [percentile, setPercentile] = useState<string>('50');
-  const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
-  const [results, setResults] = useState<any>(null);
-  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
-  const [showMethodDetails, setShowMethodDetails] = useState<boolean>(false);
-  const resultsRef = useRef<HTMLDivElement>(null);
+/**
+ * Median / Percentile Confidence Interval Calculator (MedianCI)
+ * 
+ * This component replicates OpenEpi's Median/Percentile CI module.
+ * It estimates the confidence interval for the rank of a specified percentile
+ * in the population, based on sample size. The method uses the normal approximation
+ * to the binomial distribution (rank ~ N(np, np(1-p))).
+ * 
+ * The result is given as a range of ranks in the sorted sample. To obtain the
+ * confidence interval for the actual value, these ranks must be applied to the
+ * sorted data.
+ * 
+ * All critical values (z) are obtained from jStat when available; otherwise,
+ * fixed values (1.645, 1.96, 2.576) are used as fallback.
+ */
 
-  // Vérification de la disponibilité de jStat
+export default function MedianPercentileCI() {
+  // ----- State declarations -----
+  const [sampleSize, setSampleSize] = useState<string>('');       // Sample size (n)
+  const [percentile, setPercentile] = useState<string>('50');     // Desired percentile (p)
+  const [confidenceLevel, setConfidenceLevel] = useState<string>('95'); // Confidence level (90,95,99)
+  const [results, setResults] = useState<any>(null);              // Computed results object
+  const [showHelpModal, setShowHelpModal] = useState<boolean>(false); // Help modal visibility
+  const [showMethodDetails, setShowMethodDetails] = useState<boolean>(false); // Toggle methodological notes
+  const resultsRef = useRef<HTMLDivElement>(null);                // Reference to results container
+
+  // Check if jStat is already available (e.g., from global scope)
   const hasJStat = typeof (window as any).jStat !== 'undefined';
 
-  // Chargement des scripts externes
+  // ----- Dynamic loading of jStat -----
   useEffect(() => {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
@@ -44,44 +61,49 @@ export default function MedianPercentileCI() {
       }
     };
     loadScripts();
-  }, []);
+  }, []); // Runs once on mount
 
-  // Formatage des nombres
+  // ----- Formatting helper (consistent with OpenEpi's output style) -----
   const formatNumber = (num: number, decimals: number = 2): string => {
     if (num === Infinity || num === -Infinity) return '∞';
     if (isNaN(num) || !isFinite(num)) return '-';
     return num.toFixed(decimals);
   };
 
-  // Calcul principal – conforme à OpenEpi Median/Percentile CI
+  // ----- Core calculation function (matches OpenEpi Median/Percentile CI) -----
   const calculateMedianCI = () => {
     const n = parseInt(sampleSize) || 0;
     const perc = parseFloat(percentile) || 50;
     const conf = parseInt(confidenceLevel);
     const alpha = 1 - conf / 100;
 
+    // Input validation
     if (n < 2 || perc < 0 || perc > 100) {
       setResults(null);
       return;
     }
 
-    // Approximation normale des rangs
+    // Proportion corresponding to the percentile
     const p = perc / 100;
+
+    // Critical z-value (two‑tailed)
     const z = hasJStat
       ? (window as any).jStat.normal.inv(1 - alpha / 2, 0, 1)
       : conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
 
+    // Expected rank and its standard error (normal approximation)
     const expectedRank = n * p;
     const se = Math.sqrt(n * p * (1 - p));
 
-    // Limites de confiance pour les rangs (arrondies aux entiers)
+    // Confidence limits for the rank, rounded to integer positions in the sample
     const lowerRank = Math.max(1, Math.floor(expectedRank - z * se));
     const upperRank = Math.min(n, Math.ceil(expectedRank + z * se));
 
-    // Conversion en percentiles pour l'affichage
+    // Convert ranks back to percentiles for display
     const lowerPercentile = (lowerRank / n) * 100;
     const upperPercentile = (upperRank / n) * 100;
 
+    // ----- Assemble results object -----
     setResults({
       n,
       percentile: perc,
@@ -98,12 +120,14 @@ export default function MedianPercentileCI() {
     });
   };
 
-  // Recalcul automatique
+  // ----- Automatic recalculation whenever inputs change -----
   useEffect(() => {
     calculateMedianCI();
   }, [sampleSize, percentile, confidenceLevel]);
 
-  // Handlers
+  // ----- UI handlers -----
+
+  // Reset all input fields
   const clear = () => {
     setSampleSize('');
     setPercentile('50');
@@ -112,12 +136,14 @@ export default function MedianPercentileCI() {
     toast.info('Champs réinitialisés');
   };
 
+  // Load an example dataset (typical values)
   const loadExample = () => {
     setSampleSize('100');
     setPercentile('50');
-    toast.success('Exemple chargé (n=100, percentile 50%)');
+    toast.success('Exemple chargé');
   };
 
+  // Copy results to clipboard as formatted text
   const copyResults = async () => {
     if (!results) return;
     const text = `Intervalle de confiance pour le percentile – OpenEpi MedianCI
@@ -141,6 +167,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
     }
   };
 
+  // Export a comprehensive PDF report
   const exportPDF = () => {
     if (!results) {
       toast.error('Veuillez d’abord effectuer un calcul');
@@ -149,7 +176,9 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
 
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const colorPrimary: [number, number, number] = [59, 130, 246];
+
+      // Colour definitions (Tailwind slate palette)
+      const colorPrimary: [number, number, number] = [59, 130, 246]; // blue-500
       const colorSlate = {
         50: [248, 250, 252] as [number, number, number],
         100: [241, 245, 249] as [number, number, number],
@@ -159,7 +188,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
         900: [15, 23, 42] as [number, number, number],
       };
 
-      // En-tête
+      // ----- Header -----
       doc.setFillColor(...colorSlate[50]);
       doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
       doc.setFont('helvetica', 'bold');
@@ -172,7 +201,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
       doc.text('MedianCI – OpenEpi', 190, 32, { align: 'right' });
 
-      // Données saisies
+      // ----- Input data summary -----
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -187,7 +216,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.text(`Percentile : ${results.percentile}%`, 25, y); y += 6;
       doc.text(`Niveau de confiance : ${results.conf}%`, 25, y); y += 12;
 
-      // Carte de l'intervalle
+      // ----- Rank interval card -----
       doc.setFillColor(236, 253, 245);
       doc.setDrawColor(5, 150, 105);
       doc.roundedRect(20, y, 170, 35, 3, 3, 'FD');
@@ -199,7 +228,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.text(`[${results.lowerRank} – ${results.upperRank}] (rangs)`, 105, y + 22, { align: 'center' });
       y += 45;
 
-      // Tableau des résultats
+      // ----- Detailed results table -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text('Résultats détaillés', 20, y);
@@ -234,7 +263,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
 
       y = (doc as any).lastAutoTable.finalY + 15;
 
-      // Interprétation
+      // ----- Interpretation -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text('Interprétation', 20, y);
@@ -249,14 +278,14 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.text(splitText, 20, y);
       y += splitText.length * 5 + 10;
 
-      // Références
+      // ----- References and notes -----
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
       doc.text('Méthode basée sur l’approximation normale des rangs (Conover, 1999).', 20, y); y += 4;
       doc.text('Conforme à OpenEpi – Module Median/Percentile CI.', 20, y); y += 4;
 
-      // Pied de page
+      // ----- Footer -----
       const footerY = 280;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, footerY, 190, footerY);
@@ -274,10 +303,11 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
     }
   };
 
+  // ----- Render (JSX) -----
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
-        {/* Breadcrumb */}
+        {/* Breadcrumb navigation */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
@@ -286,7 +316,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
           </ol>
         </nav>
 
-        {/* Header */}
+        {/* Page header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
@@ -297,7 +327,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                 Intervalle de confiance pour la médiane / percentile
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Estimation du rang du percentile dans la population – Méthode des rangs normaux (OpenEpi)
+                Estimation du rang du percentile dans la population
               </p>
             </div>
           </div>
@@ -310,7 +340,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-          {/* Colonne gauche - saisie */}
+          {/* Left column – input form */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
@@ -399,23 +429,10 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
               </div>
             </div>
 
-            {/* Info complémentaire */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-2xl p-5 border border-blue-100 dark:border-blue-800/30">
-              <div className="flex items-start gap-3">
-                <Layers className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
-                    Approximation normale des rangs
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    L'intervalle est construit sur les rangs et non sur les valeurs. Appliquez les rangs obtenus à vos données triées pour obtenir l'IC du percentile.
-                  </p>
-                </div>
-              </div>
-            </div>
+
           </div>
 
-          {/* Colonne droite - résultats */}
+          {/* Right column – results display */}
           <div className="lg:col-span-7">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
@@ -441,19 +458,21 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                   </div>
                 )}
               </div>
+
               <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
                 {!results ? (
+                  // Placeholder when no results
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-                    
-                  <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                  <p className="text-lg">Saisissez les données pour l'analyse</p>
-                  <div className="text-4xl font-bold mt-2">
-                    0.00
-                  </div>
+                    <Presentation className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <div className="text-4xl font-bold mt-2">
+                      0.00
+                    </div>
                   </div>
                 ) : (
+                  // Results area
                   <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Carte principale : intervalle de confiance du rang */}
+                    {/* Rank interval card */}
                     <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-6 text-center">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
                         IC {results.conf}% du rang – percentile {results.percentile}%
@@ -466,7 +485,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                       </p>
                     </div>
 
-                    {/* Statistiques clés */}
+                    {/* Key statistics cards */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
                         <p className="text-xs font-bold uppercase text-slate-400">Taille (n)</p>
@@ -486,7 +505,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                       </div>
                     </div>
 
-                    {/* Tableau détaillé */}
+                    {/* Detailed table */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
@@ -540,32 +559,9 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                       </div>
                     </div>
 
-                    {/* Détails des méthodes (repliable) */}
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-                      <button
-                        onClick={() => setShowMethodDetails(!showMethodDetails)}
-                        className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
-                      >
-                        <ChevronDown
-                          className={`w-4 h-4 transition-transform ${
-                            showMethodDetails ? 'rotate-180' : ''
-                          }`}
-                        />
-                        {showMethodDetails ? 'Masquer' : 'Afficher'} les notes méthodologiques
-                      </button>
-                      {showMethodDetails && (
-                        <div className="mt-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 animate-in slide-in-from-top-2">
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Approximation normale des rangs</span> – L’intervalle de confiance pour le rang d’un percentile est construit à partir de la distribution normale : rang ~ N(np, np(1-p)).</p>
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Bornes entières</span> – Les limites sont arrondies à l’entier le plus proche dans l’échantillon.</p>
-                          <p><span className="font-semibold text-slate-800 dark:text-slate-200">Interprétation</span> – L’intervalle porte sur le <em>rang</em> du percentile dans la population. Pour obtenir l’IC sur la <em>valeur</em>, appliquez ces rangs à vos données triées.</p>
-                          <p className="mt-2 text-blue-600 dark:text-blue-400 italic">
-                            Méthode conforme à OpenEpi – Module Median/Percentile CI.
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                
 
-                    {/* Interprétation */}
+                    {/* Interpretation */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
                       <div className="flex items-start gap-3">
                         <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
@@ -591,7 +587,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
           </div>
         </div>
 
-        {/* Modal d'aide - style RMS */}
+        {/* Help modal */}
         {showHelpModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
@@ -633,7 +629,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                    Condition d’application
+                      Condition d’application
                     </div>
                     <div className="text-xs text-slate-500">L’approximation est valable si n·p ≥ 5 et n·(1‑p) ≥ 5.</div>
                   </div>
