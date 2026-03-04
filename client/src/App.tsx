@@ -24,13 +24,9 @@ import MedianPercentileCI from "./pages/biostatistics/median_percentile_ci";
 import TTestCalculator from "./pages/biostatistics/t_test";
 import ANOVA from "./pages/biostatistics/anova";
 import ProportionsSample from "./pages/biostatistics/proportions_sample";
-import CohortRCT from "./pages/biostatistics/cohort_rct_power";
 import MatchedCaseControl from "./pages/biostatistics/unmatched_case";
 import MeanDifference from "./pages/biostatistics/mean_difference_sample";
-import ClinicalTrial from "./pages/biostatistics/clinical_trial";
-import CaseControlStudy from "./pages/biostatistics/case_control";
 import MeanDifferencePower from "./pages/biostatistics/mean_difference_power";
-import PowerCaseControl from "./pages/biostatistics/matched_case_power";
 import RandomNumberGenerator from "./pages/biostatistics/random_numbers";
 import SampleSizeCohortRCT from "./pages/biostatistics/cohort_rct";
 // Composants du chatbot
@@ -82,14 +78,10 @@ function Router() {
       <Route path="/biostatistics/t_test" component={TTestCalculator} />
       <Route path="/biostatistics/anova" component={ANOVA} />
       <Route path="/biostatistics/proportions_sample" component={ProportionsSample} />
-      <Route path="/biostatistics/cohort_rct_power" component={CohortRCT} />
       <Route path="/biostatistics/cohort_rct" component={SampleSizeCohortRCT} />
       <Route path="/biostatistics/unmatched_case" component={MatchedCaseControl} />
       <Route path="/biostatistics/mean_difference_sample" component={MeanDifference} />
-      <Route path="/biostatistics/clinical_trial" component={ClinicalTrial} />
-      <Route path="/biostatistics/case_control" component={CaseControlStudy} />
       <Route path="/biostatistics/mean_difference_power" component={MeanDifferencePower} />
-      <Route path="/biostatistics/matched_case_power" component={PowerCaseControl} />
       <Route path="/biostatistics/random_numbers" component={RandomNumberGenerator} />
       {/* Search Route */} 
       <Route path="/explorer/search" component={Explorer} />
