@@ -22,7 +22,7 @@ i18n
     resources,
     fallbackLng: 'fr',
     interpolation: {
-      escapeValue: false, // React protège déjà contre les attaques XSS
+      escapeValue: false, 
     },
     detection: {
       order: ['localStorage', 'navigator'],

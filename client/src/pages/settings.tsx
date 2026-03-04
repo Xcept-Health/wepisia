@@ -301,17 +301,16 @@
               </div>
               <div className="p-6 lg:p-8 space-y-4">
                 <div className="relative">
-                  <select
-                    value={settings.language}
-                    onChange={(e) => updateSetting("language", e.target.value as any)}
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 transition-all text-base font-medium cursor-pointer"
-                  >
-                    <option value="fr">Français</option>
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                    <option value="pt">Português</option>
-                    <option value="it">Italiano</option>
-                  </select>
+                <select
+                  value={settings.language}
+                  onChange={(e) => updateSetting("language", e.target.value as any)}
+                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 transition-all text-base font-medium cursor-pointer"
+                >
+                  <option value="fr">Français</option>
+                  <option value="en">English</option>
+                  <option value="es">Español</option>
+                  <option value="sw">Kiswahili</option>
+                </select>
                   <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
@@ -320,8 +319,7 @@
 
           {/* Pied de page */}
           <div className="mt-12 text-center text-xs text-slate-400 dark:text-slate-500">
-            <p>OpenEpi Suite – Version 2.0.0</p>
-            <p className="mt-1">Paramètres sauvegardés automatiquement dans votre navigateur.</p>
+            <p className="mt-1">Les paramètres sont sauvegardés automatiquement dans votre navigateur.</p>
           </div>
         </div>
       </div>
