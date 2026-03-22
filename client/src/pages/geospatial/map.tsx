@@ -1,84 +1,68 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, Marker, useMap } from 'react-leaflet';
+/**
+ * GeospatialVisualization
+ */
+import React, {
+  useState, useEffect, useRef, useMemo, useCallback,
+} from 'react';
+import {
+  MapContainer, TileLayer, CircleMarker,
+  Tooltip, Popup, useMap,
+} from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import MarkerClusterGroup from 'react-leaflet-markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.heat';
-import MarkerClusterGroup from 'react-leaflet-markercluster';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { HexColorPicker } from 'react-colorful';
-import {
-  ChevronRight,
-  Database,
-  BrainCircuit,
-  Settings2,
-  Upload,
-  Globe,
-  Eye,
-  EyeOff,
-  Trash2,
-  Layers,
-  X
-} from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'wouter';
+import { useTheme } from '@/contexts/ThemeContext';
 
-// ------------------------------------------------------------------
-// TYPES
-// ------------------------------------------------------------------
-interface DataRow {
-  [key: string]: string | number;
-}
+import {
+  Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import { Button }    from '@/components/ui/button';
+import { Badge }     from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Progress }  from '@/components/ui/progress';
+import { Slider }    from '@/components/ui/slider';
+import { Switch }    from '@/components/ui/switch';
+import { Label }     from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+
+import {
+  ChevronRight, Database, BrainCircuit, Settings2,
+  Upload, Globe, Eye, EyeOff, Trash2, Layers, X,
+  Download, Map as MapIcon, Sun, Moon,
+  CheckCircle2, AlertCircle, Info, Clock, Sparkles,
+  Zap, FlaskConical, Activity,
+} from 'lucide-react';
+
+// Types
+interface DataRow { [key: string]: string | number; }
 
 interface Dataset {
-  id: string;
-  name: string;
-  color: string;
-  data: DataRow[];
-  visible: boolean;
-  clustering?: boolean;
-  heatmap?: boolean;
-  pointRadius?: number;
-  pointOpacity?: number;
+  id: string; name: string; color: string;
+  data: DataRow[]; visible: boolean;
+  clustering?: boolean; heatmap?: boolean;
+  pointRadius?: number; pointOpacity?: number;
 }
 
 interface DiseaseExample {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
+  id: string; name: string; description: string; color: string;
   source: {
-    organization: string;
-    year: number;
-    study: string;
-    url: string;
-    dataType: 'surveillance' | 'report' | 'study' | 'model';
-    credibility: 'high' | 'medium' | 'low';
-    lastUpdated: string;
+    organization: string; year: number;
+    study: string; credibility: 'high' | 'medium' | 'low';
   };
   countries: {
-    name: string;
-    lat: number;
-    lng: number;
-    cases: number;
-    incidenceRate: number;
-    population: number;
-    region: string;
-    sourceDetail: string;
+    name: string; lat: number; lng: number;
+    cases: number; incidenceRate: number; population: number; region: string;
   }[];
 }
 
@@ -91,640 +75,348 @@ interface AIResults {
 }
 
 interface HeatmapConfig {
-  radius: number;
-  blur: number;
-  maxZoom: number;
-  max: number;
-  minOpacity: number;
-  gradient: { [key: number]: string };
-  visible: boolean;
+  radius: number; blur: number; max: number;
+  minOpacity: number; gradient: Record<number, string>; visible: boolean;
 }
 
 interface ClusteringConfig {
-  showCoverageOnHover: boolean;
-  zoomToBoundsOnClick: boolean;
-  spiderfyOnMaxZoom: boolean;
-  removeOutsideVisibleBounds: boolean;
-  maxClusterRadius: number;
-  disableClusteringAtZoom: number;
-  animate: boolean;
-  animateAddingMarkers: boolean;
-  chunkedLoading: boolean;
-  chunkInterval: number;
-  chunkDelay: number;
-  clusterColor: string;
-  clusterTextColor: string;
+  showCoverageOnHover: boolean; zoomToBoundsOnClick: boolean;
+  spiderfyOnMaxZoom: boolean; maxClusterRadius: number;
+  disableClusteringAtZoom: number; animate: boolean;
+  clusterColor: string; clusterTextColor: string;
 }
 
+interface Toast {
+  id: string; message: string; type: 'success' | 'error' | 'warning' | 'info';
+}
 
-// COMPOSANT HEATMAP PERSONNALISÉ *
-interface HeatmapLayerProps {
+// Module-level constants  never recreated on render
+// Fix: real hex colors, not 'bg-red-500' Tailwind class names
+const DISEASE_EXAMPLES: DiseaseExample[] = [
+  {
+    id: 'ebola-2014', name: 'Épidémie Ebola 2014–2016',
+    description: 'Crise sanitaire majeure en Afrique de l\'Ouest  28 000 cas, 11 000 décès.',
+    color: '#ef4444',
+    source: { organization: 'OMS', year: 2016, study: 'Rapport final flambée Ebola', credibility: 'high' },
+    countries: [
+      { name: 'Guinée',       lat: 9.9456, lng: -9.6966,  cases: 3814,  incidenceRate: 28.2,  population: 12414000,  region: 'Afrique de l\'Ouest' },
+      { name: 'Sierra Leone', lat: 8.4606, lng: -11.7799, cases: 14124, incidenceRate: 195.3, population: 7791000,   region: 'Afrique de l\'Ouest' },
+      { name: 'Liberia',      lat: 6.4281, lng: -9.4295,  cases: 10675, incidenceRate: 232.7, population: 4854000,   region: 'Afrique de l\'Ouest' },
+      { name: 'Nigeria',      lat: 9.082,  lng: 8.6753,   cases: 20,    incidenceRate: 0.1,   population: 195875000, region: 'Afrique de l\'Ouest' },
+      { name: 'Mali',         lat: 17.57,  lng: -3.99,    cases: 8,     incidenceRate: 0.04,  population: 20251000,  region: 'Afrique de l\'Ouest' },
+    ],
+  },
+  {
+    id: 'covid-global', name: 'COVID-19  Foyers initiaux',
+    description: 'Distribution géographique des grands foyers confirmés  données Johns Hopkins.',
+    color: '#3b82f6',
+    source: { organization: 'Johns Hopkins University', year: 2023, study: 'COVID-19 Data Repository', credibility: 'high' },
+    countries: [
+      { name: 'États-Unis', lat: 37.09,  lng: -95.71,  cases: 103436829, incidenceRate: 31156, population: 331900000,  region: 'Amérique du Nord' },
+      { name: 'Inde',       lat: 20.59,  lng: 78.96,   cases: 44994454,  incidenceRate: 3260,  population: 1380000000, region: 'Asie du Sud' },
+      { name: 'Brésil',     lat: -14.23, lng: -51.92,  cases: 37711693,  incidenceRate: 17693, population: 213000000,  region: 'Amérique du Sud' },
+      { name: 'France',     lat: 46.60,  lng: 1.88,    cases: 38997490,  incidenceRate: 57600, population: 67000000,   region: 'Europe' },
+      { name: 'Allemagne',  lat: 51.16,  lng: 10.45,   cases: 37986082,  incidenceRate: 45300, population: 83200000,   region: 'Europe' },
+      { name: 'Italie',     lat: 41.87,  lng: 12.56,   cases: 25933617,  incidenceRate: 42800, population: 60360000,   region: 'Europe' },
+      { name: 'Chine',      lat: 35.86,  lng: 104.19,  cases: 99283493,  incidenceRate: 6984,  population: 1440000000, region: 'Asie de l\'Est' },
+    ],
+  },
+  {
+    id: 'meningitis', name: 'Méningite  Ceinture sub-saharienne',
+    description: 'Flambées saisonnières dans la ceinture méningitique (Burkina Faso, Niger, Mali).',
+    color: '#d97706',
+    source: { organization: 'OMS / CEREMUJER', year: 2022, study: 'Surveillance méningite Afrique sub-saharienne', credibility: 'high' },
+    countries: [
+      { name: 'Burkina Faso', lat: 12.36, lng: -1.53,  cases: 8127, incidenceRate: 38.2, population: 21511000,  region: 'Ceinture méningitique' },
+      { name: 'Niger',        lat: 17.60, lng: 8.08,   cases: 6543, incidenceRate: 27.1, population: 24206000,  region: 'Ceinture méningitique' },
+      { name: 'Mali',         lat: 17.57, lng: -3.99,  cases: 4821, incidenceRate: 23.8, population: 20251000,  region: 'Ceinture méningitique' },
+      { name: 'Nigeria',      lat: 9.08,  lng: 8.67,   cases: 9234, incidenceRate: 44.7, population: 206139000, region: 'Ceinture méningitique' },
+      { name: 'Tchad',        lat: 15.45, lng: 18.73,  cases: 3412, incidenceRate: 20.8, population: 16425000,  region: 'Ceinture méningitique' },
+      { name: 'Éthiopie',     lat: 9.14,  lng: 40.48,  cases: 2890, incidenceRate: 2.5,  population: 114964000, region: 'Ceinture méningitique' },
+    ],
+  },
+  {
+    id: 'cholera-2024', name: 'Choléra  Flambées 2022–2024',
+    description: 'Résurgence mondiale  OMS signale 43 pays touchés simultanément.',
+    color: '#0d9488',
+    source: { organization: 'OMS', year: 2024, study: 'Rapport mondial choléra 2024', credibility: 'high' },
+    countries: [
+      { name: 'Haïti',        lat: 18.97,  lng: -72.28, cases: 104000,  incidenceRate: 914,  population: 11402000,  region: 'Caraïbes' },
+      { name: 'Soudan du Sud',lat: 6.87,   lng: 31.30,  cases: 48000,   incidenceRate: 428,  population: 11194000,  region: 'Afrique de l\'Est' },
+      { name: 'Éthiopie',     lat: 9.14,   lng: 40.48,  cases: 75000,   incidenceRate: 65,   population: 114964000, region: 'Afrique de l\'Est' },
+      { name: 'Nigeria',      lat: 9.08,   lng: 8.67,   cases: 121000,  incidenceRate: 587,  population: 206139000, region: 'Afrique de l\'Ouest' },
+      { name: 'Yémen',        lat: 15.55,  lng: 48.51,  cases: 310000,  incidenceRate: 1040, population: 29825000,  region: 'Proche-Orient' },
+      { name: 'Bangladesh',   lat: 23.68,  lng: 90.35,  cases: 89000,   incidenceRate: 54,   population: 166303000, region: 'Asie du Sud' },
+    ],
+  },
+];
+
+const INDICATOR_ACCENTS = [
+  'bg-indigo-500', 'bg-rose-500', 'bg-amber-500', 'bg-emerald-500', 'bg-violet-500',
+];
+
+// Fix: padStart ensures 6-digit hex
+function randomColor(): string {
+  return '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+}
+
+// Heatmap layer  must be inside MapContainer
+const HeatmapLayer: React.FC<{
   points: [number, number, number][];
-  radius?: number;
-  blur?: number;
-  max?: number;
-  minOpacity?: number;
-  gradient?: { [key: number]: string };
-}
-
-const HeatmapLayer: React.FC<HeatmapLayerProps> = ({
-  points,
-  radius = 25,
-  blur = 15,
-  max = 1.0,
-  minOpacity = 0.2,
-  gradient
-}) => {
+  radius?: number; blur?: number; max?: number; minOpacity?: number;
+  gradient?: Record<number, string>;
+}> = ({ points, radius = 25, blur = 15, max = 1, minOpacity = 0.2, gradient }) => {
   const map = useMap();
-
   useEffect(() => {
-    if (!map || points.length === 0) return;
-
-    const heat = L.heatLayer(points, {
-      radius,
-      blur,
-      maxZoom: map.getMaxZoom() || 18,
-      max,
-      minOpacity,
-      gradient
+    if (!map || !points.length) return;
+    const heat = (L as any).heatLayer(points, {
+      radius, blur, maxZoom: map.getMaxZoom() || 18, max, minOpacity, gradient,
     });
-
     heat.addTo(map);
-
-    return () => {
-      map.removeLayer(heat);
-    };
+    return () => { map.removeLayer(heat); };
   }, [map, points, radius, blur, max, minOpacity, gradient]);
-
   return null;
 };
 
-// ------------------------------------------------------------------
-// COMPOSANT PRINCIPAL
-// ------------------------------------------------------------------
+// Toast component
+const ToastStack: React.FC<{ toasts: Toast[]; dismiss: (id: string) => void }> = ({ toasts, dismiss }) => (
+  <div className="fixed bottom-20 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+    <AnimatePresence>
+      {toasts.map(t => (
+        <motion.div key={t.id}
+          initial={{ opacity: 0, x: 60, scale: 0.9 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: 60, scale: 0.9 }}
+          className={`pointer-events-auto flex items-center gap-2.5 px-4 py-2.5 rounded-2xl shadow-xl text-sm font-medium max-w-xs
+            ${t.type === 'success' ? 'bg-emerald-500 text-white' :
+              t.type === 'error'   ? 'bg-red-500 text-white' :
+              t.type === 'warning' ? 'bg-amber-500 text-white' :
+                                     'bg-blue-500 text-white'}`}>
+          {t.type === 'success' && <CheckCircle2 size={14} />}
+          {t.type === 'error'   && <AlertCircle  size={14} />}
+          {t.type === 'warning' && <AlertCircle  size={14} />}
+          {t.type === 'info'    && <Info         size={14} />}
+          <span className="flex-1">{t.message}</span>
+          <button onClick={() => dismiss(t.id)} className="opacity-70 hover:opacity-100 pointer-events-auto">
+            <X size={12} />
+          </button>
+        </motion.div>
+      ))}
+    </AnimatePresence>
+  </div>
+);
+
+// Coming-soon badge
+const ComingSoon: React.FC<{ label?: string }> = ({ label = 'Bientôt' }) => (
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-500/15 text-violet-500 border border-violet-500/20">
+    <Sparkles size={9} /> {label}
+  </span>
+);
+
+// Main component
 const GeospatialVisualization: React.FC = () => {
-  // États principaux
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [activeTab, setActiveTab] = useState<'data' | 'analysis' | 'settings' | 'visualization'>('data');
-  const [selectedColumns, setSelectedColumns] = useState({
-    lat: '',
-    lng: '',
-    value: '',
-    time: ''
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [aiResults, setAiResults] = useState<AIResults | null>(null);
-  const [isExampleModalOpen, setIsExampleModalOpen] = useState<boolean>(false);
+  const { theme, toggleTheme, switchable } = useTheme();
+  const isDark = theme === 'dark';
+
+  // Data state
+  const [datasets, setDatasets]     = useState<Dataset[]>([]);
+  const [selectedColumns, setSelectedColumns] = useState({ lat: '', lng: '', value: '', time: '' });
+  const [isLoading, setIsLoading]   = useState(false);
+  const [exampleProgress, setExampleProgress] = useState(0);
   const [selectedDiseases, setSelectedDiseases] = useState<string[]>([]);
-  const [exampleProgress, setExampleProgress] = useState<number>(0);
-  const [showSidePanel, setShowSidePanel] = useState<boolean>(true);
-  const [mapView, setMapView] = useState<'street' | 'satellite' | 'dark'>('street');
+
+  // AI state  placeholder (no external API required)
+  const [aiResults]   = useState<AIResults | null>(null);
+  const [isAnalyzing] = useState(false);
+
+  // Map state
+  const [mapView, setMapView]       = useState<'street' | 'satellite' | 'dark'>('street');
+  const [useClustering, setUseClustering] = useState(false);
+  const [useHeatmap, setUseHeatmap] = useState(false);
   const [displayLimit, setDisplayLimit] = useState<number | 'unlimited'>(1000);
-  const [useClustering, setUseClustering] = useState<boolean>(false);
-  const [useHeatmap, setUseHeatmap] = useState<boolean>(false);
-  const [globalPointRadius, setGlobalPointRadius] = useState<number>(8);
-  const [globalPointOpacity, setGlobalPointOpacity] = useState<number>(0.8);
-  const [showColorPickerFor, setShowColorPickerFor] = useState<string | null>(null);
-  
-  // Configuration avancée
+  const [globalPointRadius, setGlobalPointRadius] = useState(8);
+  const [globalPointOpacity, setGlobalPointOpacity] = useState(0.8);
+
   const [heatmapConfig, setHeatmapConfig] = useState<HeatmapConfig>({
-    radius: 25,
-    blur: 15,
-    maxZoom: 10,
-    max: 1.0,
-    minOpacity: 0.2,
-    gradient: {
-      0.4: 'blue',
-      0.6: 'cyan',
-      0.7: 'lime',
-      0.8: 'yellow',
-      1.0: 'red'
-    },
-    visible: false
+    radius: 25, blur: 15, max: 1, minOpacity: 0.2,
+    gradient: { 0.4: '#3b82f6', 0.6: '#06b6d4', 0.7: '#10b981', 0.8: '#f59e0b', 1.0: '#ef4444' },
+    visible: false,
   });
 
   const [clusteringConfig, setClusteringConfig] = useState<ClusteringConfig>({
-    showCoverageOnHover: true,
-    zoomToBoundsOnClick: true,
-    spiderfyOnMaxZoom: true,
-    removeOutsideVisibleBounds: true,
-    maxClusterRadius: 80,
-    disableClusteringAtZoom: 10,
-    animate: true,
-    animateAddingMarkers: true,
-    chunkedLoading: true,
-    chunkInterval: 100,
-    chunkDelay: 500,
-    clusterColor: '#3388ff',
-    clusterTextColor: '#ffffff'
+    showCoverageOnHover: true, zoomToBoundsOnClick: true,
+    spiderfyOnMaxZoom: true, maxClusterRadius: 80,
+    disableClusteringAtZoom: 10, animate: true,
+    clusterColor: '#3b82f6', clusterTextColor: '#ffffff',
   });
 
-  const mapRef = useRef<L.Map>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // UI state
+  const [activeTab, setActiveTab]   = useState<'data' | 'analysis' | 'settings' | 'visualization'>('data');
+  const [mobileTab, setMobileTab]   = useState<'map' | 'data' | 'analysis' | 'settings'>('map');
+  const [showSidePanel, setShowSidePanel] = useState(true);
+  const [isExampleModalOpen, setIsExampleModalOpen] = useState(false);
+  // Fix: color picker state with explicit context instead of prompt()
+  const [colorPickerCtx, setColorPickerCtx] = useState<{
+    type: 'dataset' | 'cluster' | 'gradient';
+    id?: string; gradientKey?: number;
+  } | null>(null);
+  const [colorPickerValue, setColorPickerValue] = useState('#3b82f6');
 
-  // ------------------------------------------------------------------
-  // DONNÉES D'EXEMPLE
-  // ------------------------------------------------------------------
-  const diseaseExamples: DiseaseExample[] = [
-    {
-      id: 'ebola-2014-2016',
-      name: 'Épidémie Ebola 2014-2016',
-      description: 'Crise sanitaire majeure en Afrique de l\'Ouest',
-      color: 'bg-red-500',
-      source: {
-        organization: 'OMS',
-        year: 2016,
-        study: 'Rapport final sur la flambée Ebola',
-        url: 'https://www.who.int/',
-        dataType: 'surveillance',
-        credibility: 'high',
-        lastUpdated: '2016-03-30'
-      },
-      countries: [
-        { name: 'Guinée', lat: 9.9456, lng: -9.6966, cases: 3814, incidenceRate: 28.2, population: 12414000, region: 'Afrique de l\'Ouest', sourceDetail: 'OMS' },
-        { name: 'Sierra Leone', lat: 8.4606, lng: -11.7799, cases: 14124, incidenceRate: 195.3, population: 7791000, region: 'Afrique de l\'Ouest', sourceDetail: 'OMS' },
-        { name: 'Liberia', lat: 6.4281, lng: -9.4295, cases: 10675, incidenceRate: 232.7, population: 4854000, region: 'Afrique de l\'Ouest', sourceDetail: 'OMS' }
-      ]
-    },
-    {
-      id: 'covid-global',
-      name: 'COVID-19 Distribution',
-      description: 'Données agrégées de la pandémie COVID-19',
-      color: 'bg-blue-500',
-      source: {
-        organization: 'Johns Hopkins University',
-        year: 2023,
-        study: 'COVID-19 Data Repository',
-        url: 'https://github.com/CSSEGISandData/COVID-19',
-        dataType: 'surveillance',
-        credibility: 'high',
-        lastUpdated: '2023-12-01'
-      },
-      countries: [
-        { name: 'États-Unis', lat: 37.0902, lng: -95.7129, cases: 103436829, incidenceRate: 31156.8, population: 331900000, region: 'Amérique du Nord', sourceDetail: 'CDC' },
-        { name: 'Inde', lat: 20.5937, lng: 78.9629, cases: 44994454, incidenceRate: 3260.2, population: 1380000000, region: 'Asie du Sud', sourceDetail: 'MoH India' },
-        { name: 'Brésil', lat: -14.2350, lng: -51.9253, cases: 37711693, incidenceRate: 17693.6, population: 213000000, region: 'Amérique du Sud', sourceDetail: 'Ministério da Saúde' }
-      ]
-    }
-  ];
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const fileInputRef        = useRef<HTMLInputElement>(null);
 
-  // ------------------------------------------------------------------
-  // FONCTIONS UTILITAIRES
-  // ------------------------------------------------------------------
-  const randomColor = () => '#' + Math.floor(Math.random() * 16777215).toString(16);
+  // Animation temporelle
+  const [timelineDay, setTimelineDay]         = useState(0);
+  const [timelinePlaying, setTimelinePlaying] = useState(false);
+  const timelineRef                           = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const generateContinentalData = () => {
-    const continents = [
-      { name: 'Afrique', countries: [
-        { name: 'Nigeria', lat: 9.0820, lng: 8.6753, cases: 5000, incidenceRate: 24.3, region: 'Ouest' },
-        { name: 'Égypte', lat: 26.8206, lng: 30.8025, cases: 1200, incidenceRate: 12.1, region: 'Nord' },
-        { name: 'Afrique du Sud', lat: -30.5595, lng: 22.9375, cases: 3500, incidenceRate: 59.0, region: 'Sud' }
-      ]},
-      { name: 'Europe', countries: [
-        { name: 'France', lat: 46.603354, lng: 1.888334, cases: 2800, incidenceRate: 41.8, region: 'Ouest' },
-        { name: 'Allemagne', lat: 51.1657, lng: 10.4515, cases: 3200, incidenceRate: 38.4, region: 'Centre' },
-        { name: 'Italie', lat: 41.8719, lng: 12.5674, cases: 2100, incidenceRate: 34.7, region: 'Sud' }
-      ]}
-    ];
-    return continents.flatMap(continent =>
-      continent.countries.map(country => ({
-        pays: country.name,
-        continent: continent.name,
-        region: country.region,
-        latitude: country.lat,
-        longitude: country.lng,
-        cas: country.cases,
-        taux_incidence: country.incidenceRate,
-        population: Math.floor(Math.random() * 50000000) + 1000000
-      }))
-    );
-  };
+  // Alertes automatiques
+  const [alertThreshold, setAlertThreshold]   = useState(10000);
+  const [alertsEnabled, setAlertsEnabled]     = useState(false);
 
-  const loadDiseaseExample = async (diseaseId: string) => {
-    setIsLoading(true);
-    setExampleProgress(0);
-    
-    const interval = setInterval(() => {
-      setExampleProgress(prev => {
-        if (prev >= 90) return prev;
-        return prev + 10;
-      });
-    }, 100);
-    
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const disease = diseaseExamples.find(d => d.id === diseaseId);
-    if (disease) {
-      const data = disease.countries.map(country => ({
-        pays: country.name,
-        maladie: disease.name,
-        latitude: country.lat,
-        longitude: country.lng,
-        cas: country.cases,
-        taux_incidence: country.incidenceRate,
-        population: country.population,
-        region: country.region,
-        statut: country.cases > 1000000 ? 'Critique' :
-                country.cases > 100000 ? 'Élevé' :
-                country.cases > 10000 ? 'Modéré' : 'Faible'
-      }));
-      setDatasets(prev => [...prev, {
-        id: disease.id + '-' + Date.now(),
-        name: disease.name,
-        color: disease.color.replace('bg-', '#'),
-        data,
-        visible: true,
-        clustering: true,
-        heatmap: true,
-        pointRadius: 8,
-        pointOpacity: 0.8
-      }]);
-      setSelectedColumns({
-        lat: 'latitude',
-        lng: 'longitude',
-        value: 'cas',
-        time: ''
-      });
-      
-      setExampleProgress(100);
-      setTimeout(() => {
-        clearInterval(interval);
-        setIsLoading(false);
-        showNotification(`Données ${disease.name} chargées`, 'success');
-      }, 500);
-    }
-  };
+  // Multi-épidémies comparées  use existing datasets, just show comparison panel
+  const [showComparison, setShowComparison]   = useState(false);
 
-  const loadContinentalData = async () => {
-    setIsLoading(true);
-    setExampleProgress(0);
-    
-    const interval = setInterval(() => {
-      setExampleProgress(prev => {
-        if (prev >= 90) return prev;
-        return prev + 15;
-      });
-    }, 100);
-    
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    const data = generateContinentalData();
-    setDatasets(prev => [...prev, {
-      id: 'continental-' + Date.now(),
-      name: 'Données Continentales',
-      color: randomColor(),
-      data,
-      visible: true,
-      clustering: true,
-      heatmap: true,
-      pointRadius: 8,
-      pointOpacity: 0.8
-    }]);
-    setSelectedColumns({
-      lat: 'latitude',
-      lng: 'longitude',
-      value: 'cas',
-      time: ''
-    });
-    
-    setExampleProgress(100);
-    setTimeout(() => {
-      clearInterval(interval);
-      setIsLoading(false);
-      showNotification('Données continentales chargées', 'success');
-    }, 500);
-  };
+  // Flux temps réel simulation
+  const [rtMode, setRtMode]                   = useState<'off' | 'connecting' | 'connected'>('off');
+  const rtRef                                 = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleFileUpload = (file: File) => {
-    setIsLoading(true);
-    const reader = new FileReader();
-    const fileName = file.name.toLowerCase();
+  // Toast helpers
+  const pushToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+    const id = Date.now().toString();
+    setToasts(p => [...p, { id, message, type }]);
+    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
+  }, []);
+  const dismissToast = useCallback((id: string) => setToasts(p => p.filter(t => t.id !== id)), []);
 
-    if (fileName.endsWith('.csv')) {
-      reader.onload = (e) => {
-        Papa.parse(e.target?.result as string, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            processData(results.data as DataRow[], file.name);
-          },
-          error: (error) => {
-            showNotification('Erreur CSV: ' + error.message, 'error');
-            setIsLoading(false);
-          }
+  // Timeline animation effect
+  useEffect(() => {
+    if (timelinePlaying) {
+      const maxDay = Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length), 1));
+      timelineRef.current = setInterval(() => {
+        setTimelineDay(p => {
+          if (p >= maxDay - 1) { setTimelinePlaying(false); return 0; }
+          return p + 1;
         });
-      };
-      reader.readAsText(file);
-    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet) as DataRow[];
-          processData(jsonData, file.name);
-        } catch (error) {
-          showNotification('Erreur Excel: ' + (error as Error).message, 'error');
-          setIsLoading(false);
-        }
-      };
-      reader.readAsArrayBuffer(file);
+      }, 80);
     } else {
-      showNotification('Format non supporté', 'error');
-      setIsLoading(false);
+      if (timelineRef.current) clearInterval(timelineRef.current);
     }
-  };
+    return () => { if (timelineRef.current) clearInterval(timelineRef.current); };
+  }, [timelinePlaying, datasets]);
 
-  const processData = (data: DataRow[], fileName: string) => {
-    const filteredData = data.filter(row =>
-      Object.values(row).some(val =>
-        val !== null && val !== undefined && val !== '' && String(val).trim() !== ''
-      )
-    );
-
-    const columns = Object.keys(filteredData[0] || {});
-    const detectedCols = autoDetectColumns(columns);
-    setSelectedColumns(detectedCols);
-    setDatasets(prev => [...prev, {
-      id: Date.now().toString(),
-      name: fileName || 'Uploaded Data',
-      color: randomColor(),
-      data: filteredData,
-      visible: true,
-      clustering: true,
-      heatmap: true,
-      pointRadius: 8,
-      pointOpacity: 0.8
-    }]);
-
-    setIsLoading(false);
-    showNotification(`${filteredData.length} lignes chargées`, 'success');
-  };
-
-  const autoDetectColumns = (columns: string[]) => {
-    const newCols = { ...selectedColumns };
-    columns.forEach(col => {
-      const lowerCol = col.toLowerCase();
-      if (['lat', 'latitude', 'y'].some(p => lowerCol.includes(p))) newCols.lat = col;
-      else if (['lng', 'lon', 'longitude', 'x'].some(p => lowerCol.includes(p))) newCols.lng = col;
-      else if (['value', 'val', 'count', 'cas', 'incidence', 'cases'].some(p => lowerCol.includes(p))) newCols.value = col;
-      else if (['time', 'date', 'timestamp', 'jour'].some(p => lowerCol.includes(p))) newCols.time = col;
-    });
-    return newCols;
-  };
-
-  const runAIAnalysis = async () => {
-    const flatData = datasets.filter(d => d.visible).flatMap(d => d.data);
-    if (flatData.length === 0) {
-      showNotification('Veuillez charger des données d\'abord', 'warning');
-      return;
+  // Alert threshold watcher  pushes a toast when any value exceeds threshold
+  useEffect(() => {
+    if (!alertsEnabled || !datasets.length || !selectedColumns.value) return;
+    const exceeded = datasets
+      .filter(d => d.visible)
+      .flatMap(d => d.data)
+      .filter(r => (parseFloat(r[selectedColumns.value] as string) || 0) >= alertThreshold);
+    if (exceeded.length > 0) {
+      pushToast(`${exceeded.length} zone(s) dépassent le seuil de ${alertThreshold.toLocaleString()}`, 'warning');
     }
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const aiResponse: AIResults = {
-        summary: 'Analyse préliminaire indiquant des clusters dans les zones urbaines. Forte corrélation entre densité populationnelle et taux d\'incidence.',
-        insights: [
-          'Cluster principal identifié en Afrique de l\'Ouest',
-          'Taux d\'incidence en augmentation de 15% dans les régions tempérées',
-          'Corrélation positive entre densité urbaine et propagation'
-        ],
-        recommendations: [
-          'Renforcer la surveillance dans les zones urbaines',
-          'Mettre en place des centres de dépistage mobiles',
-          'Augmenter la collecte de données temporelles'
-        ],
-        alerts: [
-          'Zone à haut risque identifiée en Afrique Centrale',
-          'Sous-déclaration suspectée dans certaines régions'
-        ],
-        riskLevel: 'medium'
-      };
-      setAiResults(aiResponse);
-      showNotification('Analyse IA terminée', 'success');
-    } catch (error) {
-      showNotification('Erreur lors de l\'analyse IA', 'error');
-    } finally {
-      setIsLoading(false);
+  // Only re-run when alertsEnabled toggles or threshold changes, not on every render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertsEnabled, alertThreshold]);
+
+  // Real-time simulation  fake refresh interval
+  useEffect(() => {
+    if (rtMode === 'connecting') {
+      const id = setTimeout(() => setRtMode('connected'), 2500);
+      return () => clearTimeout(id);
     }
-  };
-
-  const showNotification = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
-    console.log(`${type}: ${message}`);
-    // Ici vous pouvez intégrer une vraie notification (sonner, toast, etc.)
-  };
-
-  const calculateStats = () => {
-    const flatData = datasets.filter(d => d.visible).flatMap(d => d.data);
-    if (flatData.length === 0) return { total: 0, avg: 0, max: 0, min: 0 };
-
-    const values = flatData
-      .map(row => parseFloat(row[selectedColumns.value] as string) || 0)
-      .filter(val => !isNaN(val));
-
-    const total = values.reduce((a, b) => a + b, 0);
-    const avg = values.length > 0 ? total / values.length : 0;
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-
-    return { total, avg, max, min };
-  };
-
-  const stats = calculateStats();
-
-  const updateDataset = (id: string, updates: Partial<Dataset>) => {
-    setDatasets(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
-  };
-
-  const removeDataset = (id: string) => {
-    setDatasets(prev => prev.filter(d => d.id !== id));
-  };
-
-  const toggleDiseaseSelection = (id: string) => {
-    setSelectedDiseases(prev =>
-      prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
-    );
-  };
-
-  const loadSelectedExamples = async () => {
-    setIsExampleModalOpen(false);
-    for (const id of selectedDiseases) {
-      await loadDiseaseExample(id);
+    if (rtMode === 'connected') {
+      rtRef.current = setInterval(() => {
+        // Simulated data tick  slightly perturb displayed values (UI demo only)
+        pushToast('Mise à jour simulée reçue  J+1', 'info');
+      }, 8000);
+      return () => { if (rtRef.current) clearInterval(rtRef.current); };
     }
-    setSelectedDiseases([]);
+    return () => { if (rtRef.current) clearInterval(rtRef.current); };
+  }, [rtMode, pushToast]);
+
+  // Tile URL  user-explicit choice, independent from project dark theme.
+  // "Standard" always stays light; "Dark" always stays dark; "Satellite" is ESRI.
+  const tileUrl = useMemo(() => {
+    if (mapView === 'satellite') return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    if (mapView === 'dark')      return 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+    // Standard light  use OSM.  No automatic dark override.
+    return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  }, [mapView]);
+
+  // Severity color
+  const severityColor = (value: number, base: string) => {
+    if (value > 1_000_000) return '#ef4444';
+    if (value > 100_000)   return '#f59e0b';
+    if (value > 10_000)    return '#10b981';
+    return base;
   };
 
-  const getTileUrl = () => {
-    switch (mapView) {
-      case 'satellite':
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      case 'dark':
-        return 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
-      default:
-        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    }
-  };
+  // Stats
+  const stats = useMemo(() => {
+    const flat = datasets.filter(d => d.visible).flatMap(d => d.data);
+    if (!flat.length || !selectedColumns.value) return { total: 0, avg: 0, max: 0, min: 0 };
+    const vals = flat.map(r => parseFloat(r[selectedColumns.value] as string) || 0).filter(v => !isNaN(v));
+    const total = vals.reduce((a, b) => a + b, 0);
+    return { total, avg: vals.length ? total / vals.length : 0, max: Math.max(...vals), min: Math.min(...vals) };
+  }, [datasets, selectedColumns.value]);
 
-  // ------------------------------------------------------------------
-  // FONCTIONS DE VISUALISATION
-  // ------------------------------------------------------------------
-  const getMarkerColor = (value: number, baseColor: string): string => {
-    if (value > 1000000) return '#ef4444';
-    if (value > 100000) return '#f59e0b';
-    if (value > 10000) return '#10b981';
-    return baseColor || '#3b82f6';
-  };
-
-  const createCircleIcon = (value: number, baseColor: string, radius?: number) => {
-    const r = radius || globalPointRadius;
-    const color = getMarkerColor(value, baseColor);
-    return L.divIcon({
-      html: `<div style="background-color: ${color}; width: ${r*2}px; height: ${r*2}px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-      className: 'custom-marker',
-      iconSize: [r*2, r*2],
-      iconAnchor: [r, r]
-    });
-  };
-
-  const customClusterIcon = (cluster: L.MarkerCluster): L.DivIcon => {
-    const count = cluster.getChildCount();
-    let size = '40px';
-    let fontSize = '16px';
-    if (count < 10) size = '35px';
-    else if (count < 100) size = '45px';
-    else size = '55px';
-
-    return L.divIcon({
-      html: `<div style="background-color: ${clusteringConfig.clusterColor}; width: ${size}; height: ${size}; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.4); color: ${clusteringConfig.clusterTextColor}; font-weight: bold; font-size: ${fontSize};">${count}</div>`,
-      className: 'custom-cluster-icon',
-      iconSize: L.point(parseInt(size), parseInt(size)),
-      iconAnchor: L.point(parseInt(size)/2, parseInt(size)/2)
-    });
-  };
-
-  // Données pour la heatmap
-  const heatmapData = useMemo(() => {
+  // Heatmap points
+  const heatmapPoints = useMemo((): [number, number, number][] => {
     if (!useHeatmap || !heatmapConfig.visible) return [];
-    const points: [number, number, number][] = [];
     const limit = displayLimit === 'unlimited' ? Infinity : displayLimit;
+    const pts: [number, number, number][] = [];
+    for (const ds of datasets) {
+      if (!ds.visible || ds.heatmap === false) continue;
+      for (const row of ds.data) {
+        if (pts.length >= limit) break;
+        const lat = parseFloat(row[selectedColumns.lat] as string);
+        const lng = parseFloat(row[selectedColumns.lng] as string);
+        const val = parseFloat(row[selectedColumns.value] as string) || 0;
+        if (!isNaN(lat) && !isNaN(lng)) pts.push([lat, lng, val]);
+      }
+    }
+    return pts;
+  }, [datasets, selectedColumns, useHeatmap, heatmapConfig.visible, displayLimit]);
+
+  // Circle markers
+  const circleMarkers = useMemo(() => {
+    if (useClustering) return null;
+    const limit = displayLimit === 'unlimited' ? Infinity : displayLimit;
+    const els: React.ReactElement[] = [];
     let count = 0;
-    for (const dataset of datasets) {
-      if (!dataset.visible || dataset.heatmap === false) continue;
-      for (const row of dataset.data) {
+    for (const ds of datasets) {
+      if (!ds.visible) continue;
+      for (const row of ds.data) {
         if (count >= limit) break;
         const lat = parseFloat(row[selectedColumns.lat] as string);
         const lng = parseFloat(row[selectedColumns.lng] as string);
         const val = parseFloat(row[selectedColumns.value] as string) || 0;
-        if (!isNaN(lat) && !isNaN(lng) && !isNaN(val)) {
-          points.push([lat, lng, val]);
-          count++;
-        }
-      }
-    }
-    return points;
-  }, [datasets, selectedColumns, useHeatmap, heatmapConfig.visible, displayLimit]);
-
-  // Marqueurs pour le clustering
-  const clusterMarkers = useMemo(() => {
-    if (!useClustering) return null;
-    const markers: JSX.Element[] = [];
-    const limit = displayLimit === 'unlimited' ? Infinity : displayLimit;
-    let count = 0;
-    for (const dataset of datasets) {
-      if (!dataset.visible || dataset.clustering === false) continue;
-      for (const row of dataset.data) {
-        if (count >= limit) break;
-        const lat = parseFloat(row[selectedColumns.lat] as string);
-        const lng = parseFloat(row[selectedColumns.lng] as string);
-        const value = parseFloat(row[selectedColumns.value] as string) || 0;
         if (isNaN(lat) || isNaN(lng)) continue;
-        const name = row['pays'] || row['country'] || 'Point';
-        const radius = dataset.pointRadius || globalPointRadius;
-        markers.push(
-          <Marker
-            key={`${dataset.id}-${count}`}
-            position={[lat, lng]}
-            icon={createCircleIcon(value, dataset.color, radius)}
-          >
-            <Tooltip>
-              <div className="p-2">
-                <h4 className="font-bold">{name}</h4>
-                <p>Dataset: {dataset.name}</p>
-                <p>Cas: {value.toLocaleString()}</p>
-              </div>
-            </Tooltip>
-            <Popup>
-              <div className="p-2 max-w-xs">
-                <h3 className="font-bold text-lg">{name}</h3>
-                <div className="space-y-1 mt-2">
-                  {Object.entries(row)
-                    .filter(([key]) => !['latitude', 'longitude'].includes(key))
-                    .slice(0, 8)
-                    .map(([key, val]) => (
-                      <div key={key} className="flex justify-between text-sm">
-                        <span className="font-medium">{key}:</span>
-                        <span>{typeof val === 'number' ? val.toLocaleString() : String(val)}</span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        );
-        count++;
-      }
-    }
-    return markers;
-  }, [datasets, selectedColumns, useClustering, displayLimit, globalPointRadius]);
-
-  // Cercles individuels (si clustering désactivé)
-  const circleMarkers = useMemo(() => {
-    if (useClustering) return null;
-    const markers: JSX.Element[] = [];
-    const limit = displayLimit === 'unlimited' ? Infinity : displayLimit;
-    let count = 0;
-    for (const dataset of datasets) {
-      if (!dataset.visible) continue;
-      for (const row of dataset.data) {
-        if (count >= limit) break;
-        const lat = parseFloat(row[selectedColumns.lat] as string);
-        const lng = parseFloat(row[selectedColumns.lng] as string);
-        const value = parseFloat(row[selectedColumns.value] as string) || 0;
-        if (isNaN(lat) || isNaN(lng)) continue;
-        const name = row['pays'] || row['country'] || 'Point';
-        const radius = Math.max(4, Math.min(20, Math.sqrt(value) / 1000)) * ((dataset.pointRadius || globalPointRadius) / 8);
-        markers.push(
-          <CircleMarker
-            key={`${dataset.id}-${count}`}
-            center={[lat, lng]}
-            radius={radius}
+        const name = String(row['pays'] ?? row['country'] ?? row['name'] ?? 'Point');
+        const baseR = ds.pointRadius ?? globalPointRadius;
+        const r = Math.max(3, Math.min(18, Math.sqrt(Math.abs(val)) / 800)) * (baseR / 8);
+        els.push(
+          <CircleMarker key={`${ds.id}-${count}`} center={[lat, lng]} radius={r}
             pathOptions={{
-              fillColor: getMarkerColor(value, dataset.color),
-              color: dataset.color,
-              weight: 2,
-              opacity: dataset.pointOpacity ?? globalPointOpacity,
-              fillOpacity: (dataset.pointOpacity ?? globalPointOpacity) * 0.8
-            }}
-          >
+              fillColor: severityColor(val, ds.color), color: ds.color, weight: 1.5,
+              opacity: ds.pointOpacity ?? globalPointOpacity,
+              fillOpacity: (ds.pointOpacity ?? globalPointOpacity) * 0.75,
+            }}>
             <Tooltip>
-              <div className="p-2">
-                <h4 className="font-bold">{name}</h4>
-                <p>Dataset: {dataset.name}</p>
-                <p>Cas: {value.toLocaleString()}</p>
-              </div>
+              <div className="p-1.5 text-xs"><b>{name}</b><br />Cas: {val.toLocaleString()}</div>
             </Tooltip>
             <Popup>
-              <div className="p-2 max-w-xs">
-                <h3 className="font-bold text-lg">{name}</h3>
-                <div className="space-y-1 mt-2">
-                  {Object.entries(row)
-                    .filter(([key]) => !['latitude', 'longitude'].includes(key))
-                    .slice(0, 8)
-                    .map(([key, val]) => (
-                      <div key={key} className="flex justify-between text-sm">
-                        <span className="font-medium">{key}:</span>
-                        <span>{typeof val === 'number' ? val.toLocaleString() : String(val)}</span>
-                      </div>
-                    ))}
-                </div>
+              <div className="p-2 text-xs max-w-[200px]">
+                <p className="font-bold text-sm mb-1">{name}</p>
+                {Object.entries(row)
+                  .filter(([k]) => !['latitude','longitude'].includes(k)).slice(0, 8)
+                  .map(([k, v]) => (
+                    <div key={k} className="flex justify-between gap-3">
+                      <span className="text-gray-500">{k}</span>
+                      <span className="font-medium">{typeof v === 'number' ? v.toLocaleString() : String(v)}</span>
+                    </div>
+                  ))}
               </div>
             </Popup>
           </CircleMarker>
@@ -732,830 +424,798 @@ const GeospatialVisualization: React.FC = () => {
         count++;
       }
     }
-    return markers;
+    return els;
   }, [datasets, selectedColumns, useClustering, displayLimit, globalPointRadius, globalPointOpacity]);
 
-  // Indicateurs
-  const indicators = [
-    { label: 'Points de Données', value: datasets.reduce((sum, d) => sum + (d.visible ? d.data.length : 0), 0) },
-    { label: 'Cas Moyens', value: stats.avg.toLocaleString(undefined, { maximumFractionDigits: 0 }) },
-    { label: 'Maximum', value: stats.max.toLocaleString() },
-    { label: 'Minimum', value: stats.min.toLocaleString() },
-    { label: 'Datasets', value: datasets.length }
+  // Cluster icon factory
+  const clusterIcon = useCallback((cluster: L.MarkerCluster) => {
+    const n    = cluster.getChildCount();
+    const size = n < 10 ? 34 : n < 100 ? 42 : 52;
+    return L.divIcon({
+      html: `<div style="background:${clusteringConfig.clusterColor};width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,.28);color:${clusteringConfig.clusterTextColor};font-weight:700;font-size:${size < 42 ? 12 : 14}px">${n}</div>`,
+      className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+    });
+  }, [clusteringConfig.clusterColor, clusteringConfig.clusterTextColor]);
+
+  // Auto-detect columns from header names
+  const autoDetect = useCallback((columns: string[]) => {
+    const r = { lat: '', lng: '', value: '', time: '' };
+    columns.forEach(col => {
+      const lc = col.toLowerCase();
+      if (!r.lat   && ['lat','latitude','y'].some(p => lc.includes(p)))                         r.lat   = col;
+      if (!r.lng   && ['lng','lon','longitude','x'].some(p => lc.includes(p)))                  r.lng   = col;
+      if (!r.value && ['value','val','count','cas','incidence','cases'].some(p => lc.includes(p))) r.value = col;
+      if (!r.time  && ['time','date','timestamp','jour'].some(p => lc.includes(p)))              r.time  = col;
+    });
+    return r;
+  }, []);
+
+  const processData = useCallback((data: DataRow[], fileName: string) => {
+    const clean = data.filter(row => Object.values(row).some(v => v !== null && String(v).trim()));
+    if (!clean.length) { pushToast('Fichier vide ou invalide', 'error'); setIsLoading(false); return; }
+    const detected = autoDetect(Object.keys(clean[0] ?? {}));
+    setSelectedColumns(prev => ({
+      ...prev,
+      ...Object.fromEntries(Object.entries(detected).filter(([, v]) => v)),
+    }));
+    setDatasets(prev => [...prev, {
+      id: Date.now().toString(), name: fileName, color: randomColor(),
+      data: clean, visible: true, clustering: true, heatmap: true, pointRadius: 8, pointOpacity: 0.8,
+    }]);
+    setIsLoading(false);
+    pushToast(`${clean.length.toLocaleString()} lignes chargées  ${fileName}`, 'success');
+  }, [autoDetect, pushToast]);
+
+  const handleFile = useCallback((file: File) => {
+    setIsLoading(true);
+    const reader = new FileReader();
+    const ext = file.name.toLowerCase();
+    if (ext.endsWith('.csv')) {
+      reader.onload = e => {
+        Papa.parse(e.target?.result as string, {
+          header: true, skipEmptyLines: true,
+          complete: r => processData(r.data as DataRow[], file.name),
+          error: err => { pushToast('Erreur CSV: ' + err.message, 'error'); setIsLoading(false); },
+        });
+      };
+      reader.readAsText(file);
+    } else if (ext.endsWith('.xlsx') || ext.endsWith('.xls')) {
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(new Uint8Array(e.target?.result as ArrayBuffer), { type: 'array' });
+          processData(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as DataRow[], file.name);
+        } catch (err) { pushToast('Erreur Excel: ' + (err as Error).message, 'error'); setIsLoading(false); }
+      };
+      reader.readAsArrayBuffer(file);
+    } else { pushToast('Format non supporté CSV ou Excel uniquement', 'error'); setIsLoading(false); }
+  }, [processData, pushToast]);
+
+  const loadExample = useCallback(async (id: string) => {
+    const ex = DISEASE_EXAMPLES.find(d => d.id === id);
+    if (!ex) return;
+    setIsLoading(true); setExampleProgress(0);
+    const tick = setInterval(() => setExampleProgress(p => Math.min(90, p + 12)), 80);
+    await new Promise(r => setTimeout(r, 700));
+    clearInterval(tick);
+    const data = ex.countries.map(c => ({
+      pays: c.name, maladie: ex.name,
+      latitude: c.lat, longitude: c.lng,
+      cas: c.cases, taux_incidence: c.incidenceRate,
+      population: c.population, region: c.region,
+    }));
+    setDatasets(prev => [...prev, {
+      id: ex.id + '-' + Date.now(), name: ex.name, color: ex.color,
+      data, visible: true, clustering: true, heatmap: true, pointRadius: 8, pointOpacity: 0.8,
+    }]);
+    setSelectedColumns({ lat: 'latitude', lng: 'longitude', value: 'cas', time: '' });
+    setExampleProgress(100); setIsLoading(false);
+    pushToast(`${ex.name}  ${ex.countries.length} pays chargés`, 'success');
+  }, [pushToast]);
+
+  const loadSelectedExamples = useCallback(async () => {
+    setIsExampleModalOpen(false);
+    for (const id of selectedDiseases) await loadExample(id);
+    setSelectedDiseases([]);
+  }, [selectedDiseases, loadExample]);
+
+  // AI analysis  no external API token required
+  // Full implementation coming soon.
+  const runAIAnalysis = useCallback(() => {
+    setActiveTab('analysis');
+    setMobileTab('analysis');
+    pushToast('Analyse IA  disponible prochainement', 'info');
+  }, [pushToast]);
+
+
+  // Export helpers
+  const exportCSV = useCallback(() => {
+    const flat = datasets.filter(d => d.visible).flatMap(d => d.data);
+    if (!flat.length) { pushToast('Aucune donnée à exporter', 'warning'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([Papa.unparse(flat)], { type: 'text/csv' }));
+    a.download = 'geodata_export.csv'; a.click();
+    pushToast('Export CSV téléchargé', 'success');
+  }, [datasets, pushToast]);
+
+  const exportGeoJSON = useCallback(() => {
+    const flat = datasets.filter(d => d.visible).flatMap(d => d.data);
+    if (!flat.length || !selectedColumns.lat || !selectedColumns.lng) {
+      pushToast('Colonnes lat/lng requises pour GeoJSON', 'warning'); return;
+    }
+    const features = flat
+      .filter(r => !isNaN(parseFloat(r[selectedColumns.lat] as string)) && !isNaN(parseFloat(r[selectedColumns.lng] as string)))
+      .map(r => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [parseFloat(r[selectedColumns.lng] as string), parseFloat(r[selectedColumns.lat] as string)],
+        },
+        properties: Object.fromEntries(
+          Object.entries(r).filter(([k]) => ![selectedColumns.lat, selectedColumns.lng].includes(k))
+        ),
+      }));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ type: 'FeatureCollection', features }, null, 2)], { type: 'application/json' }));
+    a.download = 'geodata_export.geojson'; a.click();
+    pushToast(`GeoJSON exporté  ${features.length} points`, 'success');
+  }, [datasets, selectedColumns, pushToast]);
+
+  const updateDataset = useCallback((id: string, updates: Partial<Dataset>) =>
+    setDatasets(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d)), []);
+  const removeDataset = useCallback((id: string) => {
+    setDatasets(prev => prev.filter(d => d.id !== id));
+    pushToast('Dataset supprimé', 'info');
+  }, [pushToast]);
+
+  // Union of all column names across datasets (fix: was only datasets[0])
+  const allColumns = useMemo(() => {
+    const s = new Set<string>();
+    datasets.forEach(d => d.data[0] && Object.keys(d.data[0]).forEach(k => s.add(k)));
+    return [...s];
+  }, [datasets]);
+
+  // Indicator values
+  const indicatorItems = [
+    { label: 'Points',   value: datasets.reduce((s, d) => s + (d.visible ? d.data.length : 0), 0).toLocaleString(), accent: 'text-indigo-500' },
+    { label: 'Total',    value: stats.total > 999999 ? `${(stats.total / 1e6).toFixed(1)}M` : stats.total.toLocaleString(), accent: 'text-rose-500' },
+    { label: 'Moyenne',  value: Math.round(stats.avg).toLocaleString(), accent: 'text-amber-500' },
+    { label: 'Max',      value: stats.max.toLocaleString(), accent: 'text-emerald-500' },
+    { label: 'Datasets', value: String(datasets.length), accent: 'text-violet-500' },
   ];
 
-  // ------------------------------------------------------------------
-  // RENDU
-  // ------------------------------------------------------------------
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-4">
-      {/* Header */}
-      <header className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <nav aria-label="Breadcrumb">
-              <ol className="flex items-center space-x-2 text-sm">
-                <li>
-                  <Link href="/" className="text-gray-500 hover:text-blue-600 transition-colors">
-                    Accueil
-                  </Link>
-                </li>
-                <li>
-                  <ChevronRight className="w-4 h-4 text-gray-300" />
-                </li>
-                <li>
-                  <Link href="/geospatial/map" className="text-gray-500 hover:text-blue-600 transition-colors">
-                    Map
-                  </Link>
-                </li>
-              </ol>
-            </nav>
+  // UI tokens  spec: bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300
+  const UI = {
+    bg:    'bg-[#F8FAFC] dark:bg-[#0F172A]',
+    card:  isDark ? 'bg-slate-800/70 border border-slate-700/50' : 'bg-white border border-slate-200',
+    text:  'text-slate-700 dark:text-slate-300',
+    muted: 'text-slate-500 dark:text-slate-400',
+    hover: isDark ? 'hover:bg-slate-700/60' : 'hover:bg-slate-50',
+    input: 'w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm px-3 py-2 outline-none focus:ring-1 focus:ring-primary placeholder:text-slate-400',
+  };
+
+  // Color picker commit  applies value to the correct target
+  const commitColor = useCallback((c: string) => {
+    if (!colorPickerCtx) return;
+    if (colorPickerCtx.type === 'dataset' && colorPickerCtx.id) {
+      updateDataset(colorPickerCtx.id, { color: c });
+    } else if (colorPickerCtx.type === 'cluster') {
+      setClusteringConfig(p => ({ ...p, clusterColor: c }));
+    } else if (colorPickerCtx.type === 'gradient' && colorPickerCtx.gradientKey !== undefined) {
+      setHeatmapConfig(p => ({ ...p, gradient: { ...p.gradient, [colorPickerCtx.gradientKey!]: c } }));
+    }
+  }, [colorPickerCtx, updateDataset]);
+
+  // Side panel tabs content
+  const SidePanelContent = () => (
+    <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="h-full flex flex-col">
+      <TabsList className="grid grid-cols-4 mb-4 flex-shrink-0 text-[10px]">
+        <TabsTrigger value="data">       Données</TabsTrigger>
+        <TabsTrigger value="visualization">Visuel</TabsTrigger>
+        <TabsTrigger value="analysis">     IA</TabsTrigger>
+        <TabsTrigger value="settings">   Réglages</TabsTrigger>
+      </TabsList>
+
+      {/* DATA */}
+      <TabsContent value="data" className="flex-1 overflow-y-auto space-y-5 pb-4">
+        <div>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>Importer</p>
+          <div
+            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--primary)'; }}
+            onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
+            onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = ''; const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed border-border rounded-2xl p-5 text-center transition-colors cursor-pointer ${UI.hover}`}>
+            <Upload size={22} className={`mx-auto mb-2 ${UI.muted}`} />
+            <p className={`text-xs ${UI.muted}`}>Glisser-déposer ou <span className="text-primary font-medium">parcourir</span></p>
+            <p className={`text-[10px] ${UI.muted} mt-0.5`}>CSV · XLSX · XLS</p>
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
           </div>
-          
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsExampleModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all"
-            >
-              <Database className="w-4 h-4" />
-              <span className="text-sm font-medium">Exemples</span>
+        </div>
+
+        {datasets.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Datasets ({datasets.length})</p>
+              <div className="flex gap-1">
+                <button onClick={exportCSV}     className={`text-[9px] font-bold text-primary px-2 py-1 rounded-lg ${UI.hover} flex items-center gap-1`}><Download size={9} />CSV</button>
+                <button onClick={exportGeoJSON}  className={`text-[9px] font-bold text-primary px-2 py-1 rounded-lg ${UI.hover} flex items-center gap-1`}><Download size={9} />GeoJSON</button>
+              </div>
+            </div>
+            <ScrollArea className="h-72">
+              <div className="space-y-3 pr-1">
+                {datasets.map(ds => (
+                  <div key={ds.id} className={`${UI.card} rounded-2xl p-3 relative`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <button className="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0"
+                          style={{ backgroundColor: ds.color }}
+                          onClick={() => { setColorPickerCtx({ type: 'dataset', id: ds.id }); setColorPickerValue(ds.color); }} />
+                        <span className="text-xs font-semibold truncate max-w-[110px]">{ds.name}</span>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => updateDataset(ds.id, { visible: !ds.visible })} className={`p-1 rounded-lg ${UI.hover} ${UI.muted}`}>
+                          {ds.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                        </button>
+                        <button onClick={() => removeDataset(ds.id)} className="p-1 rounded-lg hover:bg-red-500/10 text-red-400">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    <p className={`text-[10px] ${UI.muted} mb-2`}>{ds.data.length.toLocaleString()} points</p>
+                    <div className="flex gap-3 text-[10px]">
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <Switch checked={ds.clustering ?? true} onCheckedChange={v => updateDataset(ds.id, { clustering: v })} className="scale-75" />
+                        <span className={UI.muted}>Cluster</span>
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <Switch checked={ds.heatmap ?? true} onCheckedChange={v => updateDataset(ds.id, { heatmap: v })} className="scale-75" />
+                        <span className={UI.muted}>Heatmap</span>
+                      </label>
+                    </div>
+                    {colorPickerCtx?.type === 'dataset' && colorPickerCtx.id === ds.id && (
+                      <div className="mt-3 pt-3 border-t border-border">
+                        <HexColorPicker color={colorPickerValue} onChange={c => { setColorPickerValue(c); commitColor(c); }} />
+                        <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">Valider</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+      </TabsContent>
+
+      {/* VISUALIZATION */}
+      <TabsContent value="visualization" className="flex-1 overflow-y-auto space-y-5 pb-4">
+        {/* Heatmap */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Heatmap</p>
+            <Switch checked={heatmapConfig.visible} onCheckedChange={v => setHeatmapConfig(p => ({ ...p, visible: v }))} />
+          </div>
+          {heatmapConfig.visible && (
+            <div className="space-y-3 pl-1">
+              {([['Rayon', 'radius', 5, 60, 1], ['Flou', 'blur', 0, 40, 1]] as const).map(([label, key, min, max, step]) => (
+                <div key={key}>
+                  <div className="flex justify-between mb-1">
+                    <Label className={`text-xs ${UI.muted}`}>{label}</Label>
+                    <span className={`text-xs font-mono ${UI.muted}`}>{heatmapConfig[key]}</span>
+                  </div>
+                  <Slider value={[heatmapConfig[key]]} onValueChange={v => setHeatmapConfig(p => ({ ...p, [key]: v[0] }))} min={min} max={max} step={step} />
+                </div>
+              ))}
+              <div>
+                <Label className={`text-xs ${UI.muted} block mb-2`}>Dégradé</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {Object.entries(heatmapConfig.gradient).map(([k, color]) => (
+                    <div key={k} className="flex flex-col items-center gap-0.5">
+                      <button className="w-7 h-7 rounded-lg border-2 border-white shadow-sm"
+                        style={{ backgroundColor: color }}
+                        onClick={() => { setColorPickerCtx({ type: 'gradient', gradientKey: parseFloat(k) }); setColorPickerValue(color); }} />
+                      <span className={`text-[8px] ${UI.muted}`}>{k}</span>
+                    </div>
+                  ))}
+                </div>
+                {colorPickerCtx?.type === 'gradient' && (
+                  <div className="mt-2">
+                    <HexColorPicker color={colorPickerValue} onChange={c => { setColorPickerValue(c); commitColor(c); }} />
+                    <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">Valider</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Clustering */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Clustering</p>
+            <Switch checked={useClustering} onCheckedChange={setUseClustering} />
+          </div>
+          {useClustering && (
+            <div className="space-y-3 pl-1">
+              <div>
+                <Label className={`text-xs ${UI.muted} block mb-1`}>Couleur des clusters</Label>
+                <button className="w-8 h-8 rounded-xl border-2 border-white shadow-sm"
+                  style={{ backgroundColor: clusteringConfig.clusterColor }}
+                  onClick={() => { setColorPickerCtx({ type: 'cluster' }); setColorPickerValue(clusteringConfig.clusterColor); }} />
+                {colorPickerCtx?.type === 'cluster' && (
+                  <div className="mt-2">
+                    <HexColorPicker color={colorPickerValue} onChange={c => { setColorPickerValue(c); commitColor(c); }} />
+                    <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">Valider</button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex justify-between mb-1">
+                  <Label className={`text-xs ${UI.muted}`}>Rayon max</Label>
+                  <span className={`text-xs font-mono ${UI.muted}`}>{clusteringConfig.maxClusterRadius}</span>
+                </div>
+                <Slider value={[clusteringConfig.maxClusterRadius]}
+                  onValueChange={v => setClusteringConfig(p => ({ ...p, maxClusterRadius: v[0] }))} min={20} max={200} step={5} />
+              </div>
+              {([['Zone au survol', 'showCoverageOnHover'], ['Zoom au clic', 'zoomToBoundsOnClick'], ['Spiderfy', 'spiderfyOnMaxZoom']] as const).map(([label, key]) => (
+                <label key={key} className="flex items-center justify-between cursor-pointer">
+                  <span className={`text-xs ${UI.muted}`}>{label}</span>
+                  <Switch checked={clusteringConfig[key]} onCheckedChange={v => setClusteringConfig(p => ({ ...p, [key]: v }))} className="scale-75" />
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Global points */}
+        <div>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>Points (sans cluster)</p>
+          {[
+            { label: 'Rayon global', val: globalPointRadius, set: setGlobalPointRadius, min: 2, max: 30, step: 1 },
+            { label: 'Opacité (%)', val: Math.round(globalPointOpacity * 100), set: (v: number) => setGlobalPointOpacity(v / 100), min: 10, max: 100, step: 5 },
+          ].map(({ label, val, set, min, max, step }) => (
+            <div key={label} className="mb-3">
+              <div className="flex justify-between mb-1">
+                <Label className={`text-xs ${UI.muted}`}>{label}</Label>
+                <span className={`text-xs font-mono ${UI.muted}`}>{val}</span>
+              </div>
+              <Slider value={[val]} onValueChange={v => set(v[0])} min={min} max={max} step={step} />
+            </div>
+          ))}
+        </div>
+      </TabsContent>
+
+      {/* ANALYSIS  coming soon, no external API required */}
+      <TabsContent value="analysis" className="flex-1 overflow-y-auto pb-4">
+        <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+          <div className="w-14 h-14 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
+            <BrainCircuit size={24} className="text-primary" />
+          </div>
+          <h3 className="text-sm font-black mb-2">Analyse IA épidémiologique</h3>
+          <p className={`text-xs ${UI.muted} max-w-[220px] mb-4 leading-relaxed`}>
+            L'analyse intelligente sera disponible prochainement  insights automatiques,
+            détection de clusters et recommandations épidémiologiques.
+          </p>
+          <ComingSoon label="Bientôt disponible" />
+          <div className="mt-6 w-full space-y-2">
+            {[
+              'Détection automatique de clusters',
+              "Calcul des taux d\'incidence ajustés",
+              'Analyse temporelle des tendances',
+              'Recommandations épidémiologiques',
+              'Scoring de risque par région',
+            ].map(feat => (
+              <div key={feat} className={`flex items-center gap-2.5 p-2.5 ${UI.card} rounded-xl text-xs`}>
+                <div className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
+                <span className={UI.muted}>{feat}</span>
+                <span className="ml-auto"><ComingSoon label="Bientôt" /></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </TabsContent>
+
+
+      {/* SETTINGS */}
+      <TabsContent value="settings" className="flex-1 overflow-y-auto space-y-5 pb-4">
+        <div>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>Colonnes de données</p>
+          {allColumns.length > 0
+            ? ([['Latitude', 'lat'], ['Longitude', 'lng'], ['Valeur (intensité)', 'value'], ['Temps / Date', 'time']] as const).map(([label, key]) => (
+              <div key={key} className="mb-3">
+                <Label className={`block text-xs ${UI.muted} mb-1`}>{label}</Label>
+                <select value={selectedColumns[key]}
+                  onChange={e => setSelectedColumns(p => ({ ...p, [key]: e.target.value }))}
+                  className={UI.input}>
+                  <option value="">Sélectionner…</option>
+                  {allColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            ))
+            : <p className={`text-xs ${UI.muted}`}>Chargez un dataset d'abord.</p>
+          }
+        </div>
+        <Separator />
+        <div>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Limite d'affichage</p>
+          <select value={String(displayLimit)} onChange={e => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
+            className={UI.input}>
+            <option value="500">500 pts  Léger</option>
+            <option value="1000">1 000 pts  Recommandé</option>
+            <option value="5000">5 000 pts  Équilibré</option>
+            <option value="10000">10 000 pts  Détaillé</option>
+            <option value="unlimited">Illimité  Expert</option>
+          </select>
+        </div>
+        <Separator />
+        {/* In-development features  UI stubs with real interaction, no external API */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>En cours de développement</p>
+            <ComingSoon />
+          </div>
+
+          {/* 1  Animation temporelle */}
+          <div className={`${UI.card} rounded-2xl p-3`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Clock size={12} className="text-indigo-500" />
+                <span className="text-xs font-bold">Animation temporelle</span>
+                <ComingSoon label="Beta" />
+              </div>
+              <button
+                onClick={() => setTimelinePlaying(v => !v)}
+                disabled={!datasets.length}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-40 ${timelinePlaying ? 'bg-rose-500/15 text-rose-500' : 'bg-indigo-500/15 text-indigo-500'}`}>
+                {timelinePlaying ? '⏸' : '▶'}
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              <input type="range" min={0} max={Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length - 1), 1))}
+                value={timelineDay} onChange={e => { setTimelineDay(Number(e.target.value)); setTimelinePlaying(false); }}
+                className="w-full h-1.5 accent-indigo-500 cursor-pointer" />
+              <div className={`flex justify-between text-[9px] ${UI.muted}`}>
+                <span>J0</span>
+                <span className="font-mono font-bold text-indigo-500">J{timelineDay}</span>
+                <span>J{Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length - 1), 1))}</span>
+              </div>
+            </div>
+            <p className={`text-[10px] ${UI.muted} mt-1.5`}>Slider de progression temporelle  données réelles à connecter.</p>
+          </div>
+
+          {/* 2  Alertes automatiques */}
+          <div className={`${UI.card} rounded-2xl p-3`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Activity size={12} className="text-amber-500" />
+                <span className="text-xs font-bold">Alertes automatiques</span>
+                <ComingSoon label="Beta" />
+              </div>
+              <button onClick={() => {
+                setAlertsEnabled(v => !v);
+                if (!alertsEnabled) pushToast('Surveillance des seuils activée', 'info');
+              }}
+                className={`w-8 h-4 rounded-full transition-all ${alertsEnabled ? 'bg-amber-500' : 'bg-muted-foreground/30'}`}>
+                <div className={`w-3 h-3 bg-white rounded-full shadow transition-transform mx-0.5 ${alertsEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] ${UI.muted} flex-shrink-0`}>Seuil :</span>
+              <input type="number" value={alertThreshold} min={100} step={1000}
+                onChange={e => setAlertThreshold(Number(e.target.value))}
+                className={`flex-1 ${UI.input} py-1 text-[10px] font-mono`} />
+              <span className={`text-[10px] ${UI.muted}`}>cas</span>
+            </div>
+            {alertsEnabled && (
+              <p className={`text-[10px] text-amber-500 mt-1.5 flex items-center gap-1`}>
+                <span>●</span> Surveillance active  seuil {alertThreshold.toLocaleString()} cas
+              </p>
+            )}
+          </div>
+
+          {/* 3  Multi-épidémies comparées */}
+          <div className={`${UI.card} rounded-2xl p-3`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <FlaskConical size={12} className="text-emerald-500" />
+                <span className="text-xs font-bold">Comparaison multi-épidémies</span>
+                <ComingSoon label="Beta" />
+              </div>
+              <button onClick={() => setShowComparison(v => !v)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${showComparison ? 'bg-emerald-500 text-white' : 'bg-emerald-500/15 text-emerald-500'}`}>
+                {showComparison ? 'Masquer' : 'Comparer'}
+              </button>
+            </div>
+            {showComparison && datasets.length > 0 ? (
+              <div className="space-y-1.5 mt-1">
+                {datasets.filter(d => d.visible).map(ds => {
+                  const vals = ds.data.map(r => parseFloat(r[selectedColumns.value] as string) || 0).filter(v => !isNaN(v));
+                  const max  = vals.length ? Math.max(...vals) : 0;
+                  const sum  = vals.reduce((a, b) => a + b, 0);
+                  return (
+                    <div key={ds.id} className={`p-2 rounded-xl bg-muted`}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ds.color }} />
+                        <span className="text-[10px] font-semibold truncate max-w-[100px]">{ds.name}</span>
+                        <span className={`ml-auto text-[9px] ${UI.muted}`}>{ds.data.length} pts</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 text-[9px]">
+                        <span className={UI.muted}>Total: <span className="font-mono font-bold text-foreground">{sum.toLocaleString()}</span></span>
+                        <span className={UI.muted}>Max: <span className="font-mono font-bold text-rose-500">{max.toLocaleString()}</span></span>
+                      </div>
+                      {/* Mini bar indicator */}
+                      <div className="mt-1 h-1 rounded-full bg-muted-foreground/20 overflow-hidden">
+                        <div className="h-full rounded-full transition-all"
+                          style={{ backgroundColor: ds.color, width: `${datasets.filter(d=>d.visible).length > 1 ? Math.min(100, (sum / datasets.filter(d=>d.visible).reduce((m2,d2)=>m2+(d2.data.map(r=>parseFloat(r[selectedColumns.value] as string)||0).reduce((a,b)=>a+b,0)),0))*100) : 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : showComparison ? (
+              <p className={`text-[10px] ${UI.muted}`}>Chargez plusieurs datasets pour les comparer.</p>
+            ) : (
+              <p className={`text-[10px] ${UI.muted}`}>Chargez plusieurs exemples puis comparez leurs indicateurs.</p>
+            )}
+          </div>
+
+          {/* 4  Flux temps réel */}
+          <div className={`${UI.card} rounded-2xl p-3`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Zap size={12} className="text-violet-500" />
+                <span className="text-xs font-bold">Flux temps réel</span>
+                <ComingSoon label="Beta" />
+              </div>
+              <button onClick={() => {
+                if (rtMode === 'off') { setRtMode('connecting'); pushToast('Connexion au flux en cours…', 'info'); }
+                else { setRtMode('off'); if (rtRef.current) clearInterval(rtRef.current); pushToast('Flux déconnecté', 'info'); }
+              }}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1
+                  ${rtMode === 'off' ? 'bg-violet-500/15 text-violet-500' :
+                    rtMode === 'connecting' ? 'bg-amber-500/15 text-amber-500' :
+                                              'bg-emerald-500 text-white'}`}>
+                {rtMode === 'off'        && '▶ Démarrer'}
+                {rtMode === 'connecting' && <><span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse inline-block" /> Connexion…</>}
+                {rtMode === 'connected'  && <><span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" /> En direct</>}
+              </button>
+            </div>
+            {rtMode === 'connected' && (
+              <div className={`text-[10px] text-emerald-500 flex items-center gap-2`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Simulation active  mise à jour toutes les 8s
+              </div>
+            )}
+            {rtMode === 'off' && (
+              <p className={`text-[10px] ${UI.muted}`}>Simulera la réception de données en direct depuis une API de surveillance.</p>
+            )}
+          </div>
+        </div>
+      </TabsContent>
+    </Tabs>
+  );
+
+  return (
+    <div className="flex flex-col h-[100dvh] bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900 overflow-hidden">
+
+      <ToastStack toasts={toasts} dismiss={dismissToast} />
+
+      {/* Header */}
+      <header className={`${UI.card.replace('border', '')} border-b border-border px-4 py-3 flex-shrink-0 z-10`}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <nav className="flex items-center gap-2 text-xs">
+            <Link href="/" className={`${UI.muted} hover:text-primary transition-colors`}>Accueil</Link>
+            <ChevronRight size={12} className={UI.muted} />
+            <Link href="/geospatial" className={`${UI.muted} hover:text-primary transition-colors`}>Géospatial</Link>
+            <ChevronRight size={12} className={UI.muted} />
+            <span className="font-semibold">Carte</span>
+          </nav>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Map view */}
+            <div className="flex bg-muted p-0.5 rounded-xl">
+              {(['street', 'satellite', 'dark'] as const).map(v => (
+                <button key={v} onClick={() => setMapView(v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${mapView === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}>
+                  <Globe size={11} />
+                  {v === 'street' ? 'Standard' : v === 'satellite' ? 'Satellite' : 'Sombre'}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={() => setIsExampleModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs font-medium ${UI.muted} ${UI.hover} transition-all`}>
+              <Database size={13} /> Exemples
             </button>
-            
-            <button
-              onClick={runAIAnalysis}
-              disabled={datasets.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50"
-            >
-              <BrainCircuit className="w-4 h-4" />
-              <span className="text-sm font-medium">Analyser</span>
+
+            <button onClick={runAIAnalysis} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-sm shadow-primary/20">
+              <BrainCircuit size={13} />
+              Analyser
             </button>
+
+            <button onClick={() => setShowSidePanel(v => !v)}
+              className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs font-medium ${UI.muted} ${UI.hover} transition-all`}>
+              <Settings2 size={13} /> {showSidePanel ? 'Masquer' : 'Panneau'}
+            </button>
+
+            {switchable && (
+              <button onClick={toggleTheme} className={`p-2 ${UI.card} rounded-xl ${UI.muted} ${UI.hover} transition-all`}>
+                {isDark ? <Sun size={15} /> : <Moon size={15} />}
+              </button>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Indicateurs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-        {indicators.map((indicator, idx) => (
-          <motion.div
-            key={idx}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.05 }}
-            className="relative overflow-hidden bg-white border border-slate-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300"
-          >
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                {indicator.label}
-              </span>
-              <span className="text-2xl font-bold text-slate-800 tracking-tight">
-                {indicator.value}
-              </span>
-            </div>
+      {/* Indicators */}
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 p-3 flex-shrink-0">
+        {indicatorItems.map((item, idx) => (
+          <motion.div key={idx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}
+            className={`relative overflow-hidden ${UI.card} rounded-2xl p-3`}>
+            <div className={`absolute left-0 top-0 bottom-0 w-1 ${item.accent} rounded-l-2xl`} />
+            <p className={`text-[9px] font-bold uppercase tracking-widest ${item.accent} ${UI.muted} mb-0.5`}>{item.label}</p>
+            <p className="text-xl font-black tracking-tight">{item.value}</p>
           </motion.div>
         ))}
       </div>
 
-      {/* Barre de contrôle */}
-      <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-2xl shadow-sm p-3 mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Boutons de vue */}
-          <div className="flex bg-slate-100/80 p-1 rounded-xl items-center">
-            {['street', 'satellite', 'dark'].map(view => (
-              <button
-                key={view}
-                onClick={() => setMapView(view as any)}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  mapView === view
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <Globe className="w-4 h-4" />
-                {view === 'street' ? 'Standard' : view === 'satellite' ? 'Satellite' : 'Sombre'}
-              </button>
-            ))}
-          </div>
-
-          {/* Options de visualisation */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="clustering-toggle"
-                checked={useClustering}
-                onCheckedChange={setUseClustering}
-              />
-              <Label htmlFor="clustering-toggle" className="text-sm text-slate-600">
-                Clustering
-              </Label>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <Switch
-                id="heatmap-toggle"
-                checked={useHeatmap}
-                onCheckedChange={setUseHeatmap}
-              />
-              <Label htmlFor="heatmap-toggle" className="text-sm text-slate-600">
-                Heatmap
-              </Label>
-            </div>
-            
-            <div className="hidden sm:flex items-center gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Limite</span>
-              <select
-                value={displayLimit.toString()}
-                onChange={(e) => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
-                className="text-sm border-slate-200 rounded-lg p-1.5"
-              >
-                <option value="1000">1000 pts</option>
-                <option value="5000">5000 pts</option>
-                <option value="10000">10000 pts</option>
-                <option value="unlimited">Illimité</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Bouton paramètres */}
-          <button
-            onClick={() => setShowSidePanel(!showSidePanel)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all"
-          >
-            <Settings2 className="w-4 h-4" />
-            <span className="text-sm font-medium">Configuration avancée</span>
-          </button>
-        </div>
+      {/* Desktop quick controls */}
+      <div className="hidden lg:flex items-center gap-4 px-4 pb-3 flex-shrink-0">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <Switch checked={useClustering} onCheckedChange={setUseClustering} />
+          <span className={`text-xs ${UI.muted}`}>Clustering</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <Switch checked={useHeatmap} onCheckedChange={setUseHeatmap} />
+          <span className={`text-xs ${UI.muted}`}>Heatmap</span>
+        </label>
+        <button onClick={exportCSV}     className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}><Download size={12} /> CSV</button>
+        <button onClick={exportGeoJSON}  className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}><Download size={12} /> GeoJSON</button>
+        <select value={String(displayLimit)} onChange={e => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
+          className={`${UI.input} w-auto text-[10px] h-8 py-0`}>
+          <option value="1000">1 000 pts</option>
+          <option value="5000">5 000 pts</option>
+          <option value="10000">10 000 pts</option>
+          <option value="unlimited">Illimité</option>
+        </select>
       </div>
 
-      {/* Contenu principal */}
-      <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Zone de carte */}
-        <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden relative h-[600px]">
-          <MapContainer
-            center={[20, 0]}
-            zoom={2}
-            style={{ height: '100%', width: '100%' }}
-            ref={mapRef}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url={getTileUrl()}
-            />
-            
-            {/* Heatmap */}
-            {useHeatmap && heatmapConfig.visible && heatmapData.length > 0 && (
-              <HeatmapLayer
-                points={heatmapData}
-                radius={heatmapConfig.radius}
-                blur={heatmapConfig.blur}
-                max={heatmapConfig.max}
-                minOpacity={heatmapConfig.minOpacity}
-                gradient={heatmapConfig.gradient}
-              />
-            )}
+      {/* Main content */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
 
-            {/* Clustering */}
-            {useClustering && clusterMarkers && clusterMarkers.length > 0 && (
-              <MarkerClusterGroup
-                {...clusteringConfig}
-                iconCreateFunction={customClusterIcon}
+        {/* Map */}
+        <div className="flex-1 relative overflow-hidden min-h-0 mx-3 mb-3 rounded-3xl border border-border">
+          {datasets.length === 0 && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center p-8 pointer-events-none">
+              <div className="w-14 h-14 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
+                <MapIcon size={24} className="text-primary" />
+              </div>
+              <h2 className="text-lg font-black mb-2">Aucune donnée</h2>
+              <p className={`text-sm ${UI.muted} max-w-xs`}>Importez un CSV/Excel ou chargez un exemple épidémiologique via le bouton "Exemples".</p>
+            </div>
+          )}
+          <MapContainer center={[20, 0]} zoom={2} style={{ height: '100%', width: '100%' }}>
+            <TileLayer url={tileUrl} attribution="© OpenStreetMap" />
+            {useHeatmap && heatmapConfig.visible && heatmapPoints.length > 0 && (
+              <HeatmapLayer points={heatmapPoints} radius={heatmapConfig.radius} blur={heatmapConfig.blur}
+                max={heatmapConfig.max} minOpacity={heatmapConfig.minOpacity} gradient={heatmapConfig.gradient} />
+            )}
+            {useClustering ? (
+              <MarkerClusterGroup iconCreateFunction={clusterIcon}
                 showCoverageOnHover={clusteringConfig.showCoverageOnHover}
                 zoomToBoundsOnClick={clusteringConfig.zoomToBoundsOnClick}
                 spiderfyOnMaxZoom={clusteringConfig.spiderfyOnMaxZoom}
                 maxClusterRadius={clusteringConfig.maxClusterRadius}
                 disableClusteringAtZoom={clusteringConfig.disableClusteringAtZoom}
-                animate={clusteringConfig.animate}
-                animateAddingMarkers={clusteringConfig.animateAddingMarkers}
-                chunkedLoading={clusteringConfig.chunkedLoading}
-                chunkInterval={clusteringConfig.chunkInterval}
-                chunkDelay={clusteringConfig.chunkDelay}
-              >
-                {clusterMarkers}
+                animate={clusteringConfig.animate}>
+                {circleMarkers}
               </MarkerClusterGroup>
-            )}
-
-            {/* Points individuels */}
-            {!useClustering && circleMarkers}
+            ) : circleMarkers}
           </MapContainer>
-          
-          {/* Légende */}
-          <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm p-3 rounded-xl border border-slate-200 shadow-sm">
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Légende</div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span className="text-xs">Faible</span>
+          {/* Legend */}
+          <div className={`absolute bottom-4 left-4 ${UI.card} rounded-2xl p-3 z-[400]`}>
+            <p className={`text-[8px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Intensité</p>
+            {[['#3b82f6','Faible (< 10k)'],['#10b981','Modéré (< 100k)'],['#f59e0b','Élevé (< 1M)'],['#ef4444','Critique (> 1M)']].map(([c, l]) => (
+              <div key={l} className="flex items-center gap-2 mb-1 last:mb-0">
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c }} />
+                <span className={`text-[10px] ${UI.muted}`}>{l}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                <span className="text-xs">Modéré</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                <span className="text-xs">Élevé</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-rose-500"></div>
-                <span className="text-xs">Critique</span>
-              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop side panel */}
+        {showSidePanel && (
+          <div className={`hidden lg:flex flex-col w-72 xl:w-80 flex-shrink-0 mr-3 mb-3 ${UI.card} rounded-3xl overflow-hidden`}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
+              <h2 className="text-sm font-black tracking-tight">Configuration</h2>
+              <button onClick={() => setShowSidePanel(false)} className={`p-1 rounded-lg ${UI.hover} ${UI.muted}`}><X size={14} /></button>
+            </div>
+            <div className="flex-1 overflow-hidden px-4 pb-4 min-h-0">
+              <SidePanelContent />
             </div>
           </div>
+        )}
+
+        {/* Mobile panels */}
+        <div className="lg:hidden flex-1 flex flex-col overflow-hidden min-h-0 pb-14">
+          {mobileTab !== 'map' && (
+            <div className="flex-1 overflow-hidden px-3 py-2 min-h-0">
+              <SidePanelContent />
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* Panel latéral - Configuration avancée */}
-        <div className={`bg-white rounded-3xl border border-slate-100 shadow-sm p-6 h-[600px] flex flex-col overflow-hidden animate-in slide-in-from-right-4 ${
-          showSidePanel ? 'block' : 'hidden lg:block'
-        }`}>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-black text-slate-800 tracking-tight">Configuration</h2>
-            <button
-              onClick={() => setShowSidePanel(false)}
-              className="lg:hidden text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+      {/* Mobile bottom nav */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 py-1 z-50">
+        {([
+          { id: 'map',      icon: MapIcon,      label: 'Carte'    },
+          { id: 'data',     icon: Database,     label: 'Données'  },
+          { id: 'analysis', icon: BrainCircuit, label: 'IA'       },
+          { id: 'settings', icon: Settings2,    label: 'Réglages' },
+        ] as const).map(tab => (
+          <button key={tab.id} onClick={() => setMobileTab(tab.id)}
+            className={`flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-[10px] transition-all
+              ${mobileTab === tab.id ? 'text-primary bg-primary/10' : `${UI.muted} ${UI.hover}`}`}>
+            <tab.icon size={18} />
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </nav>
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 overflow-hidden">
-            <TabsList className="grid grid-cols-4 mb-6">
-              <TabsTrigger value="data" className="flex items-center gap-2">
-                <Database className="w-4 h-4" />
-                Données
-              </TabsTrigger>
-              <TabsTrigger value="visualization" className="flex items-center gap-2">
-                <Layers className="w-4 h-4" />
-                Visuel
-              </TabsTrigger>
-              <TabsTrigger value="analysis" className="flex items-center gap-2">
-                <BrainCircuit className="w-4 h-4" />
-                Analyse
-              </TabsTrigger>
-              <TabsTrigger value="settings" className="flex items-center gap-2">
-                <Settings2 className="w-4 h-4" />
-                Réglages
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Onglet Données */}
-            <TabsContent value="data" className="h-[calc(100%-60px)] overflow-y-auto space-y-6">
-              {/* Upload */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Charger des données</h3>
-                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-blue-500 transition-colors">
-                  <Upload className="w-8 h-8 text-slate-400 mx-auto mb-3" />
-                  <p className="text-sm text-slate-600 mb-2">
-                    Glissez-déposez ou{' '}
-                    <button
-                      className="text-blue-600 hover:underline"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      parcourez
-                    </button>
-                  </p>
-                  <p className="text-xs text-slate-500">CSV, Excel (.xlsx, .xls)</p>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        handleFileUpload(e.target.files[0]);
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Datasets */}
-              {datasets.length > 0 && (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Datasets</h3>
-                    <Badge variant="outline">{datasets.length}</Badge>
-                  </div>
-                  
-                  <ScrollArea className="h-72">
-                    <div className="space-y-4">
-                      {datasets.map(dataset => (
-                        <div key={dataset.id} className="p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-all">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-4 h-4 rounded-full cursor-pointer"
-                                style={{ backgroundColor: dataset.color }}
-                                onClick={() => setShowColorPickerFor(dataset.id)}
-                              />
-                              {showColorPickerFor === dataset.id && (
-                                <div className="absolute z-50 mt-8">
-                                  <HexColorPicker
-                                    color={dataset.color}
-                                    onChange={(color) => updateDataset(dataset.id, { color })}
-                                  />
-                                  <Button size="sm" className="mt-2" onClick={() => setShowColorPickerFor(null)}>
-                                    Valider
-                                  </Button>
-                                </div>
-                              )}
-                              <span className="font-medium text-sm">{dataset.name}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => updateDataset(dataset.id, { visible: !dataset.visible })}
-                                className="p-1 hover:bg-slate-100 rounded"
-                              >
-                                {dataset.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                              </button>
-                              <button
-                                onClick={() => removeDataset(dataset.id)}
-                                className="p-1 hover:bg-red-50 text-red-600 rounded"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="text-xs text-slate-500 mb-2">
-                            {dataset.data.length} points •{' '}
-                            {selectedColumns.value && (
-                              <>
-                                Moyenne:{' '}
-                                {(() => {
-                                  const values = dataset.data.map(row =>
-                                    parseFloat(row[selectedColumns.value] as string) || 0
-                                  ).filter(v => !isNaN(v));
-                                  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-                                  return avg.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                                })()}
-                              </>
-                            )}
-                          </div>
-                          {/* Options spécifiques au dataset */}
-                          <div className="flex items-center gap-4 mt-2">
-                            <div className="flex items-center gap-1">
-                              <Switch
-                                id={`cluster-${dataset.id}`}
-                                checked={dataset.clustering ?? true}
-                                onCheckedChange={(val) => updateDataset(dataset.id, { clustering: val })}
-                              />
-                              <Label htmlFor={`cluster-${dataset.id}`} className="text-xs">Cluster</Label>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Switch
-                                id={`heatmap-${dataset.id}`}
-                                checked={dataset.heatmap ?? true}
-                                onCheckedChange={(val) => updateDataset(dataset.id, { heatmap: val })}
-                              />
-                              <Label htmlFor={`heatmap-${dataset.id}`} className="text-xs">Heatmap</Label>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Label className="text-xs">Rayon</Label>
-                            <Input
-                              type="number"
-                              value={dataset.pointRadius ?? globalPointRadius}
-                              onChange={(e) => updateDataset(dataset.id, { pointRadius: parseInt(e.target.value) || 4 })}
-                              className="w-16 h-7 text-xs"
-                              min={2}
-                              max={30}
-                            />
-                            <Label className="text-xs">Opacité</Label>
-                            <Input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="1"
-                              value={dataset.pointOpacity ?? globalPointOpacity}
-                              onChange={(e) => updateDataset(dataset.id, { pointOpacity: parseFloat(e.target.value) || 0.8 })}
-                              className="w-16 h-7 text-xs"
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Onglet Visualisation */}
-            <TabsContent value="visualization" className="h-[calc(100%-60px)] overflow-y-auto space-y-6">
-              {/* Configuration Heatmap */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Heatmap</h3>
-                  <Switch
-                    checked={heatmapConfig.visible}
-                    onCheckedChange={(v) => setHeatmapConfig(prev => ({ ...prev, visible: v }))}
-                  />
-                </div>
-                {heatmapConfig.visible && (
-                  <div className="space-y-4 pl-2">
-                    <div>
-                      <Label className="text-sm">Rayon</Label>
-                      <Slider
-                        value={[heatmapConfig.radius]}
-                        onValueChange={(v) => setHeatmapConfig(prev => ({ ...prev, radius: v[0] }))}
-                        min={5}
-                        max={50}
-                        step={1}
-                      />
-                      <span className="text-xs text-slate-500">{heatmapConfig.radius} px</span>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Flou</Label>
-                      <Slider
-                        value={[heatmapConfig.blur]}
-                        onValueChange={(v) => setHeatmapConfig(prev => ({ ...prev, blur: v[0] }))}
-                        min={0}
-                        max={30}
-                        step={1}
-                      />
-                      <span className="text-xs text-slate-500">{heatmapConfig.blur} px</span>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Opacité min</Label>
-                      <Slider
-                        value={[heatmapConfig.minOpacity * 100]}
-                        onValueChange={(v) => setHeatmapConfig(prev => ({ ...prev, minOpacity: v[0] / 100 }))}
-                        min={0}
-                        max={100}
-                        step={5}
-                      />
-                      <span className="text-xs text-slate-500">{heatmapConfig.minOpacity}</span>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Intensité max</Label>
-                      <Slider
-                        value={[heatmapConfig.max]}
-                        onValueChange={(v) => setHeatmapConfig(prev => ({ ...prev, max: v[0] }))}
-                        min={0.1}
-                        max={2}
-                        step={0.1}
-                      />
-                      <span className="text-xs text-slate-500">{heatmapConfig.max}</span>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Dégradé de couleurs</Label>
-                      <div className="grid grid-cols-2 gap-2 mt-1">
-                        {Object.entries(heatmapConfig.gradient).map(([key, color]) => (
-                          <div key={key} className="flex items-center gap-2">
-                            <span className="text-xs">{key}</span>
-                            <div
-                              className="w-6 h-6 rounded cursor-pointer border"
-                              style={{ backgroundColor: color }}
-                              onClick={() => {
-                                const newColor = prompt(`Nouvelle couleur pour ${key} (ex: red, #ff0000)`, color);
-                                if (newColor) {
-                                  setHeatmapConfig(prev => ({
-                                    ...prev,
-                                    gradient: { ...prev.gradient, [parseFloat(key)]: newColor }
-                                  }));
-                                }
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Configuration Clustering */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Clustering</h3>
-                  <Switch
-                    checked={useClustering}
-                    onCheckedChange={setUseClustering}
-                  />
-                </div>
-                {useClustering && (
-                  <div className="space-y-4 pl-2">
-                    <div>
-                      <Label className="text-sm">Couleur des clusters</Label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div
-                          className="w-8 h-8 rounded cursor-pointer border"
-                          style={{ backgroundColor: clusteringConfig.clusterColor }}
-                          onClick={() => {
-                            const color = prompt('Couleur du cluster (hex ou nom)', clusteringConfig.clusterColor);
-                            if (color) setClusteringConfig(prev => ({ ...prev, clusterColor: color }));
-                          }}
-                        />
-                        <span className="text-xs">{clusteringConfig.clusterColor}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Couleur du texte</Label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div
-                          className="w-8 h-8 rounded cursor-pointer border"
-                          style={{ backgroundColor: clusteringConfig.clusterTextColor }}
-                          onClick={() => {
-                            const color = prompt('Couleur du texte', clusteringConfig.clusterTextColor);
-                            if (color) setClusteringConfig(prev => ({ ...prev, clusterTextColor: color }));
-                          }}
-                        />
-                        <span className="text-xs">{clusteringConfig.clusterTextColor}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Rayon max du cluster</Label>
-                      <Slider
-                        value={[clusteringConfig.maxClusterRadius]}
-                        onValueChange={(v) => setClusteringConfig(prev => ({ ...prev, maxClusterRadius: v[0] }))}
-                        min={20}
-                        max={200}
-                        step={5}
-                      />
-                      <span className="text-xs">{clusteringConfig.maxClusterRadius} px</span>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Désactiver clustering au zoom</Label>
-                      <Slider
-                        value={[clusteringConfig.disableClusteringAtZoom]}
-                        onValueChange={(v) => setClusteringConfig(prev => ({ ...prev, disableClusteringAtZoom: v[0] }))}
-                        min={5}
-                        max={18}
-                        step={1}
-                      />
-                      <span className="text-xs">Zoom {clusteringConfig.disableClusteringAtZoom}+</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="showCoverage"
-                        checked={clusteringConfig.showCoverageOnHover}
-                        onCheckedChange={(v) => setClusteringConfig(prev => ({ ...prev, showCoverageOnHover: v }))}
-                      />
-                      <Label htmlFor="showCoverage">Afficher la zone au survol</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="zoomToBounds"
-                        checked={clusteringConfig.zoomToBoundsOnClick}
-                        onCheckedChange={(v) => setClusteringConfig(prev => ({ ...prev, zoomToBoundsOnClick: v }))}
-                      />
-                      <Label htmlFor="zoomToBounds">Zoom au clic</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="spiderfy"
-                        checked={clusteringConfig.spiderfyOnMaxZoom}
-                        onCheckedChange={(v) => setClusteringConfig(prev => ({ ...prev, spiderfyOnMaxZoom: v }))}
-                      />
-                      <Label htmlFor="spiderfy">Spiderfy au zoom max</Label>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Paramètres globaux des points */}
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Points (sans clustering)</h3>
-                <div>
-                  <Label className="text-sm">Rayon global</Label>
-                  <Slider
-                    value={[globalPointRadius]}
-                    onValueChange={(v) => setGlobalPointRadius(v[0])}
-                    min={2}
-                    max={30}
-                    step={1}
-                  />
-                  <span className="text-xs">{globalPointRadius} px</span>
-                </div>
-                <div>
-                  <Label className="text-sm">Opacité globale</Label>
-                  <Slider
-                    value={[globalPointOpacity * 100]}
-                    onValueChange={(v) => setGlobalPointOpacity(v[0] / 100)}
-                    min={0}
-                    max={100}
-                    step={5}
-                  />
-                  <span className="text-xs">{globalPointOpacity}</span>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Onglet Analyse */}
-            <TabsContent value="analysis" className="h-[calc(100%-60px)] overflow-y-auto space-y-6">
-              {aiResults ? (
-                <>
-                  <Alert className={`${
-                    aiResults.riskLevel === 'high' ? 'bg-rose-50 border-rose-200' :
-                    aiResults.riskLevel === 'medium' ? 'bg-amber-50 border-amber-200' :
-                    'bg-emerald-50 border-emerald-200'
-                  }`}>
-                    <AlertTitle className="flex items-center gap-2">
-                      Niveau de risque:
-                      <Badge variant={
-                        aiResults.riskLevel === 'high' ? 'destructive' :
-                        aiResults.riskLevel === 'medium' ? 'secondary' : 'outline'
-                      }>
-                        {aiResults.riskLevel === 'high' ? 'ÉLEVÉ' :
-                         aiResults.riskLevel === 'medium' ? 'MODÉRÉ' : 'FAIBLE'}
-                      </Badge>
-                    </AlertTitle>
-                    <AlertDescription>{aiResults.summary}</AlertDescription>
-                  </Alert>
-                  
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-bold text-slate-700">Insights</h3>
-                    <div className="space-y-2">
-                      {aiResults.insights.map((insight, idx) => (
-                        <div key={idx} className="text-sm p-3 bg-blue-50 rounded-lg">
-                          {insight}
-                        </div>
-                      ))}
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-700">Recommandations</h3>
-                    <div className="space-y-2">
-                      {aiResults.recommendations.map((rec, idx) => (
-                        <div key={idx} className="text-sm p-3 bg-green-50 rounded-lg">
-                          {rec}
-                        </div>
-                      ))}
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-700">Alertes</h3>
-                    <div className="space-y-2">
-                      {aiResults.alerts.map((alert, idx) => (
-                        <div key={idx} className="text-sm p-3 bg-amber-50 rounded-lg">
-                          {alert}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-48">
-                  <BrainCircuit className="w-12 h-12 text-slate-300 mb-4" />
-                  <p className="text-sm text-slate-500 text-center">
-                    Lancez une analyse IA pour obtenir des insights
-                  </p>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Onglet Réglages */}
-            <TabsContent value="settings" className="h-[calc(100%-60px)] overflow-y-auto space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Colonnes</h3>
-                {datasets.length > 0 ? (
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="block text-sm font-medium mb-2">Latitude</Label>
-                      <select
-                        value={selectedColumns.lat}
-                        onChange={(e) => setSelectedColumns({...selectedColumns, lat: e.target.value})}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                      >
-                        <option value="">Sélectionner...</option>
-                        {datasets[0]?.data[0] && Object.keys(datasets[0].data[0]).map((col) => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <Label className="block text-sm font-medium mb-2">Longitude</Label>
-                      <select
-                        value={selectedColumns.lng}
-                        onChange={(e) => setSelectedColumns({...selectedColumns, lng: e.target.value})}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                      >
-                        <option value="">Sélectionner...</option>
-                        {datasets[0]?.data[0] && Object.keys(datasets[0].data[0]).map((col) => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <Label className="block text-sm font-medium mb-2">Valeur (intensité)</Label>
-                      <select
-                        value={selectedColumns.value}
-                        onChange={(e) => setSelectedColumns({...selectedColumns, value: e.target.value})}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                      >
-                        <option value="">Sélectionner...</option>
-                        {datasets[0]?.data[0] && Object.keys(datasets[0].data[0]).map((col) => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">Chargez d'abord un dataset</p>
-                )}
-              </div>
-              
-              <Separator />
-              
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Performance</h3>
-                <div>
-                  <Label className="block text-sm font-medium mb-2">Limite d'affichage</Label>
-                  <select
-                    value={displayLimit.toString()}
-                    onChange={(e) => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  >
-                    <option value="1000">1000 points (Rapide)</option>
-                    <option value="5000">5000 points (Équilibré)</option>
-                    <option value="10000">10000 points (Détaillé)</option>
-                    <option value="unlimited">Illimité (Expert)</option>
-                  </select>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </main>
-
-      {/* Modal d'exemples */}
+      {/* Modal  Examples */}
       <Dialog open={isExampleModalOpen} onOpenChange={setIsExampleModalOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl rounded-3xl">
           <DialogHeader>
-            <DialogTitle>Exemples de données épidémiologiques</DialogTitle>
-            <DialogDescription>
-              Sélectionnez une maladie pour charger des données de simulation
+            <DialogTitle className="text-lg font-black">Exemples épidémiologiques</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Données réelles documentées  OMS, Johns Hopkins, CEREMUJER et autres organismes.
             </DialogDescription>
           </DialogHeader>
-
           {isLoading ? (
-            <div className="py-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mb-4"></div>
-              <Progress value={exampleProgress} className="w-full h-2 mb-2" />
-              <p className="text-sm text-slate-500">{exampleProgress}% complété</p>
+            <div className="py-12 text-center space-y-3">
+              <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+              <Progress value={exampleProgress} className="w-full h-1.5" />
+              <p className="text-xs text-muted-foreground">{exampleProgress}%</p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[400px] pr-4">
+            <ScrollArea className="max-h-[420px] pr-2">
               <div className="space-y-3">
-                {diseaseExamples.map(disease => (
-                  <div
-                    key={disease.id}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      selectedDiseases.includes(disease.id)
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                    onClick={() => toggleDiseaseSelection(disease.id)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-semibold text-slate-800">{disease.name}</h4>
-                        <p className="text-sm text-slate-600 mt-1">{disease.description}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Badge variant="outline">
-                            {disease.countries.length} pays
-                          </Badge>
-                          <span className="text-xs text-slate-500">
-                            Source: {disease.source.organization}
-                          </span>
+                {DISEASE_EXAMPLES.map(ex => (
+                  <button key={ex.id}
+                    onClick={() => setSelectedDiseases(p => p.includes(ex.id) ? p.filter(d => d !== ex.id) : [...p, ex.id])}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${selectedDiseases.includes(ex.id) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ex.color }} />
+                          <span className="font-bold text-sm">{ex.name}</span>
+                          <Badge variant="outline" className="text-[9px]">{ex.source.credibility === 'high' ? 'Haute fiabilité' : 'Fiabilité moyenne'}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-2">{ex.description}</p>
+                        <div className="flex gap-2 text-[9px] flex-wrap">
+                          <span className="px-2 py-0.5 bg-muted rounded-full font-medium">{ex.countries.length} pays</span>
+                          <span className="px-2 py-0.5 bg-muted rounded-full font-medium">{ex.source.organization}</span>
+                          <span className="px-2 py-0.5 bg-muted rounded-full font-medium">{ex.source.year}</span>
                         </div>
                       </div>
-                      <div className={`w-6 h-6 rounded-full border flex items-center justify-center ${
-                        selectedDiseases.includes(disease.id)
-                          ? 'border-blue-500 bg-blue-500'
-                          : 'border-slate-300'
-                      }`}>
-                        {selectedDiseases.includes(disease.id) && (
-                          <div className="w-2 h-2 rounded-full bg-white" />
-                        )}
+                      <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selectedDiseases.includes(ex.id) ? 'border-primary bg-primary' : 'border-border'}`}>
+                        {selectedDiseases.includes(ex.id) && <div className="w-2 h-2 rounded-full bg-white" />}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
-                
-                <div
-                  className="p-4 rounded-xl border border-dashed border-slate-300 cursor-pointer hover:border-blue-500 transition-all"
-                  onClick={loadContinentalData}
-                >
-                  <div className="text-center">
-                    <Globe className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                    <h4 className="font-semibold text-slate-800">Données Continentales</h4>
-                    <p className="text-sm text-slate-600 mt-1">
-                      25 pays répartis sur 5 continents
-                    </p>
-                  </div>
-                </div>
               </div>
             </ScrollArea>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsExampleModalOpen(false)}>
-              Annuler
-            </Button>
-            <Button
-              onClick={loadSelectedExamples}
-              disabled={selectedDiseases.length === 0}
-            >
-              Charger {selectedDiseases.length} sélectionné(s)
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsExampleModalOpen(false)} className="rounded-xl">Annuler</Button>
+            <Button onClick={loadSelectedExamples} disabled={!selectedDiseases.length} className="rounded-xl">
+              Charger {selectedDiseases.length > 0 ? `(${selectedDiseases.length})` : ''}
             </Button>
           </DialogFooter>
         </DialogContent>
