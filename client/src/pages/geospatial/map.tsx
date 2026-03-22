@@ -1,9 +1,10 @@
 /**
- * GeospatialVisualization
+ * GeospatialVisualization 
  */
 import React, {
   useState, useEffect, useRef, useMemo, useCallback,
 } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import {
   MapContainer, TileLayer, CircleMarker,
   Tooltip, Popup, useMap,
@@ -25,16 +26,15 @@ import {
   Dialog, DialogContent, DialogHeader,
   DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
-import { Button }    from '@/components/ui/button';
-import { Badge }     from '@/components/ui/badge';
+import { Button }     from '@/components/ui/button';
+import { Badge }      from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Progress }  from '@/components/ui/progress';
-import { Slider }    from '@/components/ui/slider';
-import { Switch }    from '@/components/ui/switch';
-import { Label }     from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
+import { Progress }   from '@/components/ui/progress';
+import { Slider }     from '@/components/ui/slider';
+import { Switch }     from '@/components/ui/switch';
+import { Label }      from '@/components/ui/label';
+import { Separator }  from '@/components/ui/separator';
 
 import {
   ChevronRight, Database, BrainCircuit, Settings2,
@@ -44,7 +44,8 @@ import {
   Zap, FlaskConical, Activity,
 } from 'lucide-react';
 
-// Types
+//  Types 
+
 interface DataRow { [key: string]: string | number; }
 
 interface Dataset {
@@ -56,22 +57,13 @@ interface Dataset {
 
 interface DiseaseExample {
   id: string; name: string; description: string; color: string;
-  source: {
-    organization: string; year: number;
-    study: string; credibility: 'high' | 'medium' | 'low';
-  };
-  countries: {
-    name: string; lat: number; lng: number;
-    cases: number; incidenceRate: number; population: number; region: string;
-  }[];
+  source: { organization: string; year: number; study: string; credibility: 'high' | 'medium' | 'low' };
+  countries: { name: string; lat: number; lng: number; cases: number; incidenceRate: number; population: number; region: string }[];
 }
 
 interface AIResults {
-  summary: string;
-  insights: string[];
-  recommendations: string[];
-  alerts: string[];
-  riskLevel: 'low' | 'medium' | 'high';
+  summary: string; insights: string[]; recommendations: string[];
+  alerts: string[]; riskLevel: 'low' | 'medium' | 'high';
 }
 
 interface HeatmapConfig {
@@ -90,25 +82,25 @@ interface Toast {
   id: string; message: string; type: 'success' | 'error' | 'warning' | 'info';
 }
 
-// Module-level constants  never recreated on render
-// Fix: real hex colors, not 'bg-red-500' Tailwind class names
+//  Constants 
+
 const DISEASE_EXAMPLES: DiseaseExample[] = [
   {
     id: 'ebola-2014', name: 'Épidémie Ebola 2014–2016',
-    description: 'Crise sanitaire majeure en Afrique de l\'Ouest  28 000 cas, 11 000 décès.',
+    description: "Crise sanitaire majeure en Afrique de l'Ouest — 28 000 cas, 11 000 décès.",
     color: '#ef4444',
     source: { organization: 'OMS', year: 2016, study: 'Rapport final flambée Ebola', credibility: 'high' },
     countries: [
-      { name: 'Guinée',       lat: 9.9456, lng: -9.6966,  cases: 3814,  incidenceRate: 28.2,  population: 12414000,  region: 'Afrique de l\'Ouest' },
-      { name: 'Sierra Leone', lat: 8.4606, lng: -11.7799, cases: 14124, incidenceRate: 195.3, population: 7791000,   region: 'Afrique de l\'Ouest' },
-      { name: 'Liberia',      lat: 6.4281, lng: -9.4295,  cases: 10675, incidenceRate: 232.7, population: 4854000,   region: 'Afrique de l\'Ouest' },
-      { name: 'Nigeria',      lat: 9.082,  lng: 8.6753,   cases: 20,    incidenceRate: 0.1,   population: 195875000, region: 'Afrique de l\'Ouest' },
-      { name: 'Mali',         lat: 17.57,  lng: -3.99,    cases: 8,     incidenceRate: 0.04,  population: 20251000,  region: 'Afrique de l\'Ouest' },
+      { name: 'Guinée',       lat: 9.9456, lng: -9.6966,  cases: 3814,  incidenceRate: 28.2,  population: 12414000,  region: "Afrique de l'Ouest" },
+      { name: 'Sierra Leone', lat: 8.4606, lng: -11.7799, cases: 14124, incidenceRate: 195.3, population: 7791000,   region: "Afrique de l'Ouest" },
+      { name: 'Liberia',      lat: 6.4281, lng: -9.4295,  cases: 10675, incidenceRate: 232.7, population: 4854000,   region: "Afrique de l'Ouest" },
+      { name: 'Nigeria',      lat: 9.082,  lng: 8.6753,   cases: 20,    incidenceRate: 0.1,   population: 195875000, region: "Afrique de l'Ouest" },
+      { name: 'Mali',         lat: 17.57,  lng: -3.99,    cases: 8,     incidenceRate: 0.04,  population: 20251000,  region: "Afrique de l'Ouest" },
     ],
   },
   {
-    id: 'covid-global', name: 'COVID-19  Foyers initiaux',
-    description: 'Distribution géographique des grands foyers confirmés  données Johns Hopkins.',
+    id: 'covid-global', name: 'COVID-19 — Foyers initiaux',
+    description: 'Distribution géographique des grands foyers confirmés — données Johns Hopkins.',
     color: '#3b82f6',
     source: { organization: 'Johns Hopkins University', year: 2023, study: 'COVID-19 Data Repository', credibility: 'high' },
     countries: [
@@ -118,11 +110,11 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
       { name: 'France',     lat: 46.60,  lng: 1.88,    cases: 38997490,  incidenceRate: 57600, population: 67000000,   region: 'Europe' },
       { name: 'Allemagne',  lat: 51.16,  lng: 10.45,   cases: 37986082,  incidenceRate: 45300, population: 83200000,   region: 'Europe' },
       { name: 'Italie',     lat: 41.87,  lng: 12.56,   cases: 25933617,  incidenceRate: 42800, population: 60360000,   region: 'Europe' },
-      { name: 'Chine',      lat: 35.86,  lng: 104.19,  cases: 99283493,  incidenceRate: 6984,  population: 1440000000, region: 'Asie de l\'Est' },
+      { name: 'Chine',      lat: 35.86,  lng: 104.19,  cases: 99283493,  incidenceRate: 6984,  population: 1440000000, region: "Asie de l'Est" },
     ],
   },
   {
-    id: 'meningitis', name: 'Méningite  Ceinture sub-saharienne',
+    id: 'meningitis', name: 'Méningite — Ceinture sub-saharienne',
     description: 'Flambées saisonnières dans la ceinture méningitique (Burkina Faso, Niger, Mali).',
     color: '#d97706',
     source: { organization: 'OMS / CEREMUJER', year: 2022, study: 'Surveillance méningite Afrique sub-saharienne', credibility: 'high' },
@@ -136,31 +128,27 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
     ],
   },
   {
-    id: 'cholera-2024', name: 'Choléra  Flambées 2022–2024',
-    description: 'Résurgence mondiale  OMS signale 43 pays touchés simultanément.',
+    id: 'cholera-2024', name: 'Choléra — Flambées 2022–2024',
+    description: 'Résurgence mondiale — OMS signale 43 pays touchés simultanément.',
     color: '#0d9488',
     source: { organization: 'OMS', year: 2024, study: 'Rapport mondial choléra 2024', credibility: 'high' },
     countries: [
-      { name: 'Haïti',        lat: 18.97,  lng: -72.28, cases: 104000,  incidenceRate: 914,  population: 11402000,  region: 'Caraïbes' },
-      { name: 'Soudan du Sud',lat: 6.87,   lng: 31.30,  cases: 48000,   incidenceRate: 428,  population: 11194000,  region: 'Afrique de l\'Est' },
-      { name: 'Éthiopie',     lat: 9.14,   lng: 40.48,  cases: 75000,   incidenceRate: 65,   population: 114964000, region: 'Afrique de l\'Est' },
-      { name: 'Nigeria',      lat: 9.08,   lng: 8.67,   cases: 121000,  incidenceRate: 587,  population: 206139000, region: 'Afrique de l\'Ouest' },
-      { name: 'Yémen',        lat: 15.55,  lng: 48.51,  cases: 310000,  incidenceRate: 1040, population: 29825000,  region: 'Proche-Orient' },
-      { name: 'Bangladesh',   lat: 23.68,  lng: 90.35,  cases: 89000,   incidenceRate: 54,   population: 166303000, region: 'Asie du Sud' },
+      { name: 'Haïti',         lat: 18.97,  lng: -72.28, cases: 104000,  incidenceRate: 914,  population: 11402000,  region: 'Caraïbes' },
+      { name: 'Soudan du Sud', lat: 6.87,   lng: 31.30,  cases: 48000,   incidenceRate: 428,  population: 11194000,  region: "Afrique de l'Est" },
+      { name: 'Éthiopie',      lat: 9.14,   lng: 40.48,  cases: 75000,   incidenceRate: 65,   population: 114964000, region: "Afrique de l'Est" },
+      { name: 'Nigeria',       lat: 9.08,   lng: 8.67,   cases: 121000,  incidenceRate: 587,  population: 206139000, region: "Afrique de l'Ouest" },
+      { name: 'Yémen',         lat: 15.55,  lng: 48.51,  cases: 310000,  incidenceRate: 1040, population: 29825000,  region: 'Proche-Orient' },
+      { name: 'Bangladesh',    lat: 23.68,  lng: 90.35,  cases: 89000,   incidenceRate: 54,   population: 166303000, region: 'Asie du Sud' },
     ],
   },
 ];
 
-const INDICATOR_ACCENTS = [
-  'bg-indigo-500', 'bg-rose-500', 'bg-amber-500', 'bg-emerald-500', 'bg-violet-500',
-];
-
-// Fix: padStart ensures 6-digit hex
 function randomColor(): string {
   return '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
 }
 
-// Heatmap layer  must be inside MapContainer
+//  HeatmapLayer 
+
 const HeatmapLayer: React.FC<{
   points: [number, number, number][];
   radius?: number; blur?: number; max?: number; minOpacity?: number;
@@ -178,7 +166,8 @@ const HeatmapLayer: React.FC<{
   return null;
 };
 
-// Toast component
+//  ToastStack 
+
 const ToastStack: React.FC<{ toasts: Toast[]; dismiss: (id: string) => void }> = ({ toasts, dismiss }) => (
   <div className="fixed bottom-20 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
     <AnimatePresence>
@@ -206,35 +195,38 @@ const ToastStack: React.FC<{ toasts: Toast[]; dismiss: (id: string) => void }> =
   </div>
 );
 
-// Coming-soon badge
-const ComingSoon: React.FC<{ label?: string }> = ({ label = 'Bientôt' }) => (
+//  ComingSoon badge 
+
+const ComingSoon: React.FC<{ label?: string }> = ({ label }) => (
   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-500/15 text-violet-500 border border-violet-500/20">
     <Sparkles size={9} /> {label}
   </span>
 );
 
-// Main component
+//  Main component 
+
 const GeospatialVisualization: React.FC = () => {
+  const { t: tRaw } = useTranslation();
+  const t = (key: string, options?: object) => tRaw(`geospatialMap.${key}`, options);
   const { theme, toggleTheme, switchable } = useTheme();
   const isDark = theme === 'dark';
 
-  // Data state
-  const [datasets, setDatasets]     = useState<Dataset[]>([]);
+  //  Data state 
+  const [datasets, setDatasets]   = useState<Dataset[]>([]);
   const [selectedColumns, setSelectedColumns] = useState({ lat: '', lng: '', value: '', time: '' });
-  const [isLoading, setIsLoading]   = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [exampleProgress, setExampleProgress] = useState(0);
   const [selectedDiseases, setSelectedDiseases] = useState<string[]>([]);
 
-  // AI state  placeholder (no external API required)
   const [aiResults]   = useState<AIResults | null>(null);
   const [isAnalyzing] = useState(false);
 
-  // Map state
-  const [mapView, setMapView]       = useState<'street' | 'satellite' | 'dark'>('street');
+  //  Map state 
+  const [mapView, setMapView]             = useState<'street' | 'satellite' | 'dark'>('street');
   const [useClustering, setUseClustering] = useState(false);
-  const [useHeatmap, setUseHeatmap] = useState(false);
-  const [displayLimit, setDisplayLimit] = useState<number | 'unlimited'>(1000);
-  const [globalPointRadius, setGlobalPointRadius] = useState(8);
+  const [useHeatmap, setUseHeatmap]       = useState(false);
+  const [displayLimit, setDisplayLimit]   = useState<number | 'unlimited'>(1000);
+  const [globalPointRadius, setGlobalPointRadius]   = useState(8);
   const [globalPointOpacity, setGlobalPointOpacity] = useState(0.8);
 
   const [heatmapConfig, setHeatmapConfig] = useState<HeatmapConfig>({
@@ -250,38 +242,34 @@ const GeospatialVisualization: React.FC = () => {
     clusterColor: '#3b82f6', clusterTextColor: '#ffffff',
   });
 
-  // UI state
+  //  UI state 
   const [activeTab, setActiveTab]   = useState<'data' | 'analysis' | 'settings' | 'visualization'>('data');
   const [mobileTab, setMobileTab]   = useState<'map' | 'data' | 'analysis' | 'settings'>('map');
-  const [showSidePanel, setShowSidePanel] = useState(true);
+  const [showSidePanel, setShowSidePanel]         = useState(true);
   const [isExampleModalOpen, setIsExampleModalOpen] = useState(false);
-  // Fix: color picker state with explicit context instead of prompt()
+
   const [colorPickerCtx, setColorPickerCtx] = useState<{
-    type: 'dataset' | 'cluster' | 'gradient';
-    id?: string; gradientKey?: number;
+    type: 'dataset' | 'cluster' | 'gradient'; id?: string; gradientKey?: number;
   } | null>(null);
   const [colorPickerValue, setColorPickerValue] = useState('#3b82f6');
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const fileInputRef        = useRef<HTMLInputElement>(null);
 
-  // Animation temporelle
+  //  Beta features state 
   const [timelineDay, setTimelineDay]         = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
-  const timelineRef                           = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timelineRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Alertes automatiques
-  const [alertThreshold, setAlertThreshold]   = useState(10000);
-  const [alertsEnabled, setAlertsEnabled]     = useState(false);
+  const [alertThreshold, setAlertThreshold] = useState(10000);
+  const [alertsEnabled, setAlertsEnabled]   = useState(false);
 
-  // Multi-épidémies comparées  use existing datasets, just show comparison panel
-  const [showComparison, setShowComparison]   = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
 
-  // Flux temps réel simulation
-  const [rtMode, setRtMode]                   = useState<'off' | 'connecting' | 'connected'>('off');
-  const rtRef                                 = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [rtMode, setRtMode] = useState<'off' | 'connecting' | 'connected'>('off');
+  const rtRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Toast helpers
+  //  Toast helpers 
   const pushToast = useCallback((message: string, type: Toast['type'] = 'info') => {
     const id = Date.now().toString();
     setToasts(p => [...p, { id, message, type }]);
@@ -289,7 +277,7 @@ const GeospatialVisualization: React.FC = () => {
   }, []);
   const dismissToast = useCallback((id: string) => setToasts(p => p.filter(t => t.id !== id)), []);
 
-  // Timeline animation effect
+  //  Timeline effect 
   useEffect(() => {
     if (timelinePlaying) {
       const maxDay = Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length), 1));
@@ -305,7 +293,7 @@ const GeospatialVisualization: React.FC = () => {
     return () => { if (timelineRef.current) clearInterval(timelineRef.current); };
   }, [timelinePlaying, datasets]);
 
-  // Alert threshold watcher  pushes a toast when any value exceeds threshold
+  //  Alert watcher 
   useEffect(() => {
     if (!alertsEnabled || !datasets.length || !selectedColumns.value) return;
     const exceeded = datasets
@@ -313,13 +301,12 @@ const GeospatialVisualization: React.FC = () => {
       .flatMap(d => d.data)
       .filter(r => (parseFloat(r[selectedColumns.value] as string) || 0) >= alertThreshold);
     if (exceeded.length > 0) {
-      pushToast(`${exceeded.length} zone(s) dépassent le seuil de ${alertThreshold.toLocaleString()}`, 'warning');
+      pushToast(t('toasts.alertTriggered', { count: exceeded.length, threshold: alertThreshold.toLocaleString() }), 'warning');
     }
-  // Only re-run when alertsEnabled toggles or threshold changes, not on every render
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alertsEnabled, alertThreshold]);
 
-  // Real-time simulation  fake refresh interval
+  //  Real-time simulation 
   useEffect(() => {
     if (rtMode === 'connecting') {
       const id = setTimeout(() => setRtMode('connected'), 2500);
@@ -327,24 +314,21 @@ const GeospatialVisualization: React.FC = () => {
     }
     if (rtMode === 'connected') {
       rtRef.current = setInterval(() => {
-        // Simulated data tick  slightly perturb displayed values (UI demo only)
-        pushToast('Mise à jour simulée reçue  J+1', 'info');
+        pushToast(t('toasts.rtUpdate'), 'info');
       }, 8000);
       return () => { if (rtRef.current) clearInterval(rtRef.current); };
     }
     return () => { if (rtRef.current) clearInterval(rtRef.current); };
-  }, [rtMode, pushToast]);
+  }, [rtMode, pushToast, t]);
 
-  // Tile URL  user-explicit choice, independent from project dark theme.
-  // "Standard" always stays light; "Dark" always stays dark; "Satellite" is ESRI.
+  //  Tile URL 
   const tileUrl = useMemo(() => {
     if (mapView === 'satellite') return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     if (mapView === 'dark')      return 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
-    // Standard light  use OSM.  No automatic dark override.
     return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   }, [mapView]);
 
-  // Severity color
+  //  Severity color 
   const severityColor = (value: number, base: string) => {
     if (value > 1_000_000) return '#ef4444';
     if (value > 100_000)   return '#f59e0b';
@@ -352,7 +336,7 @@ const GeospatialVisualization: React.FC = () => {
     return base;
   };
 
-  // Stats
+  //  Stats 
   const stats = useMemo(() => {
     const flat = datasets.filter(d => d.visible).flatMap(d => d.data);
     if (!flat.length || !selectedColumns.value) return { total: 0, avg: 0, max: 0, min: 0 };
@@ -361,7 +345,7 @@ const GeospatialVisualization: React.FC = () => {
     return { total, avg: vals.length ? total / vals.length : 0, max: Math.max(...vals), min: Math.min(...vals) };
   }, [datasets, selectedColumns.value]);
 
-  // Heatmap points
+  //  Heatmap points 
   const heatmapPoints = useMemo((): [number, number, number][] => {
     if (!useHeatmap || !heatmapConfig.visible) return [];
     const limit = displayLimit === 'unlimited' ? Infinity : displayLimit;
@@ -379,7 +363,7 @@ const GeospatialVisualization: React.FC = () => {
     return pts;
   }, [datasets, selectedColumns, useHeatmap, heatmapConfig.visible, displayLimit]);
 
-  // Circle markers
+  //  Circle markers 
   const circleMarkers = useMemo(() => {
     if (useClustering) return null;
     const limit = displayLimit === 'unlimited' ? Infinity : displayLimit;
@@ -404,13 +388,15 @@ const GeospatialVisualization: React.FC = () => {
               fillOpacity: (ds.pointOpacity ?? globalPointOpacity) * 0.75,
             }}>
             <Tooltip>
-              <div className="p-1.5 text-xs"><b>{name}</b><br />Cas: {val.toLocaleString()}</div>
+              <div className="p-1.5 text-xs">
+                <b>{name}</b><br />{t('map.tooltipCases')} {val.toLocaleString()}
+              </div>
             </Tooltip>
             <Popup>
               <div className="p-2 text-xs max-w-[200px]">
                 <p className="font-bold text-sm mb-1">{name}</p>
                 {Object.entries(row)
-                  .filter(([k]) => !['latitude','longitude'].includes(k)).slice(0, 8)
+                  .filter(([k]) => !['latitude', 'longitude'].includes(k)).slice(0, 8)
                   .map(([k, v]) => (
                     <div key={k} className="flex justify-between gap-3">
                       <span className="text-gray-500">{k}</span>
@@ -425,9 +411,9 @@ const GeospatialVisualization: React.FC = () => {
       }
     }
     return els;
-  }, [datasets, selectedColumns, useClustering, displayLimit, globalPointRadius, globalPointOpacity]);
+  }, [datasets, selectedColumns, useClustering, displayLimit, globalPointRadius, globalPointOpacity, t]);
 
-  // Cluster icon factory
+  //  Cluster icon factory 
   const clusterIcon = useCallback((cluster: L.MarkerCluster) => {
     const n    = cluster.getChildCount();
     const size = n < 10 ? 34 : n < 100 ? 42 : 52;
@@ -437,34 +423,31 @@ const GeospatialVisualization: React.FC = () => {
     });
   }, [clusteringConfig.clusterColor, clusteringConfig.clusterTextColor]);
 
-  // Auto-detect columns from header names
+  //  Auto-detect columns 
   const autoDetect = useCallback((columns: string[]) => {
     const r = { lat: '', lng: '', value: '', time: '' };
     columns.forEach(col => {
       const lc = col.toLowerCase();
-      if (!r.lat   && ['lat','latitude','y'].some(p => lc.includes(p)))                         r.lat   = col;
-      if (!r.lng   && ['lng','lon','longitude','x'].some(p => lc.includes(p)))                  r.lng   = col;
-      if (!r.value && ['value','val','count','cas','incidence','cases'].some(p => lc.includes(p))) r.value = col;
-      if (!r.time  && ['time','date','timestamp','jour'].some(p => lc.includes(p)))              r.time  = col;
+      if (!r.lat   && ['lat', 'latitude', 'y'].some(p => lc.includes(p)))                          r.lat   = col;
+      if (!r.lng   && ['lng', 'lon', 'longitude', 'x'].some(p => lc.includes(p)))                  r.lng   = col;
+      if (!r.value && ['value', 'val', 'count', 'cas', 'incidence', 'cases'].some(p => lc.includes(p))) r.value = col;
+      if (!r.time  && ['time', 'date', 'timestamp', 'jour'].some(p => lc.includes(p)))             r.time  = col;
     });
     return r;
   }, []);
 
   const processData = useCallback((data: DataRow[], fileName: string) => {
     const clean = data.filter(row => Object.values(row).some(v => v !== null && String(v).trim()));
-    if (!clean.length) { pushToast('Fichier vide ou invalide', 'error'); setIsLoading(false); return; }
+    if (!clean.length) { pushToast(t('toasts.fileEmpty'), 'error'); setIsLoading(false); return; }
     const detected = autoDetect(Object.keys(clean[0] ?? {}));
-    setSelectedColumns(prev => ({
-      ...prev,
-      ...Object.fromEntries(Object.entries(detected).filter(([, v]) => v)),
-    }));
+    setSelectedColumns(prev => ({ ...prev, ...Object.fromEntries(Object.entries(detected).filter(([, v]) => v)) }));
     setDatasets(prev => [...prev, {
       id: Date.now().toString(), name: fileName, color: randomColor(),
       data: clean, visible: true, clustering: true, heatmap: true, pointRadius: 8, pointOpacity: 0.8,
     }]);
     setIsLoading(false);
-    pushToast(`${clean.length.toLocaleString()} lignes chargées  ${fileName}`, 'success');
-  }, [autoDetect, pushToast]);
+    pushToast(t('toasts.fileLoaded', { count: clean.length.toLocaleString(), name: fileName }), 'success');
+  }, [autoDetect, pushToast, t]);
 
   const handleFile = useCallback((file: File) => {
     setIsLoading(true);
@@ -475,7 +458,7 @@ const GeospatialVisualization: React.FC = () => {
         Papa.parse(e.target?.result as string, {
           header: true, skipEmptyLines: true,
           complete: r => processData(r.data as DataRow[], file.name),
-          error: err => { pushToast('Erreur CSV: ' + err.message, 'error'); setIsLoading(false); },
+          error: err => { pushToast(t('toasts.csvError', { message: err.message }), 'error'); setIsLoading(false); },
         });
       };
       reader.readAsText(file);
@@ -484,11 +467,14 @@ const GeospatialVisualization: React.FC = () => {
         try {
           const wb = XLSX.read(new Uint8Array(e.target?.result as ArrayBuffer), { type: 'array' });
           processData(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as DataRow[], file.name);
-        } catch (err) { pushToast('Erreur Excel: ' + (err as Error).message, 'error'); setIsLoading(false); }
+        } catch (err) { pushToast(t('toasts.excelError', { message: (err as Error).message }), 'error'); setIsLoading(false); }
       };
       reader.readAsArrayBuffer(file);
-    } else { pushToast('Format non supporté CSV ou Excel uniquement', 'error'); setIsLoading(false); }
-  }, [processData, pushToast]);
+    } else {
+      pushToast(t('toasts.formatError'), 'error');
+      setIsLoading(false);
+    }
+  }, [processData, pushToast, t]);
 
   const loadExample = useCallback(async (id: string) => {
     const ex = DISEASE_EXAMPLES.find(d => d.id === id);
@@ -509,8 +495,8 @@ const GeospatialVisualization: React.FC = () => {
     }]);
     setSelectedColumns({ lat: 'latitude', lng: 'longitude', value: 'cas', time: '' });
     setExampleProgress(100); setIsLoading(false);
-    pushToast(`${ex.name}  ${ex.countries.length} pays chargés`, 'success');
-  }, [pushToast]);
+    pushToast(t('toasts.exampleLoaded', { name: ex.name, count: ex.countries.length }), 'success');
+  }, [pushToast, t]);
 
   const loadSelectedExamples = useCallback(async () => {
     setIsExampleModalOpen(false);
@@ -518,29 +504,26 @@ const GeospatialVisualization: React.FC = () => {
     setSelectedDiseases([]);
   }, [selectedDiseases, loadExample]);
 
-  // AI analysis  no external API token required
-  // Full implementation coming soon.
   const runAIAnalysis = useCallback(() => {
     setActiveTab('analysis');
     setMobileTab('analysis');
-    pushToast('Analyse IA  disponible prochainement', 'info');
-  }, [pushToast]);
+    pushToast(t('toasts.aiComingSoon'), 'info');
+  }, [pushToast, t]);
 
-
-  // Export helpers
+  //  Export helpers 
   const exportCSV = useCallback(() => {
     const flat = datasets.filter(d => d.visible).flatMap(d => d.data);
-    if (!flat.length) { pushToast('Aucune donnée à exporter', 'warning'); return; }
+    if (!flat.length) { pushToast(t('toasts.exportCsvEmpty'), 'warning'); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([Papa.unparse(flat)], { type: 'text/csv' }));
     a.download = 'geodata_export.csv'; a.click();
-    pushToast('Export CSV téléchargé', 'success');
-  }, [datasets, pushToast]);
+    pushToast(t('toasts.exportCsvSuccess'), 'success');
+  }, [datasets, pushToast, t]);
 
   const exportGeoJSON = useCallback(() => {
     const flat = datasets.filter(d => d.visible).flatMap(d => d.data);
     if (!flat.length || !selectedColumns.lat || !selectedColumns.lng) {
-      pushToast('Colonnes lat/lng requises pour GeoJSON', 'warning'); return;
+      pushToast(t('toasts.exportGeoJsonWarning'), 'warning'); return;
     }
     const features = flat
       .filter(r => !isNaN(parseFloat(r[selectedColumns.lat] as string)) && !isNaN(parseFloat(r[selectedColumns.lng] as string)))
@@ -557,33 +540,32 @@ const GeospatialVisualization: React.FC = () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify({ type: 'FeatureCollection', features }, null, 2)], { type: 'application/json' }));
     a.download = 'geodata_export.geojson'; a.click();
-    pushToast(`GeoJSON exporté  ${features.length} points`, 'success');
-  }, [datasets, selectedColumns, pushToast]);
+    pushToast(t('toasts.exportGeoJsonSuccess', { count: features.length }), 'success');
+  }, [datasets, selectedColumns, pushToast, t]);
 
   const updateDataset = useCallback((id: string, updates: Partial<Dataset>) =>
     setDatasets(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d)), []);
+
   const removeDataset = useCallback((id: string) => {
     setDatasets(prev => prev.filter(d => d.id !== id));
-    pushToast('Dataset supprimé', 'info');
-  }, [pushToast]);
+    pushToast(t('toasts.datasetRemoved'), 'info');
+  }, [pushToast, t]);
 
-  // Union of all column names across datasets (fix: was only datasets[0])
   const allColumns = useMemo(() => {
     const s = new Set<string>();
     datasets.forEach(d => d.data[0] && Object.keys(d.data[0]).forEach(k => s.add(k)));
     return [...s];
   }, [datasets]);
 
-  // Indicator values
   const indicatorItems = [
-    { label: 'Points',   value: datasets.reduce((s, d) => s + (d.visible ? d.data.length : 0), 0).toLocaleString(), accent: 'text-indigo-500' },
-    { label: 'Total',    value: stats.total > 999999 ? `${(stats.total / 1e6).toFixed(1)}M` : stats.total.toLocaleString(), accent: 'text-rose-500' },
-    { label: 'Moyenne',  value: Math.round(stats.avg).toLocaleString(), accent: 'text-amber-500' },
-    { label: 'Max',      value: stats.max.toLocaleString(), accent: 'text-emerald-500' },
-    { label: 'Datasets', value: String(datasets.length), accent: 'text-violet-500' },
+    { label: t('indicators.points'),   value: datasets.reduce((s, d) => s + (d.visible ? d.data.length : 0), 0).toLocaleString(), accent: 'text-indigo-500' },
+    { label: t('indicators.total'),    value: stats.total > 999999 ? `${(stats.total / 1e6).toFixed(1)}M` : stats.total.toLocaleString(), accent: 'text-rose-500' },
+    { label: t('indicators.average'),  value: Math.round(stats.avg).toLocaleString(), accent: 'text-amber-500' },
+    { label: t('indicators.max'),      value: stats.max.toLocaleString(), accent: 'text-emerald-500' },
+    { label: t('indicators.datasets'), value: String(datasets.length), accent: 'text-violet-500' },
   ];
 
-  // UI tokens  spec: bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300
+  //  UI tokens 
   const UI = {
     bg:    'bg-[#F8FAFC] dark:bg-[#0F172A]',
     card:  isDark ? 'bg-slate-800/70 border border-slate-700/50' : 'bg-white border border-slate-200',
@@ -593,7 +575,7 @@ const GeospatialVisualization: React.FC = () => {
     input: 'w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm px-3 py-2 outline-none focus:ring-1 focus:ring-primary placeholder:text-slate-400',
   };
 
-  // Color picker commit  applies value to the correct target
+  //  Color picker commit 
   const commitColor = useCallback((c: string) => {
     if (!colorPickerCtx) return;
     if (colorPickerCtx.type === 'dataset' && colorPickerCtx.id) {
@@ -605,20 +587,23 @@ const GeospatialVisualization: React.FC = () => {
     }
   }, [colorPickerCtx, updateDataset]);
 
-  // Side panel tabs content
+  //  Side panel 
+
   const SidePanelContent = () => (
     <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="h-full flex flex-col">
       <TabsList className="grid grid-cols-4 mb-4 flex-shrink-0 text-[10px]">
-        <TabsTrigger value="data">       Données</TabsTrigger>
-        <TabsTrigger value="visualization">Visuel</TabsTrigger>
-        <TabsTrigger value="analysis">     IA</TabsTrigger>
-        <TabsTrigger value="settings">   Réglages</TabsTrigger>
+        <TabsTrigger value="data">         {t('tabs.data')}</TabsTrigger>
+        <TabsTrigger value="visualization">{t('tabs.visualization')}</TabsTrigger>
+        <TabsTrigger value="analysis">    {t('tabs.analysis')}</TabsTrigger>
+        <TabsTrigger value="settings">    {t('tabs.settings')}</TabsTrigger>
       </TabsList>
 
-      {/* DATA */}
+      {/*  DATA tab  */}
       <TabsContent value="data" className="flex-1 overflow-y-auto space-y-5 pb-4">
         <div>
-          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>Importer</p>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>
+            {t('data.import')}
+          </p>
           <div
             onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--primary)'; }}
             onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
@@ -626,8 +611,11 @@ const GeospatialVisualization: React.FC = () => {
             onClick={() => fileInputRef.current?.click()}
             className={`border-2 border-dashed border-border rounded-2xl p-5 text-center transition-colors cursor-pointer ${UI.hover}`}>
             <Upload size={22} className={`mx-auto mb-2 ${UI.muted}`} />
-            <p className={`text-xs ${UI.muted}`}>Glisser-déposer ou <span className="text-primary font-medium">parcourir</span></p>
-            <p className={`text-[10px] ${UI.muted} mt-0.5`}>CSV · XLSX · XLS</p>
+            <p className={`text-xs ${UI.muted}`}>
+              {t('data.dropzoneText')}{' '}
+              <span className="text-primary font-medium">{t('data.dropzoneBrowse')}</span>
+            </p>
+            <p className={`text-[10px] ${UI.muted} mt-0.5`}>{t('data.formats')}</p>
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
           </div>
@@ -636,10 +624,16 @@ const GeospatialVisualization: React.FC = () => {
         {datasets.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Datasets ({datasets.length})</p>
+              <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>
+                {t('data.datasetsTitle', { count: datasets.length })}
+              </p>
               <div className="flex gap-1">
-                <button onClick={exportCSV}     className={`text-[9px] font-bold text-primary px-2 py-1 rounded-lg ${UI.hover} flex items-center gap-1`}><Download size={9} />CSV</button>
-                <button onClick={exportGeoJSON}  className={`text-[9px] font-bold text-primary px-2 py-1 rounded-lg ${UI.hover} flex items-center gap-1`}><Download size={9} />GeoJSON</button>
+                <button onClick={exportCSV} className={`text-[9px] font-bold text-primary px-2 py-1 rounded-lg ${UI.hover} flex items-center gap-1`}>
+                  <Download size={9} />{t('data.exportCsv')}
+                </button>
+                <button onClick={exportGeoJSON} className={`text-[9px] font-bold text-primary px-2 py-1 rounded-lg ${UI.hover} flex items-center gap-1`}>
+                  <Download size={9} />{t('data.exportGeojson')}
+                </button>
               </div>
             </div>
             <ScrollArea className="h-72">
@@ -662,21 +656,25 @@ const GeospatialVisualization: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                    <p className={`text-[10px] ${UI.muted} mb-2`}>{ds.data.length.toLocaleString()} points</p>
+                    <p className={`text-[10px] ${UI.muted} mb-2`}>
+                      {t('data.points', { count: ds.data.length.toLocaleString() })}
+                    </p>
                     <div className="flex gap-3 text-[10px]">
                       <label className="flex items-center gap-1 cursor-pointer">
                         <Switch checked={ds.clustering ?? true} onCheckedChange={v => updateDataset(ds.id, { clustering: v })} className="scale-75" />
-                        <span className={UI.muted}>Cluster</span>
+                        <span className={UI.muted}>{t('data.cluster')}</span>
                       </label>
                       <label className="flex items-center gap-1 cursor-pointer">
                         <Switch checked={ds.heatmap ?? true} onCheckedChange={v => updateDataset(ds.id, { heatmap: v })} className="scale-75" />
-                        <span className={UI.muted}>Heatmap</span>
+                        <span className={UI.muted}>{t('data.heatmap')}</span>
                       </label>
                     </div>
                     {colorPickerCtx?.type === 'dataset' && colorPickerCtx.id === ds.id && (
                       <div className="mt-3 pt-3 border-t border-border">
                         <HexColorPicker color={colorPickerValue} onChange={c => { setColorPickerValue(c); commitColor(c); }} />
-                        <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">Valider</button>
+                        <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">
+                          {t('data.confirm')}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -687,17 +685,22 @@ const GeospatialVisualization: React.FC = () => {
         )}
       </TabsContent>
 
-      {/* VISUALIZATION */}
+      {/*  VISUALIZATION tab  */}
       <TabsContent value="visualization" className="flex-1 overflow-y-auto space-y-5 pb-4">
         {/* Heatmap */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Heatmap</p>
+            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>
+              {t('visualization.heatmapTitle')}
+            </p>
             <Switch checked={heatmapConfig.visible} onCheckedChange={v => setHeatmapConfig(p => ({ ...p, visible: v }))} />
           </div>
           {heatmapConfig.visible && (
             <div className="space-y-3 pl-1">
-              {([['Rayon', 'radius', 5, 60, 1], ['Flou', 'blur', 0, 40, 1]] as const).map(([label, key, min, max, step]) => (
+              {([
+                [t('visualization.radius'), 'radius', 5, 60, 1],
+                [t('visualization.blur'),   'blur',   0, 40, 1],
+              ] as const).map(([label, key, min, max, step]) => (
                 <div key={key}>
                   <div className="flex justify-between mb-1">
                     <Label className={`text-xs ${UI.muted}`}>{label}</Label>
@@ -707,7 +710,7 @@ const GeospatialVisualization: React.FC = () => {
                 </div>
               ))}
               <div>
-                <Label className={`text-xs ${UI.muted} block mb-2`}>Dégradé</Label>
+                <Label className={`text-xs ${UI.muted} block mb-2`}>{t('visualization.gradient')}</Label>
                 <div className="flex gap-2 flex-wrap">
                   {Object.entries(heatmapConfig.gradient).map(([k, color]) => (
                     <div key={k} className="flex flex-col items-center gap-0.5">
@@ -721,7 +724,9 @@ const GeospatialVisualization: React.FC = () => {
                 {colorPickerCtx?.type === 'gradient' && (
                   <div className="mt-2">
                     <HexColorPicker color={colorPickerValue} onChange={c => { setColorPickerValue(c); commitColor(c); }} />
-                    <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">Valider</button>
+                    <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">
+                      {t('visualization.confirm')}
+                    </button>
                   </div>
                 )}
               </div>
@@ -734,32 +739,40 @@ const GeospatialVisualization: React.FC = () => {
         {/* Clustering */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Clustering</p>
+            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>
+              {t('visualization.clusteringTitle')}
+            </p>
             <Switch checked={useClustering} onCheckedChange={setUseClustering} />
           </div>
           {useClustering && (
             <div className="space-y-3 pl-1">
               <div>
-                <Label className={`text-xs ${UI.muted} block mb-1`}>Couleur des clusters</Label>
+                <Label className={`text-xs ${UI.muted} block mb-1`}>{t('visualization.clusterColor')}</Label>
                 <button className="w-8 h-8 rounded-xl border-2 border-white shadow-sm"
                   style={{ backgroundColor: clusteringConfig.clusterColor }}
                   onClick={() => { setColorPickerCtx({ type: 'cluster' }); setColorPickerValue(clusteringConfig.clusterColor); }} />
                 {colorPickerCtx?.type === 'cluster' && (
                   <div className="mt-2">
                     <HexColorPicker color={colorPickerValue} onChange={c => { setColorPickerValue(c); commitColor(c); }} />
-                    <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">Valider</button>
+                    <button onClick={() => setColorPickerCtx(null)} className="mt-2 w-full py-1 bg-primary text-primary-foreground rounded-xl text-xs font-bold">
+                      {t('visualization.confirm')}
+                    </button>
                   </div>
                 )}
               </div>
               <div>
                 <div className="flex justify-between mb-1">
-                  <Label className={`text-xs ${UI.muted}`}>Rayon max</Label>
+                  <Label className={`text-xs ${UI.muted}`}>{t('visualization.maxRadius')}</Label>
                   <span className={`text-xs font-mono ${UI.muted}`}>{clusteringConfig.maxClusterRadius}</span>
                 </div>
                 <Slider value={[clusteringConfig.maxClusterRadius]}
                   onValueChange={v => setClusteringConfig(p => ({ ...p, maxClusterRadius: v[0] }))} min={20} max={200} step={5} />
               </div>
-              {([['Zone au survol', 'showCoverageOnHover'], ['Zoom au clic', 'zoomToBoundsOnClick'], ['Spiderfy', 'spiderfyOnMaxZoom']] as const).map(([label, key]) => (
+              {([
+                [t('visualization.coverageOnHover'), 'showCoverageOnHover'],
+                [t('visualization.zoomOnClick'),     'zoomToBoundsOnClick'],
+                [t('visualization.spiderfy'),         'spiderfyOnMaxZoom'],
+              ] as const).map(([label, key]) => (
                 <label key={key} className="flex items-center justify-between cursor-pointer">
                   <span className={`text-xs ${UI.muted}`}>{label}</span>
                   <Switch checked={clusteringConfig[key]} onCheckedChange={v => setClusteringConfig(p => ({ ...p, [key]: v }))} className="scale-75" />
@@ -773,10 +786,12 @@ const GeospatialVisualization: React.FC = () => {
 
         {/* Global points */}
         <div>
-          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>Points (sans cluster)</p>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>
+            {t('visualization.pointsTitle')}
+          </p>
           {[
-            { label: 'Rayon global', val: globalPointRadius, set: setGlobalPointRadius, min: 2, max: 30, step: 1 },
-            { label: 'Opacité (%)', val: Math.round(globalPointOpacity * 100), set: (v: number) => setGlobalPointOpacity(v / 100), min: 10, max: 100, step: 5 },
+            { label: t('visualization.globalRadius'), val: globalPointRadius, set: setGlobalPointRadius, min: 2, max: 30, step: 1 },
+            { label: t('visualization.opacity'), val: Math.round(globalPointOpacity * 100), set: (v: number) => setGlobalPointOpacity(v / 100), min: 10, max: 100, step: 5 },
           ].map(({ label, val, set, min, max, step }) => (
             <div key={label} className="mb-3">
               <div className="flex justify-between mb-1">
@@ -789,83 +804,96 @@ const GeospatialVisualization: React.FC = () => {
         </div>
       </TabsContent>
 
-      {/* ANALYSIS  coming soon, no external API required */}
+      {/*  ANALYSIS tab  */}
       <TabsContent value="analysis" className="flex-1 overflow-y-auto pb-4">
         <div className="flex flex-col items-center justify-center py-10 text-center px-4">
           <div className="w-14 h-14 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
             <BrainCircuit size={24} className="text-primary" />
           </div>
-          <h3 className="text-sm font-black mb-2">Analyse IA épidémiologique</h3>
+          <h3 className="text-sm font-black mb-2">{t('analysis.title')}</h3>
           <p className={`text-xs ${UI.muted} max-w-[220px] mb-4 leading-relaxed`}>
-            L'analyse intelligente sera disponible prochainement  insights automatiques,
-            détection de clusters et recommandations épidémiologiques.
+            {t('analysis.description')}
           </p>
-          <ComingSoon label="Bientôt disponible" />
+          <ComingSoon label={t('analysis.comingSoon')} />
           <div className="mt-6 w-full space-y-2">
-            {[
-              'Détection automatique de clusters',
-              "Calcul des taux d\'incidence ajustés",
-              'Analyse temporelle des tendances',
-              'Recommandations épidémiologiques',
-              'Scoring de risque par région',
-            ].map(feat => (
-              <div key={feat} className={`flex items-center gap-2.5 p-2.5 ${UI.card} rounded-xl text-xs`}>
+            {([
+              'clusterDetection', 'incidenceRate', 'temporalAnalysis', 'recommendations', 'riskScoring',
+            ] as const).map(key => (
+              <div key={key} className={`flex items-center gap-2.5 p-2.5 ${UI.card} rounded-xl text-xs`}>
                 <div className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
-                <span className={UI.muted}>{feat}</span>
-                <span className="ml-auto"><ComingSoon label="Bientôt" /></span>
+                <span className={UI.muted}>{t(`analysis.${key}`)}</span>
+                <span className="ml-auto"><ComingSoon label={t('comingSoon')} /></span>
               </div>
             ))}
           </div>
         </div>
       </TabsContent>
 
-
-      {/* SETTINGS */}
+      {/*  SETTINGS tab  */}
       <TabsContent value="settings" className="flex-1 overflow-y-auto space-y-5 pb-4">
+
+        {/* Columns */}
         <div>
-          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>Colonnes de données</p>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-3`}>
+            {t('settings.columnsTitle')}
+          </p>
           {allColumns.length > 0
-            ? ([['Latitude', 'lat'], ['Longitude', 'lng'], ['Valeur (intensité)', 'value'], ['Temps / Date', 'time']] as const).map(([label, key]) => (
-              <div key={key} className="mb-3">
-                <Label className={`block text-xs ${UI.muted} mb-1`}>{label}</Label>
-                <select value={selectedColumns[key]}
-                  onChange={e => setSelectedColumns(p => ({ ...p, [key]: e.target.value }))}
-                  className={UI.input}>
-                  <option value="">Sélectionner…</option>
-                  {allColumns.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            ))
-            : <p className={`text-xs ${UI.muted}`}>Chargez un dataset d'abord.</p>
+            ? ([
+                [t('settings.latitude'),  'lat'],
+                [t('settings.longitude'), 'lng'],
+                [t('settings.value'),     'value'],
+                [t('settings.time'),      'time'],
+              ] as const).map(([label, key]) => (
+                <div key={key} className="mb-3">
+                  <Label className={`block text-xs ${UI.muted} mb-1`}>{label}</Label>
+                  <select value={selectedColumns[key]}
+                    onChange={e => setSelectedColumns(p => ({ ...p, [key]: e.target.value }))}
+                    className={UI.input}>
+                    <option value="">{t('settings.selectPlaceholder')}</option>
+                    {allColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              ))
+            : <p className={`text-xs ${UI.muted}`}>{t('settings.noDataset')}</p>
           }
         </div>
+
         <Separator />
+
+        {/* Display limit */}
         <div>
-          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Limite d'affichage</p>
-          <select value={String(displayLimit)} onChange={e => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>
+            {t('settings.displayLimitTitle')}
+          </p>
+          <select value={String(displayLimit)}
+            onChange={e => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
             className={UI.input}>
-            <option value="500">500 pts  Léger</option>
-            <option value="1000">1 000 pts  Recommandé</option>
-            <option value="5000">5 000 pts  Équilibré</option>
-            <option value="10000">10 000 pts  Détaillé</option>
-            <option value="unlimited">Illimité  Expert</option>
+            <option value="500">    {t('settings.limit500')}</option>
+            <option value="1000">   {t('settings.limit1000')}</option>
+            <option value="5000">   {t('settings.limit5000')}</option>
+            <option value="10000">  {t('settings.limit10000')}</option>
+            <option value="unlimited">{t('settings.limitUnlimited')}</option>
           </select>
         </div>
+
         <Separator />
-        {/* In-development features  UI stubs with real interaction, no external API */}
+
+        {/* In-development features */}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>En cours de développement</p>
-            <ComingSoon />
+            <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>
+              {t('settings.inDevelopment')}
+            </p>
+            <ComingSoon label={t('comingSoon')} />
           </div>
 
-          {/* 1  Animation temporelle */}
+          {/* 1 – Timeline */}
           <div className={`${UI.card} rounded-2xl p-3`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Clock size={12} className="text-indigo-500" />
-                <span className="text-xs font-bold">Animation temporelle</span>
-                <ComingSoon label="Beta" />
+                <span className="text-xs font-bold">{t('settings.timelineTitle')}</span>
+                <ComingSoon label={t('comingSoonBeta')} />
               </div>
               <button
                 onClick={() => setTimelinePlaying(v => !v)}
@@ -875,59 +903,63 @@ const GeospatialVisualization: React.FC = () => {
               </button>
             </div>
             <div className="space-y-1.5">
-              <input type="range" min={0} max={Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length - 1), 1))}
-                value={timelineDay} onChange={e => { setTimelineDay(Number(e.target.value)); setTimelinePlaying(false); }}
+              <input type="range" min={0}
+                max={Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length - 1), 1))}
+                value={timelineDay}
+                onChange={e => { setTimelineDay(Number(e.target.value)); setTimelinePlaying(false); }}
                 className="w-full h-1.5 accent-indigo-500 cursor-pointer" />
               <div className={`flex justify-between text-[9px] ${UI.muted}`}>
-                <span>J0</span>
-                <span className="font-mono font-bold text-indigo-500">J{timelineDay}</span>
-                <span>J{Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length - 1), 1))}</span>
+                <span>{t('settings.timelineDayStart')}</span>
+                <span className="font-mono font-bold text-indigo-500">
+                  {t('settings.timelineDayCurrent', { day: timelineDay })}
+                </span>
+                <span>{t('settings.timelineDayEnd', { max: Math.max(1, datasets.reduce((m, d) => Math.max(m, d.data.length - 1), 1)) })}</span>
               </div>
             </div>
-            <p className={`text-[10px] ${UI.muted} mt-1.5`}>Slider de progression temporelle  données réelles à connecter.</p>
+            <p className={`text-[10px] ${UI.muted} mt-1.5`}>{t('settings.timelineDescription')}</p>
           </div>
 
-          {/* 2  Alertes automatiques */}
+          {/* 2 – Alerts */}
           <div className={`${UI.card} rounded-2xl p-3`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Activity size={12} className="text-amber-500" />
-                <span className="text-xs font-bold">Alertes automatiques</span>
-                <ComingSoon label="Beta" />
+                <span className="text-xs font-bold">{t('settings.alertsTitle')}</span>
+                <ComingSoon label={t('comingSoonBeta')} />
               </div>
               <button onClick={() => {
                 setAlertsEnabled(v => !v);
-                if (!alertsEnabled) pushToast('Surveillance des seuils activée', 'info');
+                if (!alertsEnabled) pushToast(t('toasts.alertEnabled'), 'info');
               }}
                 className={`w-8 h-4 rounded-full transition-all ${alertsEnabled ? 'bg-amber-500' : 'bg-muted-foreground/30'}`}>
                 <div className={`w-3 h-3 bg-white rounded-full shadow transition-transform mx-0.5 ${alertsEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`text-[10px] ${UI.muted} flex-shrink-0`}>Seuil :</span>
+              <span className={`text-[10px] ${UI.muted} flex-shrink-0`}>{t('settings.alertsThreshold')}</span>
               <input type="number" value={alertThreshold} min={100} step={1000}
                 onChange={e => setAlertThreshold(Number(e.target.value))}
                 className={`flex-1 ${UI.input} py-1 text-[10px] font-mono`} />
-              <span className={`text-[10px] ${UI.muted}`}>cas</span>
+              <span className={`text-[10px] ${UI.muted}`}>{t('settings.alertsUnit')}</span>
             </div>
             {alertsEnabled && (
-              <p className={`text-[10px] text-amber-500 mt-1.5 flex items-center gap-1`}>
-                <span>●</span> Surveillance active  seuil {alertThreshold.toLocaleString()} cas
+              <p className="text-[10px] text-amber-500 mt-1.5 flex items-center gap-1">
+                <span>●</span> {t('settings.alertsActive', { threshold: alertThreshold.toLocaleString() })}
               </p>
             )}
           </div>
 
-          {/* 3  Multi-épidémies comparées */}
+          {/* 3 – Multi-epidemic comparison */}
           <div className={`${UI.card} rounded-2xl p-3`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <FlaskConical size={12} className="text-emerald-500" />
-                <span className="text-xs font-bold">Comparaison multi-épidémies</span>
-                <ComingSoon label="Beta" />
+                <span className="text-xs font-bold">{t('settings.comparisonTitle')}</span>
+                <ComingSoon label={t('comingSoonBeta')} />
               </div>
               <button onClick={() => setShowComparison(v => !v)}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${showComparison ? 'bg-emerald-500 text-white' : 'bg-emerald-500/15 text-emerald-500'}`}>
-                {showComparison ? 'Masquer' : 'Comparer'}
+                {showComparison ? t('settings.comparisonHide') : t('settings.comparisonShow')}
               </button>
             </div>
             {showComparison && datasets.length > 0 ? (
@@ -936,68 +968,77 @@ const GeospatialVisualization: React.FC = () => {
                   const vals = ds.data.map(r => parseFloat(r[selectedColumns.value] as string) || 0).filter(v => !isNaN(v));
                   const max  = vals.length ? Math.max(...vals) : 0;
                   const sum  = vals.reduce((a, b) => a + b, 0);
+                  const totalAll = datasets.filter(d => d.visible)
+                    .reduce((m2, d2) => m2 + d2.data.map(r => parseFloat(r[selectedColumns.value] as string) || 0).reduce((a, b) => a + b, 0), 0);
                   return (
-                    <div key={ds.id} className={`p-2 rounded-xl bg-muted`}>
+                    <div key={ds.id} className="p-2 rounded-xl bg-muted">
                       <div className="flex items-center gap-1.5 mb-1">
                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ds.color }} />
                         <span className="text-[10px] font-semibold truncate max-w-[100px]">{ds.name}</span>
-                        <span className={`ml-auto text-[9px] ${UI.muted}`}>{ds.data.length} pts</span>
+                        <span className={`ml-auto text-[9px] ${UI.muted}`}>
+                          {t('settings.comparisonPoints', { count: ds.data.length })}
+                        </span>
                       </div>
                       <div className="grid grid-cols-2 gap-1 text-[9px]">
-                        <span className={UI.muted}>Total: <span className="font-mono font-bold text-foreground">{sum.toLocaleString()}</span></span>
-                        <span className={UI.muted}>Max: <span className="font-mono font-bold text-rose-500">{max.toLocaleString()}</span></span>
+                        <span className={UI.muted}>
+                          {t('settings.comparisonTotal')} <span className="font-mono font-bold text-foreground">{sum.toLocaleString()}</span>
+                        </span>
+                        <span className={UI.muted}>
+                          {t('settings.comparisonMax')} <span className="font-mono font-bold text-rose-500">{max.toLocaleString()}</span>
+                        </span>
                       </div>
-                      {/* Mini bar indicator */}
                       <div className="mt-1 h-1 rounded-full bg-muted-foreground/20 overflow-hidden">
                         <div className="h-full rounded-full transition-all"
-                          style={{ backgroundColor: ds.color, width: `${datasets.filter(d=>d.visible).length > 1 ? Math.min(100, (sum / datasets.filter(d=>d.visible).reduce((m2,d2)=>m2+(d2.data.map(r=>parseFloat(r[selectedColumns.value] as string)||0).reduce((a,b)=>a+b,0)),0))*100) : 100}%` }} />
+                          style={{ backgroundColor: ds.color, width: `${totalAll > 0 ? Math.min(100, (sum / totalAll) * 100) : 100}%` }} />
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : showComparison ? (
-              <p className={`text-[10px] ${UI.muted}`}>Chargez plusieurs datasets pour les comparer.</p>
+              <p className={`text-[10px] ${UI.muted}`}>{t('settings.comparisonNoDatasets')}</p>
             ) : (
-              <p className={`text-[10px] ${UI.muted}`}>Chargez plusieurs exemples puis comparez leurs indicateurs.</p>
+              <p className={`text-[10px] ${UI.muted}`}>{t('settings.comparisonHint')}</p>
             )}
           </div>
 
-          {/* 4  Flux temps réel */}
+          {/* 4 – Real-time feed */}
           <div className={`${UI.card} rounded-2xl p-3`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Zap size={12} className="text-violet-500" />
-                <span className="text-xs font-bold">Flux temps réel</span>
-                <ComingSoon label="Beta" />
+                <span className="text-xs font-bold">{t('settings.realtimeTitle')}</span>
+                <ComingSoon label={t('comingSoonBeta')} />
               </div>
               <button onClick={() => {
-                if (rtMode === 'off') { setRtMode('connecting'); pushToast('Connexion au flux en cours…', 'info'); }
-                else { setRtMode('off'); if (rtRef.current) clearInterval(rtRef.current); pushToast('Flux déconnecté', 'info'); }
+                if (rtMode === 'off') { setRtMode('connecting'); pushToast(t('toasts.rtConnecting'), 'info'); }
+                else { setRtMode('off'); if (rtRef.current) clearInterval(rtRef.current); pushToast(t('toasts.rtDisconnected'), 'info'); }
               }}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1
-                  ${rtMode === 'off' ? 'bg-violet-500/15 text-violet-500' :
-                    rtMode === 'connecting' ? 'bg-amber-500/15 text-amber-500' :
+                  ${rtMode === 'off'        ? 'bg-violet-500/15 text-violet-500' :
+                    rtMode === 'connecting' ? 'bg-amber-500/15 text-amber-500'   :
                                               'bg-emerald-500 text-white'}`}>
-                {rtMode === 'off'        && '▶ Démarrer'}
-                {rtMode === 'connecting' && <><span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse inline-block" /> Connexion…</>}
-                {rtMode === 'connected'  && <><span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" /> En direct</>}
+                {rtMode === 'off'        && t('settings.realtimeStart')}
+                {rtMode === 'connecting' && <><span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse inline-block" /> {t('settings.realtimeConnecting')}</>}
+                {rtMode === 'connected'  && <><span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" /> {t('settings.realtimeLive')}</>}
               </button>
             </div>
             {rtMode === 'connected' && (
-              <div className={`text-[10px] text-emerald-500 flex items-center gap-2`}>
+              <div className="text-[10px] text-emerald-500 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Simulation active  mise à jour toutes les 8s
+                {t('settings.realtimeActive')}
               </div>
             )}
             {rtMode === 'off' && (
-              <p className={`text-[10px] ${UI.muted}`}>Simulera la réception de données en direct depuis une API de surveillance.</p>
+              <p className={`text-[10px] ${UI.muted}`}>{t('settings.realtimeDescription')}</p>
             )}
           </div>
         </div>
       </TabsContent>
     </Tabs>
   );
+
+  //  Render 
 
   return (
     <div className="flex flex-col h-[100dvh] bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900 overflow-hidden">
@@ -1008,37 +1049,37 @@ const GeospatialVisualization: React.FC = () => {
       <header className={`${UI.card.replace('border', '')} border-b border-border px-4 py-3 flex-shrink-0 z-10`}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <nav className="flex items-center gap-2 text-xs">
-            <Link href="/" className={`${UI.muted} hover:text-primary transition-colors`}>Accueil</Link>
+            <Link href="/" className={`${UI.muted} hover:text-primary transition-colors`}>{t('nav.home')}</Link>
             <ChevronRight size={12} className={UI.muted} />
-            <Link href="/geospatial" className={`${UI.muted} hover:text-primary transition-colors`}>Géospatial</Link>
+            <Link href="/geospatial" className={`${UI.muted} hover:text-primary transition-colors`}>{t('nav.geospatial')}</Link>
             <ChevronRight size={12} className={UI.muted} />
-            <span className="font-semibold">Carte</span>
+            <span className="font-semibold">{t('nav.map')}</span>
           </nav>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Map view */}
+            {/* Map view selector */}
             <div className="flex bg-muted p-0.5 rounded-xl">
               {(['street', 'satellite', 'dark'] as const).map(v => (
                 <button key={v} onClick={() => setMapView(v)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${mapView === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}>
                   <Globe size={11} />
-                  {v === 'street' ? 'Standard' : v === 'satellite' ? 'Satellite' : 'Sombre'}
+                  {t(`header.${v}`)}
                 </button>
               ))}
             </div>
 
             <button onClick={() => setIsExampleModalOpen(true)}
               className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs font-medium ${UI.muted} ${UI.hover} transition-all`}>
-              <Database size={13} /> Exemples
+              <Database size={13} /> {t('header.examples')}
             </button>
 
-            <button onClick={runAIAnalysis} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-sm shadow-primary/20">
-              <BrainCircuit size={13} />
-              Analyser
+            <button onClick={runAIAnalysis}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-sm shadow-primary/20">
+              <BrainCircuit size={13} /> {t('header.analyze')}
             </button>
 
             <button onClick={() => setShowSidePanel(v => !v)}
               className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs font-medium ${UI.muted} ${UI.hover} transition-all`}>
-              <Settings2 size={13} /> {showSidePanel ? 'Masquer' : 'Panneau'}
+              <Settings2 size={13} /> {showSidePanel ? t('header.hidePanel') : t('header.showPanel')}
             </button>
 
             {switchable && (
@@ -1050,7 +1091,7 @@ const GeospatialVisualization: React.FC = () => {
         </div>
       </header>
 
-      {/* Indicators */}
+      {/* Indicator bar */}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 p-3 flex-shrink-0">
         {indicatorItems.map((item, idx) => (
           <motion.div key={idx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}
@@ -1066,20 +1107,25 @@ const GeospatialVisualization: React.FC = () => {
       <div className="hidden lg:flex items-center gap-4 px-4 pb-3 flex-shrink-0">
         <label className="flex items-center gap-2 cursor-pointer">
           <Switch checked={useClustering} onCheckedChange={setUseClustering} />
-          <span className={`text-xs ${UI.muted}`}>Clustering</span>
+          <span className={`text-xs ${UI.muted}`}>{t('controls.clustering')}</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <Switch checked={useHeatmap} onCheckedChange={setUseHeatmap} />
-          <span className={`text-xs ${UI.muted}`}>Heatmap</span>
+          <span className={`text-xs ${UI.muted}`}>{t('controls.heatmap')}</span>
         </label>
-        <button onClick={exportCSV}     className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}><Download size={12} /> CSV</button>
-        <button onClick={exportGeoJSON}  className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}><Download size={12} /> GeoJSON</button>
-        <select value={String(displayLimit)} onChange={e => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
+        <button onClick={exportCSV} className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}>
+          <Download size={12} /> {t('controls.csv')}
+        </button>
+        <button onClick={exportGeoJSON} className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}>
+          <Download size={12} /> {t('controls.geojson')}
+        </button>
+        <select value={String(displayLimit)}
+          onChange={e => setDisplayLimit(e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value))}
           className={`${UI.input} w-auto text-[10px] h-8 py-0`}>
-          <option value="1000">1 000 pts</option>
-          <option value="5000">5 000 pts</option>
-          <option value="10000">10 000 pts</option>
-          <option value="unlimited">Illimité</option>
+          <option value="1000">   {t('settings.limit1000')}</option>
+          <option value="5000">   {t('settings.limit5000')}</option>
+          <option value="10000">  {t('settings.limit10000')}</option>
+          <option value="unlimited">{t('settings.limitUnlimited')}</option>
         </select>
       </div>
 
@@ -1093,8 +1139,8 @@ const GeospatialVisualization: React.FC = () => {
               <div className="w-14 h-14 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
                 <MapIcon size={24} className="text-primary" />
               </div>
-              <h2 className="text-lg font-black mb-2">Aucune donnée</h2>
-              <p className={`text-sm ${UI.muted} max-w-xs`}>Importez un CSV/Excel ou chargez un exemple épidémiologique via le bouton "Exemples".</p>
+              <h2 className="text-lg font-black mb-2">{t('map.emptyTitle')}</h2>
+              <p className={`text-sm ${UI.muted} max-w-xs`}>{t('map.emptyDescription')}</p>
             </div>
           )}
           <MapContainer center={[20, 0]} zoom={2} style={{ height: '100%', width: '100%' }}>
@@ -1115,13 +1161,19 @@ const GeospatialVisualization: React.FC = () => {
               </MarkerClusterGroup>
             ) : circleMarkers}
           </MapContainer>
+
           {/* Legend */}
           <div className={`absolute bottom-4 left-4 ${UI.card} rounded-2xl p-3 z-[400]`}>
-            <p className={`text-[8px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Intensité</p>
-            {[['#3b82f6','Faible (< 10k)'],['#10b981','Modéré (< 100k)'],['#f59e0b','Élevé (< 1M)'],['#ef4444','Critique (> 1M)']].map(([c, l]) => (
-              <div key={l} className="flex items-center gap-2 mb-1 last:mb-0">
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c }} />
-                <span className={`text-[10px] ${UI.muted}`}>{l}</span>
+            <p className={`text-[8px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>{t('map.legendTitle')}</p>
+            {([
+              ['#3b82f6', 'legendLow'],
+              ['#10b981', 'legendModerate'],
+              ['#f59e0b', 'legendHigh'],
+              ['#ef4444', 'legendCritical'],
+            ] as const).map(([color, key]) => (
+              <div key={key} className="flex items-center gap-2 mb-1 last:mb-0">
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                <span className={`text-[10px] ${UI.muted}`}>{t(`map.${key}`)}</span>
               </div>
             ))}
           </div>
@@ -1131,8 +1183,10 @@ const GeospatialVisualization: React.FC = () => {
         {showSidePanel && (
           <div className={`hidden lg:flex flex-col w-72 xl:w-80 flex-shrink-0 mr-3 mb-3 ${UI.card} rounded-3xl overflow-hidden`}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
-              <h2 className="text-sm font-black tracking-tight">Configuration</h2>
-              <button onClick={() => setShowSidePanel(false)} className={`p-1 rounded-lg ${UI.hover} ${UI.muted}`}><X size={14} /></button>
+              <h2 className="text-sm font-black tracking-tight">{t('panel.title')}</h2>
+              <button onClick={() => setShowSidePanel(false)} className={`p-1 rounded-lg ${UI.hover} ${UI.muted}`}>
+                <X size={14} />
+              </button>
             </div>
             <div className="flex-1 overflow-hidden px-4 pb-4 min-h-0">
               <SidePanelContent />
@@ -1153,29 +1207,30 @@ const GeospatialVisualization: React.FC = () => {
       {/* Mobile bottom nav */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 py-1 z-50">
         {([
-          { id: 'map',      icon: MapIcon,      label: 'Carte'    },
-          { id: 'data',     icon: Database,     label: 'Données'  },
-          { id: 'analysis', icon: BrainCircuit, label: 'IA'       },
-          { id: 'settings', icon: Settings2,    label: 'Réglages' },
+          { id: 'map',      icon: MapIcon,      labelKey: 'mobile.map'      },
+          { id: 'data',     icon: Database,     labelKey: 'mobile.data'     },
+          { id: 'analysis', icon: BrainCircuit, labelKey: 'mobile.analysis' },
+          { id: 'settings', icon: Settings2,    labelKey: 'mobile.settings' },
         ] as const).map(tab => (
           <button key={tab.id} onClick={() => setMobileTab(tab.id)}
             className={`flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-[10px] transition-all
               ${mobileTab === tab.id ? 'text-primary bg-primary/10' : `${UI.muted} ${UI.hover}`}`}>
             <tab.icon size={18} />
-            <span>{tab.label}</span>
+            <span>{t(tab.labelKey)}</span>
           </button>
         ))}
       </nav>
 
-      {/* Modal  Examples */}
+      {/* Modal – Examples */}
       <Dialog open={isExampleModalOpen} onOpenChange={setIsExampleModalOpen}>
         <DialogContent className="sm:max-w-2xl rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="text-lg font-black">Exemples épidémiologiques</DialogTitle>
+            <DialogTitle className="text-lg font-black">{t('modal.title')}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Données réelles documentées  OMS, Johns Hopkins, CEREMUJER et autres organismes.
+              {t('modal.description')}
             </DialogDescription>
           </DialogHeader>
+
           {isLoading ? (
             <div className="py-12 text-center space-y-3">
               <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
@@ -1194,11 +1249,15 @@ const GeospatialVisualization: React.FC = () => {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ex.color }} />
                           <span className="font-bold text-sm">{ex.name}</span>
-                          <Badge variant="outline" className="text-[9px]">{ex.source.credibility === 'high' ? 'Haute fiabilité' : 'Fiabilité moyenne'}</Badge>
+                          <Badge variant="outline" className="text-[9px]">
+                            {ex.source.credibility === 'high' ? t('modal.highCredibility') : t('modal.mediumCredibility')}
+                          </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mb-2">{ex.description}</p>
                         <div className="flex gap-2 text-[9px] flex-wrap">
-                          <span className="px-2 py-0.5 bg-muted rounded-full font-medium">{ex.countries.length} pays</span>
+                          <span className="px-2 py-0.5 bg-muted rounded-full font-medium">
+                            {t('modal.countries', { count: ex.countries.length })}
+                          </span>
                           <span className="px-2 py-0.5 bg-muted rounded-full font-medium">{ex.source.organization}</span>
                           <span className="px-2 py-0.5 bg-muted rounded-full font-medium">{ex.source.year}</span>
                         </div>
@@ -1212,10 +1271,13 @@ const GeospatialVisualization: React.FC = () => {
               </div>
             </ScrollArea>
           )}
+
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsExampleModalOpen(false)} className="rounded-xl">Annuler</Button>
+            <Button variant="outline" onClick={() => setIsExampleModalOpen(false)} className="rounded-xl">
+              {t('modal.cancel')}
+            </Button>
             <Button onClick={loadSelectedExamples} disabled={!selectedDiseases.length} className="rounded-xl">
-              Charger {selectedDiseases.length > 0 ? `(${selectedDiseases.length})` : ''}
+              {selectedDiseases.length > 0 ? t('modal.loadCount', { count: selectedDiseases.length }) : t('modal.load')}
             </Button>
           </DialogFooter>
         </DialogContent>
