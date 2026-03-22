@@ -1,5 +1,5 @@
 /*
- * EpiExplorer
+ * Xplorer
 */
 
 import React, {
@@ -127,7 +127,7 @@ function Hl({ text, q }: { text: string; q: string }) {
 }
 const readMins = (t: string) => { const m = Math.ceil(t.trim().split(/\s+/).length / 200); return m <= 1 ? '< 1 min' : `${m} min`; };
 
-/*  MESH GRATUIT (PubMed E-utilities)  */
+/*  MESH GENERATOR (PubMed E-utilities)  */
 async function buildMeshQuery(userInput: string): Promise<string> {
   // Step 1 : querytranslation PubMed
   const r1 = await retry(() => axios.get(`${BASE}/esearch.fcgi`, {
@@ -135,7 +135,7 @@ async function buildMeshQuery(userInput: string): Promise<string> {
   }));
   const qt: string = r1.data.esearchresult?.querytranslation || '';
 
-  // Step 2 : recherche dans la base MeSH
+  // Step 2 : Seach in MeSH db
   const r2 = await retry(() => axios.get(`${BASE}/esearch.fcgi`, {
     params: { db: 'mesh', term: userInput, retmax: 6, retmode: 'json' },
   }));
@@ -260,7 +260,7 @@ const SearchBar = React.memo(({
           onFocus={() => hist.length && onHist()}
           onBlur={() => setTimeout(onHist, 200)}
           placeholder={large
-            ? 'Mots-clés, maladies, auteurs, DOI… · Entrée pour lancer la recherche'
+            ? 'Mots-clés, maladies, auteurs, DOI… · Entrée pour lancer une recherche'
             : 'Rechercher… · Entrée pour lancer'
           }
           className={[
@@ -409,7 +409,6 @@ const MeshModal = React.memo(({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Générateur MeSH</h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">PubMed E-utilities · 100 % gratuit · Aucune API payante</p>
             </div>
           </div>
           <button
@@ -521,7 +520,7 @@ const MeshModal = React.memo(({
         {/* Footer */}
         <div className="sticky bottom-0 px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur">
           <p className="text-xs text-slate-400 italic">
-            Utilise PubMed esearch + base MeSH · Données traitées localement · Aucune donnée patient envoyée
+            Utilise PubMed esearch + base MeSH · Données traitées localement · NB: experimental
           </p>
         </div>
       </div>
@@ -712,7 +711,7 @@ const HelpModal = React.memo(({ onClose }: { onClose: () => void }) => (
 
       {/* Header sticky*/}
       <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Epi Explorer</h3>
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide plorer</h3>
         <button
           onClick={onClose}
           className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500"
@@ -791,7 +790,7 @@ const HelpModal = React.memo(({ onClose }: { onClose: () => void }) => (
           </h4>
           <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
             {[
-              { icon: Sparkles,    label: 'Générateur MeSH',     desc: 'Transforme une phrase libre en requête PubMed optimisée avec termes [Mesh] et opérateurs booléens. 100% gratuit via PubMed E-utilities.' },
+              { icon: Sparkles,    label: 'Générateur MeSH',     desc: 'Transforme une phrase libre en requête PubMed optimisée avec termes [Mesh] et opérateurs booléens. VBia PubMed E-utilities.' },
               { icon: Bookmark,    label: 'Favoris',              desc: 'Sauvegardez jusqu\'à 200 articles. Persistance locale (localStorage), exportables en .ris pour Zotero ou EndNote.' },
               { icon: PenLine,     label: 'Notes personnelles',   desc: 'Annotez chaque article. Les notes sont sauvegardées localement et visibles en badge sur les cartes.' },
               { icon: GitCompare,  label: 'Comparaison',          desc: 'Sélectionnez 2 à 3 articles pour les comparer directement sur PubMed.' },
@@ -1045,7 +1044,7 @@ export default function EpiExplorer() {
   const isLanding = U.view === 'search' && !SR.searched;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-foreground">
 
       {/* MeSH Modal */}
       {U.showMesh && (
@@ -1075,12 +1074,11 @@ export default function EpiExplorer() {
               </button>
             </div>
             <div className="text-center mb-10">
-              <div className="text-xs font-bold text-primary uppercase tracking-[.2em] mb-4">Wepise · Epi Explorer</div>
-              <h1 className="text-6xl md:text-7xl font-bold text-foreground mb-3 tracking-tight">
-                Explore<span className="text-primary">.</span>
+              <h1 className="text-xl md:text-7xl font-bold text-foreground mb-3 tracking-tight">
+                Xplore<span className="text-primary">.</span>
               </h1>
               <p className="text-muted-foreground text-base">
-                +35 millions d'articles · Appuyez sur <kbd className="px-1.5 py-0.5 text-xs bg-secondary border border-border rounded font-mono">Entrée</kbd> pour lancer la recherche
+                Basé sur PubMed · Appuyez sur <kbd className="px-1.5 py-0.5 text-xs bg-secondary border border-border rounded font-mono">Entrée</kbd> pour lancer la recherche
               </p>
             </div>
 
@@ -1096,7 +1094,7 @@ export default function EpiExplorer() {
             <div className="flex flex-wrap justify-center gap-3 mt-4">
               <button onClick={() => dU({ type: 'MESH_OPEN' })}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-all">
-                <Sparkles className="w-4 h-4" /> Générer une requête MeSH (gratuit)
+                <Sparkles className="w-4 h-4" /> Générer une requête MeSH (Expérimental!)
               </button>
             </div>
 
@@ -1116,12 +1114,12 @@ export default function EpiExplorer() {
 
       {/*  HEADER  */}
       {!isLanding && (
-        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border">
+        <header className="sticky top-0 z-30 bg-[#F8FAFC] dark:bg-[#0F172A] backdrop-blur-xl border-border">
           <div className="max-w-6xl mx-auto px-4 py-3 space-y-2">
             <div className="flex items-center gap-3">
               <button onClick={() => dS({ type: 'RESET' })}
                 className="text-lg font-bold text-foreground hover:text-primary transition-colors shrink-0">
-                Epi<span className="text-primary">.</span>
+                Xplore<span className="text-primary">.</span>
               </button>
 
               <div className="flex-1">
@@ -1185,7 +1183,7 @@ export default function EpiExplorer() {
           <div className="flex-1 min-w-0">
             {U.showStats && SR.results.length > 0 && <StatsPanel data={SR.results} />}
 
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex bg-slate-50 dark:bg-slate-800/60 items-center dark:text-slate-400  justify-between mb-3">
               {U.view === 'search' && SR.searched && (
                 <span className="text-sm font-semibold text-muted-foreground">
                   {SR.total.toLocaleString('fr-FR')} résultat{SR.total > 1 ? 's' : ''}
@@ -1207,7 +1205,7 @@ export default function EpiExplorer() {
             {SR.loading ? (
               <div className="space-y-2.5">
                 {[1, 2, 3].map(i => (
-                  <div key={i} className="bg-card border border-border rounded-xl p-4 animate-pulse">
+                  <div key={i} className="bg-slate-50 dark:bg-slate-800/60 border border-border rounded-xl p-4 animate-pulse">
                     <div className="h-4 bg-secondary rounded w-3/4 mb-3" />
                     <div className="h-3 bg-secondary/60 rounded w-2/5" />
                   </div>
@@ -1219,13 +1217,13 @@ export default function EpiExplorer() {
                 <button onClick={() => doSearch(SR.lastQuery, SR.page)} className="ml-auto"><RefreshCcw className="w-4 h-4" /></button>
               </div>
             ) : displayArts.length === 0 ? (
-              <div className="text-center py-20">
+              <div className="text-center py-20 ">
                 {U.view === 'bookmarks' ? <Bookmark className="w-10 h-10 text-border mx-auto mb-3" /> : <Search className="w-10 h-10 text-border mx-auto mb-3" />}
                 <p className="text-muted-foreground text-sm">{U.view === 'bookmarks' ? 'Aucun favori.' : 'Aucun résultat.'}</p>
                 {U.view === 'bookmarks' && <button onClick={() => dU({ type: 'VIEW', v: 'search' })} className="mt-3 text-primary text-sm hover:opacity-80">Explorer →</button>}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 ">
                 {displayArts.map((a, i) => (
                   <div key={a.pmid} style={{ animationDelay: `${i * 25}ms` }} className="animate-in fade-in slide-in-from-bottom-1 duration-200 fill-mode-both">
                     <ArticleCard
@@ -1241,7 +1239,7 @@ export default function EpiExplorer() {
             )}
 
             {SR.results.length > 0 && SR.total > RET_MAX && (
-              <div className="flex justify-center items-center gap-3 mt-8">
+              <div className="flex justify-center  items-center gap-3 mt-8">
                 <button onClick={() => dS({ type: 'PAGE', p: Math.max(1, SR.page - 1) })} disabled={SR.page === 1}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-30 font-medium">
                   <ChevronLeft className="w-4 h-4" /> Préc.
