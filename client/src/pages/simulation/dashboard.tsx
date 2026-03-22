@@ -1,5 +1,5 @@
 /**
- * EpidemiologicalSimulation
+ * EpidemiologicalSimulation.tsx 
  */
 
 import React, {
@@ -24,10 +24,10 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
   Play, Pause, RotateCcw, ChevronRight,
   Map as MapIcon, BarChart2, Network, Table2,
-  Download, Upload, Info, Plus, X, Settings,
+  Download, Upload, Info, Plus, X, Settings,Database,
   Activity, TrendingUp, Users, Sun, Moon, Sliders,
-  AlertTriangle, SkipBack, SkipForward, ChevronDown,
-  Sparkles, Beaker, Globe2, Wind, Droplets, Zap,
+  AlertTriangle, SkipBack, SkipForward, ChevronDown, 
+  Beaker, Globe2, Wind, Droplets, Zap, ChartScatter
 } from 'lucide-react';
 
 ChartJS.register(
@@ -414,7 +414,10 @@ function fmt(n: number): string {
 const chartBase = (isDark: boolean) => ({
   responsive: true,
   maintainAspectRatio: false,
-  animation: { duration: 0 } as const,
+  // duration: 0 when scrubbing would kill the animation effect.
+  // Chart.js default ~400ms is too slow for rapid slider moves.
+  // 150ms gives a smooth "drawing" feel without lag.
+  animation: { duration: 150 } as const,
   plugins: {
     legend: {
       position: 'top' as const,
@@ -456,6 +459,8 @@ export default function EpidemiologicalSimulation() {
   const [playbackDay, setPlaybackDay]   = useState(0);
   const [isPlaying, setIsPlaying]       = useState(false);
   const [speed, setSpeed]               = useState(3);
+  const [simDays, setSimDays]           = useState(365);
+  const simDaysRef                      = useRef(365); // readable inside setTimeout callbacks
   const [loadedExample, setLoadedExample] = useState<string | null>(null);
   const activeRegions                   = useRef<Region[]>(INITIAL_REGIONS);
 
@@ -525,32 +530,25 @@ export default function EpidemiologicalSimulation() {
   // (simHistory.length > 0 after first load). Does NOT auto-run on mount.
   const hasSimulation = simHistory.length > 0;
 
-  useEffect(() => {
-    if (!hasSimulation) return; // neutral state — don't auto-run
-    setIsComputing(true);
-    const id = setTimeout(() => {
-      const p = { ...params, model: activeModel };
-      const history = computeTrajectory(p, interventions, 365, activeRegions.current);
-      setSimHistory(history);
-      setSimRunId(n => n + 1);
-      setPlaybackDay(0);
-      setIsPlaying(false);
-      setIsComputing(false);
-    }, 50);
-    return () => clearTimeout(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, activeModel, interventions]);
+  // Keep simDaysRef in sync — useCallback closures can't read updated state
+  useEffect(() => { simDaysRef.current = simDays; }, [simDays]);
 
-  // Trigger simulation when called explicitly (scenario, example, manual run)
+  // runSimulation — single source of truth for all simulation triggers.
+  // The old reactive useEffect([params, activeModel, interventions]) has been
+  // removed because it raced with explicit calls from loadExample/applyScenario:
+  // both fired at 50ms, simRunId incremented twice, Chart.js keys collided.
+  // All callers (scenario, example, params modal, model selector) call this directly.
   const runSimulation = useCallback((
     p: SimParams,
     ints: Intervention[],
     customRegions?: Region[],
+    days?: number,
   ) => {
     if (customRegions) activeRegions.current = customRegions;
     setIsComputing(true);
     setTimeout(() => {
-      const history = computeTrajectory(p, ints, 365, activeRegions.current);
+      const d = days ?? simDaysRef.current;
+      const history = computeTrajectory(p, ints, d, activeRegions.current);
       setSimHistory(history);
       setSimRunId(n => n + 1);
       setPlaybackDay(0);
@@ -827,64 +825,67 @@ export default function EpidemiologicalSimulation() {
     };
   }, [frame, simHistory, totalPop]);
 
-  // Chart data — ALL memoized so Chart.js never receives new object refs on
-  // slider ticks. epidemicCurveData/rtData/phaseData depend on the full trajectory
-  // (simHistory), not the current day — they show the complete 365-day curve.
-  // regionalData is the only one that updates per day (current snapshot).
+  // Chart data — sliced to playbackDay so curves reveal progressively.
+  // Empty before the first simulation run (hasSimulation = false).
+  // All 4 memos depend on playbackDay so they grow as the slider advances.
+  // STEP keeps max ~120 points regardless of total days for performance.
+  // During playback Chart.js animates at ~150ms; scrubbing uses duration:0.
+
+  const chartSlice = useMemo(() => {
+    if (!simHistory.length) return [];
+    const slice = simHistory.slice(0, playbackDay + 1);
+    const STEP  = Math.max(1, Math.floor(simHistory.length / 120));
+    // Always include the last visible point for a smooth leading edge
+    return slice.filter((_, i, arr) => i % STEP === 0 || i === arr.length - 1);
+  }, [simHistory, playbackDay]);
 
   const epidemicCurveData = useMemo(() => {
-    if (!simHistory.length) return { labels: [], datasets: [] };
-    const STEP = Math.max(1, Math.floor(simHistory.length / 120));
-    const sub  = simHistory.filter((_, i) => i % STEP === 0);
+    if (!chartSlice.length) return { labels: [], datasets: [] };
     const base = { tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, fill: true as const };
     return {
-      labels: sub.map(f => `J${f.day}`),
+      labels: chartSlice.map(f => `J${f.day}`),
       datasets: [
-        { ...base, label: 'Susceptibles', data: sub.map(f => f.totals.S), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.05)' },
-        { ...base, label: 'Exposés',      data: sub.map(f => f.totals.E), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)' },
-        { ...base, label: 'Infectés',     data: sub.map(f => f.totals.I), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)' },
-        { ...base, label: 'Rétablis',     data: sub.map(f => f.totals.R), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.05)' },
-        { ...base, label: 'Décès',        data: sub.map(f => f.totals.D), borderColor: '#6b7280', backgroundColor: 'rgba(107,114,128,0.04)' },
+        { ...base, label: 'Susceptibles', data: chartSlice.map(f => f.totals.S), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.05)' },
+        { ...base, label: 'Exposés',      data: chartSlice.map(f => f.totals.E), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)' },
+        { ...base, label: 'Infectés',     data: chartSlice.map(f => f.totals.I), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)' },
+        { ...base, label: 'Rétablis',     data: chartSlice.map(f => f.totals.R), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.05)' },
+        { ...base, label: 'Décès',        data: chartSlice.map(f => f.totals.D), borderColor: '#6b7280', backgroundColor: 'rgba(107,114,128,0.04)' },
       ],
     };
-  }, [simHistory]);
+  }, [chartSlice]);
 
   const newCasesData = useMemo(() => {
-    if (!simHistory.length) return { labels: [], datasets: [] };
-    const STEP = Math.max(1, Math.floor(simHistory.length / 120));
-    const sub  = simHistory.filter((_, i) => i % STEP === 0);
+    if (!chartSlice.length) return { labels: [], datasets: [] };
     return {
-      labels: sub.map(f => `J${f.day}`),
-      datasets: [{ label: 'Nouveaux cas / jour', data: sub.map(f => f.newCases),
+      labels: chartSlice.map(f => `J${f.day}`),
+      datasets: [{ label: 'Nouveaux cas / jour', data: chartSlice.map(f => f.newCases),
         borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.15)',
         fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0 }],
     };
-  }, [simHistory]);
+  }, [chartSlice]);
 
   const rtData = useMemo(() => {
-    if (!simHistory.length) return { labels: [], datasets: [] };
-    const STEP = Math.max(1, Math.floor(simHistory.length / 120));
-    const sub  = simHistory.filter((_, i) => i % STEP === 0);
+    if (!chartSlice.length) return { labels: [], datasets: [] };
     return {
-      labels: sub.map(f => `J${f.day}`),
-      datasets: [{ label: 'Rt effectif', data: sub.map(f => parseFloat(f.Rt.toFixed(3))),
+      labels: chartSlice.map(f => `J${f.day}`),
+      datasets: [{ label: 'Rt effectif', data: chartSlice.map(f => parseFloat(f.Rt.toFixed(3))),
         borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)',
         fill: false, tension: 0.4, borderWidth: 2, pointRadius: 0 }],
     };
-  }, [simHistory]);
+  }, [chartSlice]);
 
   const phaseData = useMemo(() => {
-    if (!simHistory.length) return { datasets: [] };
+    if (!chartSlice.length) return { datasets: [] };
     return {
       datasets: [{ label: 'Trajectoire S–I',
-        data: simHistory.filter((_, i) => i % 2 === 0).map(f => ({
+        data: chartSlice.filter((_, i) => i % 2 === 0 || i === chartSlice.length - 1).map(f => ({
           x: parseFloat((f.totals.S / totalPop * 100).toFixed(2)),
           y: parseFloat((f.totals.I / totalPop * 100).toFixed(2)),
         })),
         borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.15)',
         showLine: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }],
     };
-  }, [simHistory, totalPop]);
+  }, [chartSlice, totalPop]);
 
   // Regional snapshot — updates on slider move (current day)
   const regionalData = useMemo(() => ({
@@ -914,11 +915,11 @@ export default function EpidemiologicalSimulation() {
 
   // Derived display values for indicators
   const indicatorItems = [
-    { label: 'Jour',            value: String(playbackDay),              accent: INDICATOR_ACCENTS[0] },
-    { label: 'Infectés actifs', value: fmt(indicators.infections),       accent: INDICATOR_ACCENTS[1] },
-    { label: 'Rt effectif',     value: indicators.Rt.toFixed(2),         accent: INDICATOR_ACCENTS[2] },
-    { label: 'Taux d\'attaque', value: `${indicators.attackRate.toFixed(1)}%`, accent: INDICATOR_ACCENTS[3] },
-    { label: 'Pic (jour)',       value: String(indicators.peakDay),       accent: INDICATOR_ACCENTS[4] },
+    { label: 'Jour',            value: String(playbackDay),              },
+    { label: 'Infectés actifs', value: fmt(indicators.infections),       },
+    { label: 'Rt effectif',     value: indicators.Rt.toFixed(2),          },
+    { label: 'Taux d\'attaque', value: `${indicators.attackRate.toFixed(1)}%`,},
+    { label: 'Pic (jour)',       value: String(indicators.peakDay),      },
   ];
 
   // UI theme tokens — mapped to CSS variables from index.css
@@ -961,6 +962,21 @@ export default function EpidemiologicalSimulation() {
           onChange={e => setSpeed(Number(e.target.value))}
           className="w-16 h-1 accent-blue-600 cursor-pointer" />
         <span className={`text-[10px] font-mono ${UI.muted}`}>{speed}</span>
+      </div>
+      {/* Simulation duration selector */}
+      <div className="hidden md:flex items-center gap-1.5 border-l border-border pl-3">
+        <span className={`text-[9px] uppercase tracking-wider ${UI.muted} flex-shrink-0`}>Jours</span>
+        <div className="flex bg-muted rounded-lg p-0.5 gap-0.5">
+          {[90, 180, 365, 730].map(d => (
+            <button key={d} onClick={() => {
+              setSimDays(d);
+              if (hasSimulation) runSimulation({ ...params, model: activeModel }, interventions, undefined, d);
+            }}
+              className={`px-2 py-0.5 rounded-md text-[9px] font-bold transition-all ${simDays === d ? 'bg-background text-primary shadow-sm' : UI.muted}`}>
+              {d < 365 ? `${d}j` : d === 365 ? '1an' : '2ans'}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1022,11 +1038,11 @@ export default function EpidemiologicalSimulation() {
     // mode reads the parent dimensions to size the canvas. Without it the canvas
     // gets 0×0 and nothing renders.
     return (
-      <div className="overflow-y-auto p-4 space-y-4">
+      <div className="p-4 space-y-4">
         <div className={`${UI.card} rounded-2xl p-4`} style={{ height: 240 }}>
           <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>Courbes épidémiologiques</p>
           <div style={{ position: 'relative', height: 190 }}>
-            <Line key={`epi-${simRunId}`} data={epidemicCurveData} options={chartOpts} />
+            <Line key={`epi-${simRunId}`} data={epidemicCurveData} options={chartOpts} updateMode="none" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1102,7 +1118,7 @@ export default function EpidemiologicalSimulation() {
             <input
               value={regionNames[region.id] ?? region.name}
               onChange={e => setRegionNames(prev => ({ ...prev, [region.id]: e.target.value }))}
-              className="bg-transparent text-sm font-semibold outline-none flex-1 mr-2"
+              className=" text-sm font-semibold outline-none flex-1 mr-2"
             />
             <div className="w-3 h-3 rounded-full flex-shrink-0 shadow-inner"
               style={{ backgroundColor: regionColors[region.id] ?? region.color }} />
@@ -1136,7 +1152,10 @@ export default function EpidemiologicalSimulation() {
         <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Modèle</p>
         <div className="grid grid-cols-2 gap-1.5">
           {(['SIR', 'SEIR', 'SEIRD', 'SEIQRD'] as ModelType[]).map(m => (
-            <button key={m} onClick={() => setActiveModel(m)}
+            <button key={m} onClick={() => {
+              setActiveModel(m);
+              if (hasSimulation) runSimulation({ ...params, model: m }, interventions);
+            }}
               className={`py-2 rounded-xl text-xs font-bold transition-all ${activeModel === m ? 'bg-primary text-primary-foreground' : `${UI.card} ${UI.muted}`}`}>
               {m}
             </button>
@@ -1241,7 +1260,7 @@ export default function EpidemiologicalSimulation() {
   const EmptyState = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center select-none">
       <div className={`w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center mb-5`}>
-        <Sparkles size={28} className="text-primary" />
+        <ChartScatter   size={28} className="text-primary" />
       </div>
       <h2 className="text-xl font-black mb-2">Démarrer une simulation</h2>
       <p className={`text-sm ${UI.muted} max-w-xs mb-8`}>
@@ -1251,7 +1270,7 @@ export default function EpidemiologicalSimulation() {
         <button
           onClick={() => setShowExamplesModal(true)}
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-2xl text-sm font-bold shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all">
-          <Sparkles size={15} /> Charger un exemple
+          <Database  size={15} /> Charger un exemple
         </button>
         <button
           onClick={() => applyScenario('Base')}
@@ -1290,7 +1309,10 @@ export default function EpidemiologicalSimulation() {
           {/* Desktop model selector */}
           <div className="hidden lg:flex items-center gap-2 bg-muted p-1 rounded-xl">
             {(['SIR', 'SEIR', 'SEIRD', 'SEIQRD'] as ModelType[]).map(m => (
-              <button key={m} onClick={() => setActiveModel(m)}
+              <button key={m} onClick={() => {
+                setActiveModel(m);
+                if (hasSimulation) runSimulation({ ...params, model: m }, interventions);
+              }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeModel === m ? 'bg-background text-primary shadow-sm' : UI.muted}`}>
                 {m}
               </button>
@@ -1304,7 +1326,7 @@ export default function EpidemiologicalSimulation() {
               <span className={`text-[9px] font-bold uppercase tracking-wider ${UI.muted} border-r border-border pr-2`}>Scénario</span>
               <select value={selectedScenario}
                 onChange={e => { setSelectedScenario(e.target.value); applyScenario(e.target.value); }}
-                className="appearance-none bg-transparent text-xs font-semibold pr-6 outline-none cursor-pointer">
+                className="appearance-none  text-xs font-semibold pr-6 outline-none cursor-pointer">
                 {SCENARIOS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
               </select>
               <ChevronDown size={12} className={`absolute right-2 pointer-events-none ${UI.muted}`} />
@@ -1329,7 +1351,7 @@ export default function EpidemiologicalSimulation() {
             <button onClick={() => setShowExamplesModal(true)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all
                 ${loadedExample ? 'bg-primary/10 text-primary border border-primary/30' : `${UI.card} ${UI.muted} ${UI.hover}`}`}>
-              <Sparkles size={13} /> Exemples
+              <Database  size={13} /> Exemples
             </button>
             <button onClick={() => setShowExplanationModal(true)} className={`p-2 ${UI.card} rounded-xl ${UI.muted} ${UI.hover} transition-all`}>
               <Info size={15} />
@@ -1562,7 +1584,7 @@ export default function EpidemiologicalSimulation() {
                   <div className="flex items-center justify-between mb-1">
                     <input value={regionNames[region.id] ?? region.name}
                       onChange={e => setRegionNames(p => ({ ...p, [region.id]: e.target.value }))}
-                      className="bg-transparent text-xs font-semibold outline-none flex-1 mr-1.5" />
+                      className=" text-xs font-semibold outline-none flex-1 mr-1.5" />
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                       style={{ backgroundColor: regionColors[region.id] ?? region.color }} />
                   </div>
@@ -1679,11 +1701,13 @@ export default function EpidemiologicalSimulation() {
                 <button onClick={() => {
                   if (isComparisonParams) {
                     const p = { ...editParams, model: activeModel };
-                    setCompHistory(computeTrajectory(p, interventions));
+                    setCompHistory(computeTrajectory(p, interventions, simDaysRef.current));
                     setIsComparing(true);
                     setIsComparisonParams(false);
                   } else {
-                    setParams(editParams);
+                    const p = { ...editParams, model: activeModel };
+                    setParams(p);
+                    runSimulation(p, interventions);
                   }
                   setShowParamsModal(false);
                 }}
@@ -1852,6 +1876,61 @@ export default function EpidemiologicalSimulation() {
                   className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-bold hover:opacity-90 transition-all">
                   Fermer
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal — Disease examples */}
+      <AnimatePresence>
+        {showExamplesModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            onClick={() => setShowExamplesModal(false)}>
+            <motion.div initial={{ scale: 0.92, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 16 }}
+              className={`${UI.card} rounded-3xl w-full max-w-2xl shadow-2xl max-h-[85vh] overflow-y-auto`}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-6 border-b border-border">
+                <div>
+                  <h2 className="text-lg font-black">Exemples de maladies</h2>
+                  <p className={`text-xs ${UI.muted} mt-0.5`}>Paramètres et conditions initiales inspirés de données réelles</p>
+                </div>
+                <button onClick={() => setShowExamplesModal(false)} className={`p-2 ${UI.hover} rounded-xl ${UI.muted}`}><X size={16} /></button>
+              </div>
+              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {DISEASE_EXAMPLES.map(ex => (
+                  <button key={ex.id} onClick={() => loadExample(ex)}
+                    className={`text-left p-4 rounded-2xl border-2 transition-all ${UI.hover} ${
+                      loadedExample === ex.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border'
+                    }`}>
+                    <div className="flex items-start justify-between mb-2 gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ex.iconColor }} />
+                        <span className="font-bold text-sm">{ex.name}</span>
+                      </div>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${ex.badgeColor}`}>
+                        {ex.badge}
+                      </span>
+                    </div>
+                    <p className={`text-[10px] ${UI.muted} mb-2 leading-relaxed`}>{ex.description}</p>
+                    <div className="flex flex-wrap gap-2 text-[9px]">
+                      <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono font-bold`}>R0 ≈ {ex.R0}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono`}>{ex.model}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md bg-muted`}>{ex.pathogen}</span>
+                    </div>
+                    <p className={`text-[9px] ${UI.muted} mt-2 italic`}>Source: {ex.source}</p>
+                    {loadedExample === ex.id && (
+                      <p className="text-[9px] text-primary font-bold mt-1">— Actuellement chargé</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end p-4 pt-0">
+                <button onClick={() => setShowExamplesModal(false)}
+                  className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>Fermer</button>
               </div>
             </motion.div>
           </motion.div>
