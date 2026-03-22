@@ -916,7 +916,7 @@ export default function EpidemiologicalSimulation() {
   // Derived display values for indicators
   const indicatorItems = [
     { label: 'Jour',            value: String(playbackDay),              },
-    { label: 'Infectés actifs', value: fmt(indicators.infections),       },
+    { label: 'Infectés actifs', value: fmt(indicators.infections),     },
     { label: 'Rt effectif',     value: indicators.Rt.toFixed(2),          },
     { label: 'Taux d\'attaque', value: `${indicators.attackRate.toFixed(1)}%`,},
     { label: 'Pic (jour)',       value: String(indicators.peakDay),      },
@@ -1660,10 +1660,10 @@ export default function EpidemiologicalSimulation() {
       <AnimatePresence>
         {showParamsModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-black/60  flex items-center justify-center p-4 z-50"
             onClick={() => setShowParamsModal(false)}>
             <motion.div initial={{ scale: 0.92, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 16 }}
-              className={`${UI.card} rounded-3xl w-full max-w-xl shadow-2xl`}
+              className={`${UI.card} rounded-3xl bg-white dark:bg-slate-900 w-full max-w-xl shadow-2xl`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
@@ -1727,7 +1727,7 @@ export default function EpidemiologicalSimulation() {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
             onClick={() => setShowInterventionModal(false)}>
             <motion.div initial={{ scale: 0.92 }} animate={{ scale: 1 }} exit={{ scale: 0.92 }}
-              className={`${UI.card} rounded-3xl w-full max-w-md shadow-2xl`}
+              className={`${UI.card} rounded-3xl w-full bg-white dark:bg-slate-900 max-w-md shadow-2xl`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <h2 className="text-lg font-black">Nouvelle Intervention</h2>
@@ -1783,7 +1783,7 @@ export default function EpidemiologicalSimulation() {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
             onClick={() => setShowDataModal(false)}>
             <motion.div initial={{ scale: 0.92 }} animate={{ scale: 1 }} exit={{ scale: 0.92 }}
-              className={`${UI.card} rounded-3xl w-full max-w-md shadow-2xl`}
+              className={`${UI.card} rounded-3xl w-full bg-white dark:bg-slate-900 max-w-md shadow-2xl`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <h2 className="text-lg font-black">Importer des données</h2>
@@ -1850,7 +1850,7 @@ export default function EpidemiologicalSimulation() {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
             onClick={() => setShowExplanationModal(false)}>
             <motion.div initial={{ scale: 0.92 }} animate={{ scale: 1 }} exit={{ scale: 0.92 }}
-              className={`${UI.card} rounded-3xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto`}
+              className={`${UI.card} rounded-3xl w-full bg-white dark:bg-slate-900 max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <h2 className="text-lg font-black">Documentation</h2>
@@ -1889,7 +1889,7 @@ export default function EpidemiologicalSimulation() {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
             onClick={() => setShowExamplesModal(false)}>
             <motion.div initial={{ scale: 0.92, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 16 }}
-              className={`${UI.card} rounded-3xl w-full max-w-2xl shadow-2xl max-h-[85vh] overflow-y-auto`}
+              className={`${UI.card} rounded-3xl w-full max-w-2xl bg-white dark:bg-slate-900  max-h-[85vh] overflow-y-auto`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
