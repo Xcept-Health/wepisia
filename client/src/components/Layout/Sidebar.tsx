@@ -9,7 +9,7 @@ import {
   AlignHorizontalDistributeCenter, ChartPie, Link as LinkIcon,
   AlignHorizontalSpaceAround, Globe,
   ChartBarStacked, UnfoldHorizontal, Shuffle, Dices,
-  MapPinHouse, Biohazard, HeartHandshake, Moon, Sun,
+  MapPinHouse, ChartScatter, HeartHandshake, Moon, Sun,
   ChevronRight, Code, UsersRound, ChevronsLeft
 } from 'lucide-react';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -132,7 +132,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       id: 'simulation',
       title: t('sidebar.simulation'),
       items: [
-        { id: 'epidemic_simulation', label: t('sidebar.simulateur'), icon: Biohazard, href: '/simulation/dashboard' },
+        { id: 'epidemic_simulation', label: t('sidebar.simulateur'), icon: ChartScatter, href: '/simulation/dashboard' },
       ]
     },
     {
@@ -349,14 +349,14 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
 {isMobile && !isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className={`fixed ${getFloatingButtonClasses()} z-50 flex items-center gap-2 p-1.5 pr-4
+          className={`fixed ${getFloatingButtonClasses()} z-50 flex items-center gap-2 p-1
             bg-black/10 dark:bg-white/10 backdrop-blur-lg
             rounded-full shadow-inner
             border border-white/10 dark:border-white/5
             transition-all duration-300 ease-out
             hover:bg-black/20 dark:hover:bg-white/20
             hover:scale-105 active:scale-95 group`}
-          aria-label="Ouvrir le menu"
+          aria-label="menu"
         >
           {/* Cercle d'icône avec morphing */}
           <div className="flex items-center justify-center w-10 h-10 rounded-full 
@@ -372,11 +372,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
             </div>
           </div>
           
-          {/* Texte ultra-discret */}
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] 
-            text-slate-900/60 dark:text-white/60">
-            Menu
-          </span>
+       
         </button>
       )}
       {/* Styles CSS pour les animations */}
