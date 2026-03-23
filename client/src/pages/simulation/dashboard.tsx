@@ -1,5 +1,5 @@
 /**
- * EpidemiologicalSimulation.tsx 
+ * EpidemiologicalSimulation
  */
 
 import React, {
@@ -21,6 +21,7 @@ import { HexColorPicker } from 'react-colorful';
 import Globe from 'globe.gl';
 import { Link } from 'wouter';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 import {
   Play, Pause, RotateCcw, ChevronRight,
   Map as MapIcon, BarChart2, Network, Table2,
@@ -86,7 +87,7 @@ interface NetworkSettings {
   nodeShape: 'circle' | 'square' | 'triangle';
 }
 
-// Models — outside component, never recreated
+// Models - outside component, never recreated
 const MODELS: Record<ModelType, {
   compartments: string[];
   step: (r: Region, p: SimParams) => Record<string, number>;
@@ -175,7 +176,7 @@ const SCENARIOS: Scenario[] = [
 ];
 
 
-// Disease examples — real-world inspired initial conditions and parameters
+// Disease examples - real-world inspired initial conditions and parameters
 interface DiseaseExample {
   id: string;
   name: string;
@@ -228,7 +229,7 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
     badgeColor: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
     iconColor: '#ef4444',
     R0: 1.8,
-    source: 'OMS — Rapport final 2016',
+    source: 'OMS - Rapport final 2016',
     model: 'SEIRD',
     params: { model: 'SEIRD', beta: 0.22, sigma: 0.25, gamma: 0.08, mu: 0.12, delta: 0.05, theta: 0.1, mobility: 0.02 },
     initialRegions: [
@@ -275,7 +276,7 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
     badgeColor: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
     iconColor: '#f97316',
     R0: 14,
-    source: 'OMS — Bulletin mondial de la santé',
+    source: 'OMS - Bulletin mondial de la santé',
     model: 'SEIR',
     params: { model: 'SEIR', beta: 1.40, sigma: 0.25, gamma: 0.10, mu: 0.002, delta: 0.05, theta: 0.1, mobility: 0.08 },
     initialRegions: INITIAL_REGIONS.map(r => ({
@@ -297,7 +298,7 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
     badgeColor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
     iconColor: '#d97706',
     R0: 2.0,
-    source: 'OMS / CEREMUJER — Burkina Faso 2012',
+    source: 'OMS / CEREMUJER - Burkina Faso 2012',
     model: 'SEIRD',
     params: { model: 'SEIRD', beta: 0.24, sigma: 0.33, gamma: 0.14, mu: 0.05, delta: 0.08, theta: 0.15, mobility: 0.05 },
     initialRegions: [
@@ -322,7 +323,7 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
     badgeColor: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
     iconColor: '#0d9488',
     R0: 3.0,
-    source: 'OMS — Flambées choléra 2022–2024',
+    source: 'OMS - Flambées choléra 2022–2024',
     model: 'SEIRD',
     params: { model: 'SEIRD', beta: 0.35, sigma: 0.50, gamma: 0.20, mu: 0.02, delta: 0.08, theta: 0.15, mobility: 0.04 },
     initialRegions: [
@@ -345,7 +346,7 @@ const INDICATOR_ACCENTS = [
   'bg-emerald-500', 'bg-violet-500',
 ];
 
-// Pure simulation — runs in ~5ms for 365 days × 9 regions
+// Pure simulation - runs in ~5ms for 365 days × 9 regions
 // Accepts optional custom initial regions (for disease examples)
 function computeTrajectory(
   params: SimParams,
@@ -414,9 +415,6 @@ function fmt(n: number): string {
 const chartBase = (isDark: boolean) => ({
   responsive: true,
   maintainAspectRatio: false,
-  // duration: 0 when scrubbing would kill the animation effect.
-  // Chart.js default ~400ms is too slow for rapid slider moves.
-  // 150ms gives a smooth "drawing" feel without lag.
   animation: { duration: 150 } as const,
   plugins: {
     legend: {
@@ -449,8 +447,9 @@ const chartBase = (isDark: boolean) => ({
 export default function EpidemiologicalSimulation() {
   const { theme, toggleTheme, switchable } = useTheme();
   const isDark = theme === 'dark';
+  const { t } = useTranslation();
 
-  // Simulation state — starts neutral (no auto-run)
+  // Simulation state - starts neutral (no auto-run)
   const [params, setParams]             = useState<SimParams>(DEFAULT_PARAMS);
   const [activeModel, setActiveModel]   = useState<ModelType>('SEIRD');
   const [interventions, setInterventions] = useState<Intervention[]>([]);
@@ -460,7 +459,7 @@ export default function EpidemiologicalSimulation() {
   const [isPlaying, setIsPlaying]       = useState(false);
   const [speed, setSpeed]               = useState(3);
   const [simDays, setSimDays]           = useState(365);
-  const simDaysRef                      = useRef(365); // readable inside setTimeout callbacks
+  const simDaysRef                      = useRef(365);
   const [loadedExample, setLoadedExample] = useState<string | null>(null);
   const activeRegions                   = useRef<Region[]>(INITIAL_REGIONS);
 
@@ -477,7 +476,7 @@ export default function EpidemiologicalSimulation() {
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
   const [regionNames, setRegionNames]   = useState<Record<string, string>>({});
 
-  // Modal state — controlled (no getElementById)
+  // Modal state - controlled (no getElementById)
   const [showParamsModal, setShowParamsModal]           = useState(false);
   const [showInterventionModal, setShowInterventionModal] = useState(false);
   const [showDataModal, setShowDataModal]               = useState(false);
@@ -509,11 +508,10 @@ export default function EpidemiologicalSimulation() {
   const globeRef    = useRef<any>(null);
   const globeContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Display regions — derived from history[playbackDay]
+  // Display regions - derived from history[playbackDay]
   const displayRegions: Region[] = useMemo(() => {
     const frame = simHistory[playbackDay];
     if (!frame) return [];
-    // Apply name/color overrides
     return frame.regions.map(r => ({
       ...r,
       name:  regionNames[r.id]  ?? r.name,
@@ -526,18 +524,10 @@ export default function EpidemiologicalSimulation() {
     [],
   );
 
-  // Recompute trajectory — only when simulation has been started at least once
-  // (simHistory.length > 0 after first load). Does NOT auto-run on mount.
   const hasSimulation = simHistory.length > 0;
 
-  // Keep simDaysRef in sync — useCallback closures can't read updated state
   useEffect(() => { simDaysRef.current = simDays; }, [simDays]);
 
-  // runSimulation — single source of truth for all simulation triggers.
-  // The old reactive useEffect([params, activeModel, interventions]) has been
-  // removed because it raced with explicit calls from loadExample/applyScenario:
-  // both fired at 50ms, simRunId incremented twice, Chart.js keys collided.
-  // All callers (scenario, example, params modal, model selector) call this directly.
   const runSimulation = useCallback((
     p: SimParams,
     ints: Intervention[],
@@ -557,7 +547,7 @@ export default function EpidemiologicalSimulation() {
     }, 50);
   }, []);
 
-  // Playback animation — just advances playbackDay, no simulation
+  // Playback animation
   useEffect(() => {
     if (!isPlaying || simHistory.length === 0) return;
     const interval = setInterval(() => {
@@ -570,7 +560,7 @@ export default function EpidemiologicalSimulation() {
     return () => clearInterval(interval);
   }, [isPlaying, speed, simHistory.length]);
 
-  // Apply scenario — explicitly triggers a simulation run
+  // Apply scenario
   const applyScenario = useCallback((name: string) => {
     const sc = SCENARIOS.find(s => s.name === name);
     if (!sc) return;
@@ -597,11 +587,10 @@ export default function EpidemiologicalSimulation() {
     runSimulation(p, [], ex.initialRegions);
   }, [runSimulation]);
 
-  // Leaflet map init — only when mapType / mapSettings / activeView change
+  // Leaflet map init
   useEffect(() => {
     if (activeView !== 'map' || mapType !== '2d' || !mapRef.current) return;
 
-    // Cleanup previous instance
     if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
     leafletMarkers.current.clear();
 
@@ -617,7 +606,6 @@ export default function EpidemiologicalSimulation() {
       attribution: '© OpenStreetMap contributors',
     }).addTo(map);
 
-    // Create initial markers
     displayRegions.forEach(region => {
       const color = getRegionColor(region);
       const marker = L.circleMarker([region.latitude, region.longitude], {
@@ -627,9 +615,9 @@ export default function EpidemiologicalSimulation() {
       });
       marker.bindPopup(`
         <b>${region.name}</b><br/>
-        Pop: ${region.population.toLocaleString()}<br/>
-        Infectés: ${Math.round(region.I)} (${(region.I / region.population * 100).toFixed(2)}%)<br/>
-        Décès: ${Math.round(region.D ?? 0)}
+        ${t('simulation.map.popup_pop')} ${region.population.toLocaleString()}<br/>
+        ${t('simulation.map.popup_infected')} ${Math.round(region.I)} (${(region.I / region.population * 100).toFixed(2)}%)<br/>
+        ${t('simulation.map.popup_deaths')} ${Math.round(region.D ?? 0)}
       `);
       if (mapSettings.showLabels) {
         marker.bindTooltip(region.name, { permanent: true, direction: 'top', className: 'text-xs' });
@@ -638,7 +626,6 @@ export default function EpidemiologicalSimulation() {
       leafletMarkers.current.set(region.id, marker);
     });
 
-    // Draw connections
     displayRegions.forEach(region => {
       region.connections.forEach(tid => {
         const target = displayRegions.find(r => r.id === tid);
@@ -658,7 +645,7 @@ export default function EpidemiologicalSimulation() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapType, mapSettings, activeView, isDark]);
 
-  // Leaflet data update — just update marker style, no map rebuild
+  // Leaflet data update
   useEffect(() => {
     if (!leafletRef.current || mapType !== '2d') return;
     displayRegions.forEach(region => {
@@ -669,18 +656,17 @@ export default function EpidemiologicalSimulation() {
       marker.setRadius(Math.sqrt(region.population) / 350);
       marker.getPopup()?.setContent(`
         <b>${region.name}</b><br/>
-        Pop: ${region.population.toLocaleString()}<br/>
-        Infectés: ${Math.round(region.I)} (${(region.I / region.population * 100).toFixed(2)}%)<br/>
-        Décès: ${Math.round(region.D ?? 0)}
+        ${t('simulation.map.popup_pop')} ${region.population.toLocaleString()}<br/>
+        ${t('simulation.map.popup_infected')} ${Math.round(region.I)} (${(region.I / region.population * 100).toFixed(2)}%)<br/>
+        ${t('simulation.map.popup_deaths')} ${Math.round(region.D ?? 0)}
       `);
     });
   }, [displayRegions, mapType, mapSettings.markerOpacity]);
 
-  // Globe init — only when mapType / settings / view change
+  // Globe init
   useEffect(() => {
     if (activeView !== 'map' || mapType !== '3d' || !mapRef.current) return;
 
-    // Proper WebGL cleanup
     const cleanupGlobe = () => {
       if (globeRef.current) {
         try {
@@ -699,7 +685,7 @@ export default function EpidemiologicalSimulation() {
 
     cleanupGlobe();
 
-    const container = document.createElement('div');
+    const container = document.createElement('simulation.div');
     container.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0;';
     mapRef.current.appendChild(container);
     globeContainerRef.current = container;
@@ -719,8 +705,8 @@ export default function EpidemiologicalSimulation() {
       .pointLabel((d: any) => `<div style="background:white;padding:6px;border-radius:6px;font-size:12px"><b>${d.label}</b></div>`)
       .arcsData(displayRegions.flatMap(r =>
         r.connections.map(tid => {
-          const t = displayRegions.find(x => x.id === tid);
-          return t ? { startLat: r.latitude, startLng: r.longitude, endLat: t.latitude, endLng: t.longitude } : null;
+          const t2 = displayRegions.find(x => x.id === tid);
+          return t2 ? { startLat: r.latitude, startLng: r.longitude, endLat: t2.latitude, endLng: t2.longitude } : null;
         }).filter(Boolean)
       ))
       .arcColor(() => '#94a3b8')
@@ -745,7 +731,7 @@ export default function EpidemiologicalSimulation() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapType, mapSettings, activeView]);
 
-  // Globe data update — no recreation, just update pointsData
+  // Globe data update
   useEffect(() => {
     if (!globeRef.current || mapType !== '3d') return;
     globeRef.current.pointsData(displayRegions.map(r => ({
@@ -789,7 +775,7 @@ export default function EpidemiologicalSimulation() {
       );
 
     node.append('title').text(d =>
-      `${d.name}\nInfectés: ${fmt(d.I)} (${(d.I / d.population * 100).toFixed(2)}%)`
+      `${d.name}\n${t('simulation.charts.infected')}: ${fmt(d.I)} (${(d.I / d.population * 100).toFixed(2)}%)`
     );
 
     const labels = svg.append('g').selectAll('text').data(nodes).enter().append('text')
@@ -805,9 +791,6 @@ export default function EpidemiologicalSimulation() {
     });
 
     return () => sim.stop();
-  // Note: displayRegions intentionally excluded from deps here.
-  // The network rebuilds only when: view activates, settings change, or theme changes.
-  // Rebuilding on every playbackDay tick would cause constant flickering.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, networkSettings, isDark]);
 
@@ -825,17 +808,10 @@ export default function EpidemiologicalSimulation() {
     };
   }, [frame, simHistory, totalPop]);
 
-  // Chart data — sliced to playbackDay so curves reveal progressively.
-  // Empty before the first simulation run (hasSimulation = false).
-  // All 4 memos depend on playbackDay so they grow as the slider advances.
-  // STEP keeps max ~120 points regardless of total days for performance.
-  // During playback Chart.js animates at ~150ms; scrubbing uses duration:0.
-
   const chartSlice = useMemo(() => {
     if (!simHistory.length) return [];
     const slice = simHistory.slice(0, playbackDay + 1);
     const STEP  = Math.max(1, Math.floor(simHistory.length / 120));
-    // Always include the last visible point for a smooth leading edge
     return slice.filter((_, i, arr) => i % STEP === 0 || i === arr.length - 1);
   }, [simHistory, playbackDay]);
 
@@ -843,41 +819,41 @@ export default function EpidemiologicalSimulation() {
     if (!chartSlice.length) return { labels: [], datasets: [] };
     const base = { tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, fill: true as const };
     return {
-      labels: chartSlice.map(f => `J${f.day}`),
+      labels: chartSlice.map(f => `${t('simulation.timeline.day_abbr')}${f.day}`),
       datasets: [
-        { ...base, label: 'Susceptibles', data: chartSlice.map(f => f.totals.S), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.05)' },
-        { ...base, label: 'Exposés',      data: chartSlice.map(f => f.totals.E), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)' },
-        { ...base, label: 'Infectés',     data: chartSlice.map(f => f.totals.I), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)' },
-        { ...base, label: 'Rétablis',     data: chartSlice.map(f => f.totals.R), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.05)' },
-        { ...base, label: 'Décès',        data: chartSlice.map(f => f.totals.D), borderColor: '#6b7280', backgroundColor: 'rgba(107,114,128,0.04)' },
+        { ...base, label: t('simulation.charts.susceptible'), data: chartSlice.map(f => f.totals.S), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.05)' },
+        { ...base, label: t('simulation.charts.exposed'),     data: chartSlice.map(f => f.totals.E), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)' },
+        { ...base, label: t('simulation.charts.infected'),    data: chartSlice.map(f => f.totals.I), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)' },
+        { ...base, label: t('simulation.charts.recovered'),   data: chartSlice.map(f => f.totals.R), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.05)' },
+        { ...base, label: t('simulation.charts.deaths'),      data: chartSlice.map(f => f.totals.D), borderColor: '#6b7280', backgroundColor: 'rgba(107,114,128,0.04)' },
       ],
     };
-  }, [chartSlice]);
+  }, [chartSlice, t]);
 
   const newCasesData = useMemo(() => {
     if (!chartSlice.length) return { labels: [], datasets: [] };
     return {
-      labels: chartSlice.map(f => `J${f.day}`),
-      datasets: [{ label: 'Nouveaux cas / jour', data: chartSlice.map(f => f.newCases),
+      labels: chartSlice.map(f => `${t('simulation.timeline.day_abbr')}${f.day}`),
+      datasets: [{ label: t('simulation.charts.new_cases_label'), data: chartSlice.map(f => f.newCases),
         borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.15)',
         fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0 }],
     };
-  }, [chartSlice]);
+  }, [chartSlice, t]);
 
   const rtData = useMemo(() => {
     if (!chartSlice.length) return { labels: [], datasets: [] };
     return {
-      labels: chartSlice.map(f => `J${f.day}`),
-      datasets: [{ label: 'Rt effectif', data: chartSlice.map(f => parseFloat(f.Rt.toFixed(3))),
+      labels: chartSlice.map(f => `${t('simulation.timeline.day_abbr')}${f.day}`),
+      datasets: [{ label: t('simulation.charts.rt_label'), data: chartSlice.map(f => parseFloat(f.Rt.toFixed(3))),
         borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)',
         fill: false, tension: 0.4, borderWidth: 2, pointRadius: 0 }],
     };
-  }, [chartSlice]);
+  }, [chartSlice, t]);
 
   const phaseData = useMemo(() => {
     if (!chartSlice.length) return { datasets: [] };
     return {
-      datasets: [{ label: 'Trajectoire S–I',
+      datasets: [{ label: t('simulation.charts.phase_label'),
         data: chartSlice.filter((_, i) => i % 2 === 0 || i === chartSlice.length - 1).map(f => ({
           x: parseFloat((f.totals.S / totalPop * 100).toFixed(2)),
           y: parseFloat((f.totals.I / totalPop * 100).toFixed(2)),
@@ -885,44 +861,43 @@ export default function EpidemiologicalSimulation() {
         borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.15)',
         showLine: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }],
     };
-  }, [chartSlice, totalPop]);
+  }, [chartSlice, totalPop, t]);
 
-  // Regional snapshot — updates on slider move (current day)
   const regionalData = useMemo(() => ({
     labels: displayRegions.map(r => regionNames[r.id] ?? r.name),
     datasets: [{
-      label: "Taux d'infection (%)",
+      label: t('simulation.charts.infection_rate'),
       data: displayRegions.map(r => r.population > 0
         ? parseFloat((r.I / r.population * 100).toFixed(3)) : 0),
       backgroundColor: displayRegions.map(r => (regionColors[r.id] ?? r.color) + 'cc'),
       borderColor: displayRegions.map(r => regionColors[r.id] ?? r.color),
       borderWidth: 1.5, borderRadius: 6,
     }],
-  }), [displayRegions, regionNames, regionColors]);
+  }), [displayRegions, regionNames, regionColors, t]);
 
   // Export helpers
   const exportCSV = useCallback(() => {
     const rows = simHistory.map(f => ({ day: f.day, ...f.totals, Rt: f.Rt.toFixed(3), newCases: f.newCases }));
     const blob = new Blob([Papa.unparse(rows)], { type: 'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'simulation.csv'; a.click();
+    const a = document.createElement('simulation.a'); a.href = URL.createObjectURL(blob); a.download = 'simulation.csv'; a.click();
   }, [simHistory]);
 
   const exportJSON = useCallback(() => {
     const state = { params, activeModel, interventions, simHistory };
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'simulation.json'; a.click();
+    const a = document.createElement('simulation.a'); a.href = URL.createObjectURL(blob); a.download = 'simulation.json'; a.click();
   }, [params, activeModel, interventions, simHistory]);
 
   // Derived display values for indicators
   const indicatorItems = [
-    { label: 'Jour',            value: String(playbackDay),              },
-    { label: 'Infectés actifs', value: fmt(indicators.infections),     },
-    { label: 'Rt effectif',     value: indicators.Rt.toFixed(2),          },
-    { label: 'Taux d\'attaque', value: `${indicators.attackRate.toFixed(1)}%`,},
-    { label: 'Pic (jour)',       value: String(indicators.peakDay),      },
+    { label: t('simulation.indicators.day'),            value: String(playbackDay),                          accent: INDICATOR_ACCENTS[0] },
+    { label: t('simulation.indicators.active_infected'), value: fmt(indicators.infections),                  accent: INDICATOR_ACCENTS[1] },
+    { label: t('simulation.indicators.rt'),              value: indicators.Rt.toFixed(2),                    accent: INDICATOR_ACCENTS[2] },
+    { label: t('simulation.indicators.attack_rate'),     value: `${indicators.attackRate.toFixed(1)}%`,      accent: INDICATOR_ACCENTS[3] },
+    { label: t('simulation.indicators.peak_day'),        value: String(indicators.peakDay),                  accent: INDICATOR_ACCENTS[4] },
   ];
 
-  // UI theme tokens — mapped to CSS variables from index.css
+  // UI theme tokens
   const UI = {
     bg:      'bg-[#F8FAFC] dark:bg-[#0F172A]',
     card:    'bg-white dark:bg-slate-800/60 border border-border',
@@ -936,28 +911,28 @@ export default function EpidemiologicalSimulation() {
   // Shared timeline slider
   const TimelineSlider = () => (
     <div className={`flex items-center gap-3 px-4 py-2 border-t border-border bg-card`}>
-      <button onClick={() => setPlaybackDay(0)} className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`} title="Début">
+      <button onClick={() => setPlaybackDay(0)} className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`} title={t('simulation.timeline.start_title')}>
         <SkipBack size={14} />
       </button>
       <button onClick={() => setIsPlaying(v => !v)} disabled={isComputing || simHistory.length === 0}
         className="p-1.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition disabled:opacity-40">
         {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
       </button>
-      <button onClick={() => setPlaybackDay(simHistory.length - 1)} className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`} title="Fin">
+      <button onClick={() => setPlaybackDay(simHistory.length - 1)} className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`} title={t('simulation.timeline.end_title')}>
         <SkipForward size={14} />
       </button>
       <div className="flex-1 flex items-center gap-2 min-w-0">
-        <span className={`text-[10px] font-mono ${UI.muted} flex-shrink-0`}>J0</span>
+        <span className={`text-[10px] font-mono ${UI.muted} flex-shrink-0`}>{t('simulation.timeline.day_abbr')}0</span>
         <input type="range" min={0} max={Math.max(0, simHistory.length - 1)} value={playbackDay}
           onChange={e => { setPlaybackDay(Number(e.target.value)); setIsPlaying(false); }}
           className="flex-1 h-1.5 rounded-full accent-blue-600 cursor-pointer" />
-        <span className={`text-[10px] font-mono ${UI.muted} flex-shrink-0`}>J{simHistory.length - 1}</span>
+        <span className={`text-[10px] font-mono ${UI.muted} flex-shrink-0`}>{t('simulation.timeline.day_abbr')}{simHistory.length - 1}</span>
       </div>
       <span className="text-xs font-bold text-primary font-mono flex-shrink-0 w-12 text-right">
-        J{playbackDay}
+        {t('simulation.timeline.day_abbr')}{playbackDay}
       </span>
       <div className="hidden sm:flex items-center gap-2">
-        <span className={`text-[9px] uppercase tracking-wider ${UI.muted}`}>×</span>
+        <span className={`text-[9px] uppercase tracking-wider ${UI.muted}`}>{t('simulation.timeline.speed_label')}</span>
         <input type="range" min={1} max={15} value={speed}
           onChange={e => setSpeed(Number(e.target.value))}
           className="w-16 h-1 accent-blue-600 cursor-pointer" />
@@ -965,7 +940,7 @@ export default function EpidemiologicalSimulation() {
       </div>
       {/* Simulation duration selector */}
       <div className="hidden md:flex items-center gap-1.5 border-l border-border pl-3">
-        <span className={`text-[9px] uppercase tracking-wider ${UI.muted} flex-shrink-0`}>Jours</span>
+        <span className={`text-[9px] uppercase tracking-wider ${UI.muted} flex-shrink-0`}>{t('simulation.timeline.days_label')}</span>
         <div className="flex bg-muted rounded-lg p-0.5 gap-0.5">
           {[90, 180, 365, 730].map(d => (
             <button key={d} onClick={() => {
@@ -973,7 +948,7 @@ export default function EpidemiologicalSimulation() {
               if (hasSimulation) runSimulation({ ...params, model: activeModel }, interventions, undefined, d);
             }}
               className={`px-2 py-0.5 rounded-md text-[9px] font-bold transition-all ${simDays === d ? 'bg-background text-primary shadow-sm' : UI.muted}`}>
-              {d < 365 ? `${d}j` : d === 365 ? '1an' : '2ans'}
+              {d < 365 ? t('simulation.timeline.days_short', { count: d }) : d === 365 ? t('simulation.timeline.1_year') : t('simulation.timeline.2_years')}
             </button>
           ))}
         </div>
@@ -981,10 +956,10 @@ export default function EpidemiologicalSimulation() {
     </div>
   );
 
-  // Base chart options — memoized, recomputed only when theme changes
+  // Base chart options
   const chartOpts = useMemo(() => chartBase(isDark), [isDark]);
 
-  // Rt chart: adds threshold line at Rt=1 and vertical cursor for playback day
+  // Rt chart options
   const rtOpts = useMemo(() => ({
     ...chartBase(isDark),
     plugins: {
@@ -996,16 +971,16 @@ export default function EpidemiologicalSimulation() {
             yMin: 1, yMax: 1,
             borderColor: '#ef4444', borderWidth: 1.5, borderDash: [4, 4],
             label: {
-              content: 'Rt = 1', display: true, position: 'end' as const,
+              content: t('simulation.charts.rt_threshold'), display: true, position: 'end' as const,
               color: '#ef4444', font: { size: 10 },
             },
           },
         },
       },
     },
-  }), [isDark]);
+  }), [isDark, t]);
 
-    // Memoized bar options (legend hidden + % callback)
+  // Memoized bar options
   const barOpts = useMemo(() => ({
     ...chartOpts,
     plugins: { ...chartOpts.plugins, legend: { display: false } },
@@ -1015,57 +990,54 @@ export default function EpidemiologicalSimulation() {
     },
   }), [chartOpts]);
 
-  // Memoized scatter options with axis titles
+  // Memoized scatter options
   const phaseOpts = useMemo(() => ({
     ...chartOpts,
     scales: {
-      x: { ...chartOpts.scales.x, title: { display: true, text: '% Susceptibles', font: { size: 9 }, color: isDark ? '#64748b' : '#6b7280' } },
-      y: { ...chartOpts.scales.y, title: { display: true, text: '% Infectés', font: { size: 9 }, color: isDark ? '#64748b' : '#6b7280' } },
+      x: { ...chartOpts.scales.x, title: { display: true, text: t('simulation.charts.pct_susceptible'), font: { size: 9 }, color: isDark ? '#64748b' : '#6b7280' } },
+      y: { ...chartOpts.scales.y, title: { display: true, text: t('simulation.charts.pct_infected'), font: { size: 9 }, color: isDark ? '#64748b' : '#6b7280' } },
     },
-  }), [chartOpts, isDark]);
+  }), [chartOpts, isDark, t]);
 
-  // ChartsPanel — uses only memoized data + options, zero new object references
+  // ChartsPanel
   const ChartsPanelContent = () => {
     if (!hasSimulation) return (
       <div className="flex-1 flex items-center justify-center p-8 text-center">
         <div>
           <BarChart2 size={32} className={`mx-auto mb-3 ${UI.muted} opacity-40`} />
-          <p className={`text-sm ${UI.muted}`}>Lancez une simulation pour voir les graphiques.</p>
+          <p className={`text-sm ${UI.muted}`}>{t('simulation.charts.empty')}</p>
         </div>
       </div>
     );
-    // position:relative is REQUIRED on every chart container — Chart.js responsive
-    // mode reads the parent dimensions to size the canvas. Without it the canvas
-    // gets 0×0 and nothing renders.
     return (
       <div className="p-4 space-y-4">
         <div className={`${UI.card} rounded-2xl p-4`} style={{ height: 240 }}>
-          <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>Courbes épidémiologiques</p>
+          <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>{t('simulation.charts.epidemic_curves')}</p>
           <div style={{ position: 'relative', height: 190 }}>
             <Line key={`epi-${simRunId}`} data={epidemicCurveData} options={chartOpts} updateMode="none" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className={`${UI.card} rounded-2xl p-4`} style={{ height: 200 }}>
-            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>Rt effectif</p>
+            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>{t('simulation.charts.rt_section')}</p>
             <div style={{ position: 'relative', height: 150 }}>
               <Line key={`rt-${simRunId}`} data={rtData} options={rtOpts as any} />
             </div>
           </div>
           <div className={`${UI.card} rounded-2xl p-4`} style={{ height: 200 }}>
-            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>Nouveaux cas / jour</p>
+            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>{t('simulation.charts.new_cases_section')}</p>
             <div style={{ position: 'relative', height: 150 }}>
               <Line key={`nc-${simRunId}`} data={newCasesData} options={chartOpts} />
             </div>
           </div>
           <div className={`${UI.card} rounded-2xl p-4`} style={{ height: 200 }}>
-            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>Portrait de phase S–I</p>
+            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>{t('simulation.charts.phase_portrait')}</p>
             <div style={{ position: 'relative', height: 150 }}>
               <Scatter key={`ph-${simRunId}`} data={phaseData} options={phaseOpts as any} />
             </div>
           </div>
           <div className={`${UI.card} rounded-2xl p-4`} style={{ height: 200 }}>
-            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>Taux par région — J{playbackDay}</p>
+            <p className={`text-xs font-bold ${UI.muted} uppercase tracking-wider mb-3`}>{t('simulation.charts.regional_rate', { day: playbackDay })}</p>
             <div style={{ position: 'relative', height: 150 }}>
               <Bar key={`rg-${simRunId}`} data={regionalData} options={barOpts as any} />
             </div>
@@ -1082,7 +1054,7 @@ export default function EpidemiologicalSimulation() {
       <table className="w-full text-xs">
         <thead className={`sticky top-0 bg-muted`}>
           <tr>
-            {['Région', 'S', 'E', 'I', 'R', 'D', 'Taux'].map(h => (
+            {[t('simulation.table.col_region'), 'S', 'E', 'I', 'R', 'D', t('simulation.table.col_rate')].map(h => (
               <th key={h} className={`px-3 py-2 text-left font-bold ${UI.muted} uppercase tracking-wider text-[9px]`}>{h}</th>
             ))}
           </tr>
@@ -1111,7 +1083,7 @@ export default function EpidemiologicalSimulation() {
   // Regions side panel
   const RegionsPanel = () => (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-4`}>Régions actives</p>
+      <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-4`}>{t('simulation.regions.title')}</p>
       {displayRegions.map(region => (
         <div key={region.id} className={`${UI.card} rounded-2xl p-3`}>
           <div className="flex items-center justify-between mb-1">
@@ -1124,13 +1096,13 @@ export default function EpidemiologicalSimulation() {
               style={{ backgroundColor: regionColors[region.id] ?? region.color }} />
           </div>
           <div className={`flex justify-between text-[10px] ${UI.muted} mb-2`}>
-            <span>Pop: {region.population.toLocaleString()}</span>
-            <span className="text-rose-500 font-bold">{(region.I / region.population * 100).toFixed(3)}% infectés</span>
+            <span>{region.population.toLocaleString()}</span>
+            <span className="text-rose-500 font-bold">{t('simulation.regions.infected_pct', { pct: (region.I / region.population * 100).toFixed(3) })}</span>
           </div>
           <button
             onClick={() => setSelectedRegionId(selectedRegionId === region.id ? null : region.id)}
             className={`text-[10px] font-bold text-primary hover:underline`}>
-            {selectedRegionId === region.id ? 'Fermer' : 'Couleur'}
+            {selectedRegionId === region.id ? t('simulation.actions.close_color') : t('simulation.actions.color')}
           </button>
           {selectedRegionId === region.id && (
             <div className="mt-3 flex justify-center scale-90 origin-top">
@@ -1149,7 +1121,7 @@ export default function EpidemiologicalSimulation() {
     <div className="flex-1 overflow-y-auto p-4 space-y-5">
       {/* Model selector */}
       <div>
-        <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Modèle</p>
+        <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>{t('simulation.controls.model')}</p>
         <div className="grid grid-cols-2 gap-1.5">
           {(['SIR', 'SEIR', 'SEIRD', 'SEIQRD'] as ModelType[]).map(m => (
             <button key={m} onClick={() => {
@@ -1165,12 +1137,12 @@ export default function EpidemiologicalSimulation() {
 
       {/* Scenario */}
       <div>
-        <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Scénario</p>
+        <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>{t('simulation.controls.scenario')}</p>
         <div className="grid grid-cols-1 gap-1.5">
           {SCENARIOS.map(sc => (
             <button key={sc.name} onClick={() => applyScenario(sc.name)}
               className={`py-2 px-3 rounded-xl text-xs font-medium text-left transition-all ${selectedScenario === sc.name ? 'bg-primary text-primary-foreground' : `${UI.card} ${UI.muted}`}`}>
-              {sc.name}
+              {t(`scenario.${sc.name}`)}
             </button>
           ))}
         </div>
@@ -1179,9 +1151,9 @@ export default function EpidemiologicalSimulation() {
       {/* Params summary */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Paramètres</p>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>{t('simulation.controls.params')}</p>
           <button onClick={() => { setEditParams(params); setShowParamsModal(true); }}
-            className="text-[10px] text-primary font-bold">Modifier</button>
+            className="text-[10px] text-primary font-bold">{t('simulation.actions.edit')}</button>
         </div>
         <div className="grid grid-cols-2 gap-2">
           {[
@@ -1201,19 +1173,19 @@ export default function EpidemiologicalSimulation() {
       {/* Interventions */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Interventions</p>
+          <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>{t('simulation.controls.interventions')}</p>
           <button onClick={() => setShowInterventionModal(true)}
             className="text-[10px] text-primary font-bold flex items-center gap-0.5">
-            <Plus size={10} /> Ajouter
+            <Plus size={10} /> {t('simulation.actions.add')}
           </button>
         </div>
         {interventions.length === 0
-          ? <p className={`text-xs ${UI.muted}`}>Aucune intervention.</p>
+          ? <p className={`text-xs ${UI.muted}`}>{t('simulation.controls.no_interventions')}</p>
           : interventions.map(i => (
             <div key={i.id} className={`${UI.card} rounded-xl p-2.5 flex items-center justify-between mb-1.5`}>
               <div>
-                <p className="text-xs font-semibold">{i.type}</p>
-                <p className={`text-[10px] ${UI.muted}`}>J{i.startDay} — {i.effectiveness}%</p>
+                <p className="text-xs font-semibold">{t(`intervention_modal.types.${i.type}`)}</p>
+                <p className={`text-[10px] ${UI.muted}`}>{t('simulation.intervention_modal.intervention_day', { day: i.startDay, pct: i.effectiveness })}</p>
               </div>
               <button onClick={() => setInterventions(prev => prev.filter(x => x.id !== i.id))}
                 className="text-rose-400 hover:text-rose-600 p-1"><X size={12} /></button>
@@ -1224,13 +1196,13 @@ export default function EpidemiologicalSimulation() {
 
       {/* Export */}
       <div>
-        <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Export</p>
+        <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>{t('simulation.controls.export')}</p>
         <div className="flex gap-2">
           <button onClick={exportCSV} className={`flex-1 py-2 ${UI.card} rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 ${UI.muted}`}>
-            <Download size={12} /> CSV
+            <Download size={12} /> {t('simulation.actions.csv')}
           </button>
           <button onClick={exportJSON} className={`flex-1 py-2 ${UI.card} rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 ${UI.muted}`}>
-            <Download size={12} /> JSON
+            <Download size={12} /> {t('simulation.actions.json')}
           </button>
         </div>
       </div>
@@ -1241,10 +1213,10 @@ export default function EpidemiologicalSimulation() {
   const MobileNav = () => (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 py-1 z-50">
       {([
-        { id: 'map',      icon: MapIcon,   label: 'Carte'   },
-        { id: 'charts',   icon: BarChart2, label: 'Stats'   },
-        { id: 'regions',  icon: Users,     label: 'Régions' },
-        { id: 'controls', icon: Sliders,   label: 'Réglages'},
+        { id: 'map',      icon: MapIcon,   label: t('simulation.mobile_nav.map')      },
+        { id: 'charts',   icon: BarChart2, label: t('simulation.mobile_nav.charts')   },
+        { id: 'regions',  icon: Users,     label: t('simulation.mobile_nav.regions')  },
+        { id: 'controls', icon: Sliders,   label: t('simulation.mobile_nav.controls') },
       ] as const).map(tab => (
         <button key={tab.id} onClick={() => setMobileTab(tab.id)}
           className={`flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-[10px] transition-all
@@ -1256,26 +1228,26 @@ export default function EpidemiologicalSimulation() {
     </nav>
   );
 
-  // Empty state — shown when no simulation has been run yet
+  // Empty state
   const EmptyState = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center select-none">
       <div className={`w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center mb-5`}>
-        <ChartScatter   size={28} className="text-primary" />
+        <ChartScatter size={28} className="text-primary" />
       </div>
-      <h2 className="text-xl font-black mb-2">Démarrer une simulation</h2>
+      <h2 className="text-xl font-black mb-2">{t('simulation.empty_state.title')}</h2>
       <p className={`text-sm ${UI.muted} max-w-xs mb-8`}>
-        Choisissez un exemple de maladie réelle ou un scénario pour lancer la simulation et visualiser la propagation épidémique.
+        {t('simulation.empty_state.description')}
       </p>
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={() => setShowExamplesModal(true)}
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-2xl text-sm font-bold shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all">
-          <Database  size={15} /> Charger un exemple
+          <Database size={15} /> {t('simulation.empty_state.load_example')}
         </button>
         <button
           onClick={() => applyScenario('Base')}
           className={`flex items-center gap-2 px-5 py-2.5 ${UI.card} rounded-2xl text-sm font-medium ${UI.muted} hover:opacity-80 transition-all`}>
-          <Play size={14} fill="currentColor" /> Scénario par défaut
+          <Play size={14} fill="currentColor" /> {t('simulation.empty_state.default_scenario')}
         </button>
       </div>
       {/* Quick example chips */}
@@ -1284,7 +1256,7 @@ export default function EpidemiologicalSimulation() {
           <button key={ex.id} onClick={() => loadExample(ex)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all border ${UI.card} hover:border-primary/40 hover:text-primary`}>
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ex.iconColor }} />
-            {ex.name}
+            {t(`simulation.disease.${ex.id}.name`)}
           </button>
         ))}
       </div>
@@ -1299,11 +1271,11 @@ export default function EpidemiologicalSimulation() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-xs">
-            <Link href="/" className={`${UI.muted} hover:text-primary transition-colors`}>Accueil</Link>
+            <Link href="/" className={`${UI.muted} hover:text-primary transition-colors`}>{t('simulation.nav.home')}</Link>
             <ChevronRight size={12} className={UI.muted} />
-            <Link href="/workspace" className={`${UI.muted} hover:text-primary transition-colors`}>Tableau de bord</Link>
+            <Link href="/workspace" className={`${UI.muted} hover:text-primary transition-colors`}>{t('simulation.nav.dashboard')}</Link>
             <ChevronRight size={12} className={UI.muted} />
-            <span className="font-semibold">Simulation</span>
+            <span className="font-semibold">{t('simulation.nav.simulation')}</span>
           </nav>
 
           {/* Desktop model selector */}
@@ -1323,23 +1295,23 @@ export default function EpidemiologicalSimulation() {
           <div className="flex items-center gap-2 flex-wrap">
             {/* Scenario selector */}
             <div className="relative flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-1.5">
-              <span className={`text-[9px] font-bold uppercase tracking-wider ${UI.muted} border-r border-border pr-2`}>Scénario</span>
+              <span className={`text-[9px] font-bold uppercase tracking-wider ${UI.muted} border-r border-border pr-2`}>{t('simulation.header.scenario_label')}</span>
               <select value={selectedScenario}
                 onChange={e => { setSelectedScenario(e.target.value); applyScenario(e.target.value); }}
                 className="appearance-none  text-xs font-semibold pr-6 outline-none cursor-pointer">
-                {SCENARIOS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                {SCENARIOS.map(s => <option key={s.name} value={s.name}>{t(`scenario.${s.name}`)}</option>)}
               </select>
               <ChevronDown size={12} className={`absolute right-2 pointer-events-none ${UI.muted}`} />
             </div>
 
             <button onClick={() => { setEditParams(params); setIsComparisonParams(false); setShowParamsModal(true); }}
               className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs font-medium ${UI.muted} ${UI.hover} transition-all`}>
-              <Settings size={13} /> Paramètres
+              <Settings size={13} /> {t('simulation.header.params_btn')}
             </button>
 
             <button onClick={() => setShowInterventionModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-medium hover:opacity-90 transition-all shadow-sm">
-              <Plus size={13} /> Intervention
+              <Plus size={13} /> {t('simulation.header.intervention_btn')}
             </button>
 
             {switchable && (
@@ -1351,7 +1323,7 @@ export default function EpidemiologicalSimulation() {
             <button onClick={() => setShowExamplesModal(true)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all
                 ${loadedExample ? 'bg-primary/10 text-primary border border-primary/30' : `${UI.card} ${UI.muted} ${UI.hover}`}`}>
-              <Database  size={13} /> Exemples
+              <Database size={13} /> {t('simulation.header.examples_btn')}
             </button>
             <button onClick={() => setShowExplanationModal(true)} className={`p-2 ${UI.card} rounded-xl ${UI.muted} ${UI.hover} transition-all`}>
               <Info size={15} />
@@ -1377,10 +1349,10 @@ export default function EpidemiologicalSimulation() {
         {/* View tabs */}
         <div className="flex bg-muted p-1 rounded-xl">
           {([
-            { id: 'map',     icon: MapIcon,   label: 'Carte'   },
-            { id: 'charts',  icon: BarChart2, label: 'Graphiques' },
-            { id: 'table',   icon: Table2,    label: 'Tableau' },
-            { id: 'network', icon: Network,   label: 'Réseau'  },
+            { id: 'map',     icon: MapIcon,   label: t('simulation.views.map')     },
+            { id: 'charts',  icon: BarChart2, label: t('simulation.views.charts')  },
+            { id: 'table',   icon: Table2,    label: t('simulation.views.table')   },
+            { id: 'network', icon: Network,   label: t('simulation.views.network') },
           ] as const).map(v => (
             <button key={v.id} onClick={() => setActiveView(v.id)}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${activeView === v.id ? 'bg-background text-foreground shadow-sm' : UI.muted}`}>
@@ -1393,18 +1365,18 @@ export default function EpidemiologicalSimulation() {
         <div className="flex items-center gap-2">
           {isComputing && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
           <button onClick={exportCSV} className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}>
-            <Download size={12} /> CSV
+            <Download size={12} /> {t('simulation.actions.csv')}
           </button>
           <button onClick={exportJSON} className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}>
-            <Download size={12} /> JSON
+            <Download size={12} /> {t('simulation.actions.json')}
           </button>
           <button onClick={() => { setEditParams(params); setIsComparisonParams(true); setShowParamsModal(true); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${isComparing ? 'bg-indigo-600 text-white' : `${UI.card} ${UI.muted}`}`}>
-            <TrendingUp size={12} /> Comparer
+            <TrendingUp size={12} /> {t('simulation.actions.compare')}
           </button>
           <button onClick={() => setShowDataModal(true)}
             className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}>
-            <Upload size={12} /> Importer
+            <Upload size={12} /> {t('simulation.actions.import')}
           </button>
         </div>
       </div>
@@ -1424,10 +1396,10 @@ export default function EpidemiologicalSimulation() {
             <div className="flex-1 relative overflow-hidden mx-3 mb-3 rounded-3xl border border-border">
               {/* Map type toggle */}
               <div className="absolute top-3 left-3 z-20 flex bg-card/90 backdrop-blur-sm border border-border rounded-xl p-0.5">
-                {(['2d', '3d'] as MapType[]).map(t => (
-                  <button key={t} onClick={() => setMapType(t)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${mapType === t ? 'bg-primary text-primary-foreground shadow-sm' : UI.muted}`}>
-                    {t === '2d' ? 'Plat' : 'Globe'}
+                {(['2d', '3d'] as MapType[]).map(tp => (
+                  <button key={tp} onClick={() => setMapType(tp)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${mapType === tp ? 'bg-primary text-primary-foreground shadow-sm' : UI.muted}`}>
+                    {tp === '2d' ? t('simulation.map.flat') : t('simulation.map.globe')}
                   </button>
                 ))}
               </div>
@@ -1439,23 +1411,23 @@ export default function EpidemiologicalSimulation() {
               {/* Settings side panel */}
               <div className={`absolute top-0 right-0 h-full w-72 bg-card/95 backdrop-blur-2xl border-l border-border z-10 transform transition-transform duration-300 shadow-2xl ${showSidePanel ? 'translate-x-0' : 'translate-x-full'}`}>
                 <div className="p-6 pt-16 h-full overflow-y-auto space-y-6">
-                  <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Vue — Carte</p>
+                  <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>{t('simulation.map.view_label')}</p>
                   <div>
-                    <p className={`text-xs font-medium ${UI.muted} mb-2`}>Projection</p>
+                    <p className={`text-xs font-medium ${UI.muted} mb-2`}>{t('simulation.map.projection')}</p>
                     <div className="grid grid-cols-2 gap-1.5 p-1 bg-muted rounded-xl">
-                      {(['2d', '3d'] as MapType[]).map(t => (
-                        <button key={t} onClick={() => setMapType(t)}
-                          className={`py-1.5 text-xs rounded-lg transition-all ${mapType === t ? 'bg-background text-primary font-bold shadow-sm' : UI.muted}`}>
-                          {t === '2d' ? 'Plat (2D)' : 'Globe (3D)'}
+                      {(['2d', '3d'] as MapType[]).map(tp => (
+                        <button key={tp} onClick={() => setMapType(tp)}
+                          className={`py-1.5 text-xs rounded-lg transition-all ${mapType === tp ? 'bg-background text-primary font-bold shadow-sm' : UI.muted}`}>
+                          {tp === '2d' ? t('simulation.map.flat_2d') : t('simulation.map.globe_3d')}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <p className={`text-xs font-medium ${UI.muted} mb-2`}>Thème carte</p>
+                    <p className={`text-xs font-medium ${UI.muted} mb-2`}>{t('simulation.map.tile_theme')}</p>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {([['light','Clair'],['dark','Sombre'],['satellite','Sat.']] as const).map(([v, l]) => (
-                        <button key={v} onClick={() => setMapSettings(p => ({ ...p, tileTheme: v }))}
+                      {([['light', t('simulation.map.light')], ['dark', t('simulation.map.dark')], ['satellite', t('simulation.map.satellite')]] as [string, string][]).map(([v, l]) => (
+                        <button key={v} onClick={() => setMapSettings(p => ({ ...p, tileTheme: v as 'light' | 'dark' | 'satellite' }))}
                           className={`py-1.5 text-xs rounded-xl transition-all ${mapSettings.tileTheme === v ? 'bg-primary/10 text-primary font-bold' : `bg-muted ${UI.muted}`}`}>
                           {l}
                         </button>
@@ -1463,19 +1435,18 @@ export default function EpidemiologicalSimulation() {
                     </div>
                   </div>
                   <div>
-                    <p className={`text-xs font-medium ${UI.muted} mb-1`}>Opacité marqueurs</p>
+                    <p className={`text-xs font-medium ${UI.muted} mb-1`}>{t('simulation.map.opacity')}</p>
                     <input type="range" min={0.2} max={1} step={0.05} value={mapSettings.markerOpacity}
                       onChange={e => setMapSettings(p => ({ ...p, markerOpacity: Number(e.target.value) }))}
                       className="w-full h-1.5 accent-blue-600" />
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className={`text-xs ${UI.muted}`}>Étiquettes</span>
+                    <span className={`text-xs ${UI.muted}`}>{t('simulation.map.labels_toggle')}</span>
                     <button onClick={() => setMapSettings(p => ({ ...p, showLabels: !p.showLabels }))}
                       className={`w-10 h-5 rounded-full transition-all ${mapSettings.showLabels ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
                       <div className={`w-3.5 h-3.5 bg-white rounded-full shadow transition-transform mx-0.5 ${mapSettings.showLabels ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
                   </div>
-                  {/* Network settings when in network view */}
                 </div>
               </div>
               {/* Map container */}
@@ -1494,7 +1465,7 @@ export default function EpidemiologicalSimulation() {
           {activeView === 'table' && (
             <div className="flex-1 mx-3 mb-3 rounded-3xl border border-border overflow-hidden">
               <div className={`px-4 py-3 border-b border-border`}>
-                <p className="text-sm font-bold">Données par région — J{playbackDay}</p>
+                <p className="text-sm font-bold">{t('simulation.table.title', { day: playbackDay })}</p>
               </div>
               {TablePanel()}
             </div>
@@ -1505,9 +1476,9 @@ export default function EpidemiologicalSimulation() {
             <div className="flex-1 mx-3 mb-3 rounded-3xl border border-border overflow-hidden relative">
               <svg ref={svgRef} className="w-full h-full" />
               <div className={`absolute bottom-4 right-4 ${UI.card} rounded-2xl p-3 space-y-1.5`}>
-                {[['#ef4444','> 1%'],['#f59e0b','0.1–1%'],['—','< 0.1%']].map(([c, l]) => (
+                {[['#ef4444', t('simulation.network.high')], ['#f59e0b', t('simulation.network.medium')], ['-', t('simulation.network.low')]].map(([c, l]) => (
                   <div key={l} className="flex items-center gap-2 text-xs">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c === '—' ? '#3b82f6' : c }} />
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c === '-' ? '#3b82f6' : c }} />
                     <span className={UI.muted}>{l}</span>
                   </div>
                 ))}
@@ -1524,7 +1495,7 @@ export default function EpidemiologicalSimulation() {
             </div>
           )}
 
-          {/* Timeline slider — always visible at bottom of main panel */}
+          {/* Timeline slider */}
           <div className="mx-3 mb-3 rounded-2xl border border-border overflow-hidden">
             {TimelineSlider()}
           </div>
@@ -1535,7 +1506,7 @@ export default function EpidemiologicalSimulation() {
           {/* Params card */}
           <div className={`${UI.card} rounded-3xl p-5 flex-shrink-0`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-black tracking-tight">Analyse {activeModel}</h2>
+              <h2 className="text-base font-black tracking-tight">{t('simulation.params_card.title', { model: activeModel })}</h2>
               <button onClick={() => { setEditParams(params); setShowParamsModal(true); }}
                 className={`p-1.5 ${UI.hover} rounded-xl transition-colors ${UI.muted}`}>
                 <Settings size={14} />
@@ -1543,10 +1514,10 @@ export default function EpidemiologicalSimulation() {
             </div>
             <div className="grid grid-cols-2 gap-2 mb-4">
               {[
-                { label: 'β Trans.', value: params.beta, cls: 'bg-amber-500/10 text-amber-600' },
-                { label: 'γ Guérison', value: params.gamma, cls: 'bg-emerald-500/10 text-emerald-600' },
-                { label: 'σ Incubation', value: params.sigma, cls: 'bg-blue-500/10 text-blue-600' },
-                { label: 'μ Mortalité', value: params.mu, cls: 'bg-rose-500/10 text-rose-600' },
+                { label: t('simulation.params_card.beta'),  value: params.beta,  cls: 'bg-amber-500/10 text-amber-600' },
+                { label: t('simulation.params_card.gamma'), value: params.gamma, cls: 'bg-emerald-500/10 text-emerald-600' },
+                { label: t('simulation.params_card.sigma'), value: params.sigma, cls: 'bg-blue-500/10 text-blue-600' },
+                { label: t('simulation.params_card.mu'),    value: params.mu,    cls: 'bg-rose-500/10 text-rose-600' },
               ].map(p => (
                 <div key={p.label} className={`${p.cls} rounded-2xl p-2.5`}>
                   <p className="text-[9px] uppercase font-bold opacity-70 mb-0.5">{p.label}</p>
@@ -1558,12 +1529,12 @@ export default function EpidemiologicalSimulation() {
             {/* Active interventions */}
             {interventions.length > 0 && (
               <div>
-                <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>Interventions</p>
+                <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>{t('simulation.controls.interventions')}</p>
                 {interventions.map(i => (
                   <div key={i.id} className={`flex items-center justify-between p-2 bg-muted rounded-xl mb-1.5`}>
                     <div>
-                      <p className="text-xs font-semibold">{i.type}</p>
-                      <p className={`text-[10px] ${UI.muted}`}>J{i.startDay} — {i.effectiveness}%</p>
+                      <p className="text-xs font-semibold">{t(`intervention_modal.types.${i.type}`)}</p>
+                      <p className={`text-[10px] ${UI.muted}`}>{t('simulation.intervention_modal.intervention_day', { day: i.startDay, pct: i.effectiveness })}</p>
                     </div>
                     <button onClick={() => setInterventions(prev => prev.filter(x => x.id !== i.id))}
                       className="text-rose-400 hover:text-rose-600 p-0.5"><X size={12} /></button>
@@ -1576,7 +1547,7 @@ export default function EpidemiologicalSimulation() {
           {/* Regions card */}
           <div className={`${UI.card} rounded-3xl flex-1 overflow-hidden`}>
             <div className="px-5 pt-5 pb-2">
-              <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>Régions</p>
+              <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>{t('simulation.regions.title')}</p>
             </div>
             <div className="overflow-y-auto px-4 pb-4 space-y-2" style={{ maxHeight: '360px' }}>
               {displayRegions.map(region => (
@@ -1589,9 +1560,9 @@ export default function EpidemiologicalSimulation() {
                       style={{ backgroundColor: regionColors[region.id] ?? region.color }} />
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className={`text-[10px] ${UI.muted}`}>{fmt(region.I)} infectés</span>
+                    <span className={`text-[10px] ${UI.muted}`}>{t('simulation.regions.infected_count', { count: fmt(region.I) })}</span>
                     <button onClick={() => setSelectedRegionId(selectedRegionId === region.id ? null : region.id)}
-                      className="text-[10px] text-primary font-bold hover:underline">Couleur</button>
+                      className="text-[10px] text-primary font-bold hover:underline">{t('simulation.actions.color')}</button>
                   </div>
                   {selectedRegionId === region.id && (
                     <div className="mt-3 flex justify-center scale-[0.85] origin-top">
@@ -1616,10 +1587,10 @@ export default function EpidemiologicalSimulation() {
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-1 relative overflow-hidden mx-2 mt-1 rounded-2xl border border-border">
                 <div className="absolute top-2 left-2 z-20 flex bg-card/90 backdrop-blur-sm border border-border rounded-xl p-0.5">
-                  {(['2d', '3d'] as MapType[]).map(t => (
-                    <button key={t} onClick={() => setMapType(t)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${mapType === t ? 'bg-primary text-primary-foreground' : UI.muted}`}>
-                      {t === '2d' ? 'Plat' : 'Globe'}
+                  {(['2d', '3d'] as MapType[]).map(tp => (
+                    <button key={tp} onClick={() => setMapType(tp)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${mapType === tp ? 'bg-primary text-primary-foreground' : UI.muted}`}>
+                      {tp === '2d' ? t('simulation.map.flat') : t('simulation.map.globe')}
                     </button>
                   ))}
                 </div>
@@ -1653,10 +1624,10 @@ export default function EpidemiologicalSimulation() {
         </div>
       </div>
 
-      {/* Mobile bottom nav — fixed, always visible */}
+      {/* Mobile bottom nav */}
       {MobileNav()}
 
-      {/* Modal — Params */}
+      {/* Modal - Params */}
       <AnimatePresence>
         {showParamsModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1667,16 +1638,21 @@ export default function EpidemiologicalSimulation() {
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
-                  <h2 className="text-lg font-black">Paramètres {isComparisonParams ? '— Comparaison' : ''}</h2>
-                  <p className={`text-xs ${UI.muted} mt-0.5`}>Paramètres épidémiologiques du modèle {activeModel}</p>
+                  <h2 className="text-lg font-black">{isComparisonParams ? t('simulation.params_modal.title_comparison') : t('simulation.params_modal.title')}</h2>
+                  <p className={`text-xs ${UI.muted} mt-0.5`}>{t('simulation.params_modal.subtitle', { model: activeModel })}</p>
                 </div>
                 <button onClick={() => setShowParamsModal(false)} className={`p-2 ${UI.hover} rounded-xl ${UI.muted}`}><X size={16} /></button>
               </div>
               <div className="p-6 grid grid-cols-2 gap-5">
                 {(Object.entries(editParams).filter(([k]) => !['model'].includes(k)) as [string, number][]).map(([key, value]) => {
                   const labels: Record<string, string> = {
-                    beta: 'β — Transmission', gamma: 'γ — Guérison', sigma: 'σ — Incubation',
-                    mu: 'μ — Mortalité', delta: 'δ — Quarantaine', theta: 'θ — Sortie Q', mobility: 'Mobilité',
+                    beta:     t('simulation.params_modal.beta'),
+                    gamma:    t('simulation.params_modal.gamma'),
+                    sigma:    t('simulation.params_modal.sigma'),
+                    mu:       t('simulation.params_modal.mu'),
+                    delta:    t('simulation.params_modal.delta'),
+                    theta:    t('simulation.params_modal.theta'),
+                    mobility: t('simulation.params_modal.mobility'),
                   };
                   return (
                     <div key={key}>
@@ -1696,7 +1672,7 @@ export default function EpidemiologicalSimulation() {
               <div className="flex justify-end gap-3 p-6 pt-0">
                 <button onClick={() => setShowParamsModal(false)}
                   className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>
-                  Annuler
+                  {t('simulation.actions.cancel')}
                 </button>
                 <button onClick={() => {
                   if (isComparisonParams) {
@@ -1712,7 +1688,7 @@ export default function EpidemiologicalSimulation() {
                   setShowParamsModal(false);
                 }}
                   className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-bold hover:opacity-90 transition-all">
-                  Appliquer
+                  {t('simulation.actions.apply')}
                 </button>
               </div>
             </motion.div>
@@ -1720,7 +1696,7 @@ export default function EpidemiologicalSimulation() {
         )}
       </AnimatePresence>
 
-      {/* Modal — Intervention */}
+      {/* Modal - Intervention */}
       <AnimatePresence>
         {showInterventionModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1730,30 +1706,30 @@ export default function EpidemiologicalSimulation() {
               className={`${UI.card} rounded-3xl w-full bg-white dark:bg-slate-900 max-w-md shadow-2xl`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
-                <h2 className="text-lg font-black">Nouvelle Intervention</h2>
+                <h2 className="text-lg font-black">{t('simulation.intervention_modal.title')}</h2>
                 <button onClick={() => setShowInterventionModal(false)} className={`p-2 ${UI.hover} rounded-xl ${UI.muted}`}><X size={16} /></button>
               </div>
               <div className="p-6 space-y-5">
                 <div>
-                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>Type</label>
+                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>{t('simulation.intervention_modal.type_label')}</label>
                   <select value={newIntervention.type}
                     onChange={e => setNewIntervention(p => ({ ...p, type: e.target.value }))}
                     className={`w-full px-3 py-2 ${UI.input} rounded-xl text-sm outline-none`}>
-                    {['Confinement','Vaccination','Distanciation','Masques','Fermeture écoles'].map(t => (
-                      <option key={t} value={t}>{t}</option>
+                    {['Confinement','Vaccination','Distanciation','Masques','Fermeture écoles'].map(intType => (
+                      <option key={intType} value={intType}>{t(`intervention_modal.types.${intType}`)}</option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <label className={`block text-xs font-medium ${UI.muted} mb-2`}>
-                    Efficacité — <span className="font-bold text-foreground">{newIntervention.effectiveness}%</span>
+                    {t('simulation.intervention_modal.effectiveness_prefix')} <span className="font-bold text-foreground">{newIntervention.effectiveness}%</span>
                   </label>
                   <input type="range" min={0} max={95} value={newIntervention.effectiveness}
                     onChange={e => setNewIntervention(p => ({ ...p, effectiveness: Number(e.target.value) }))}
                     className="w-full h-1.5 accent-blue-600" />
                 </div>
                 <div>
-                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>Jour de début</label>
+                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>{t('simulation.intervention_modal.start_day')}</label>
                   <input type="number" min={0} max={364} value={newIntervention.startDay}
                     onChange={e => setNewIntervention(p => ({ ...p, startDay: Number(e.target.value) }))}
                     className={`w-full px-3 py-2 ${UI.input} rounded-xl text-sm outline-none`} />
@@ -1761,14 +1737,14 @@ export default function EpidemiologicalSimulation() {
               </div>
               <div className="flex justify-end gap-3 p-6 pt-0">
                 <button onClick={() => setShowInterventionModal(false)}
-                  className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>Annuler</button>
+                  className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>{t('simulation.actions.cancel')}</button>
                 <button onClick={() => {
                   setInterventions(prev => [...prev, { ...newIntervention, id: Date.now().toString() }]);
                   setShowInterventionModal(false);
                   setNewIntervention({ type: 'Confinement', effectiveness: 50, startDay: 0 });
                 }}
                   className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-bold hover:opacity-90 transition-all">
-                  Ajouter
+                  {t('simulation.actions.add')}
                 </button>
               </div>
             </motion.div>
@@ -1776,7 +1752,7 @@ export default function EpidemiologicalSimulation() {
         )}
       </AnimatePresence>
 
-      {/* Modal — Import data */}
+      {/* Modal - Import data */}
       <AnimatePresence>
         {showDataModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1786,12 +1762,12 @@ export default function EpidemiologicalSimulation() {
               className={`${UI.card} rounded-3xl w-full bg-white dark:bg-slate-900 max-w-md shadow-2xl`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
-                <h2 className="text-lg font-black">Importer des données</h2>
+                <h2 className="text-lg font-black">{t('simulation.data_modal.title')}</h2>
                 <button onClick={() => setShowDataModal(false)} className={`p-2 ${UI.hover} rounded-xl ${UI.muted}`}><X size={16} /></button>
               </div>
               <div className="p-6 space-y-5">
                 <div>
-                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>CSV — régions (colonnes: id, name, population, S, E, I, R, D, latitude, longitude, color, connections, cluster)</label>
+                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>{t('simulation.data_modal.csv_label')}</label>
                   <input type="file" accept=".csv"
                     onChange={e => {
                       const file = e.target.files?.[0];
@@ -1814,7 +1790,7 @@ export default function EpidemiologicalSimulation() {
                     className={`w-full px-3 py-2 ${UI.input} rounded-xl text-sm cursor-pointer`} />
                 </div>
                 <div>
-                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>JSON — état complet exporté</label>
+                  <label className={`block text-xs font-medium ${UI.muted} mb-2`}>{t('simulation.data_modal.json_label')}</label>
                   <input type="file" accept=".json"
                     onChange={e => {
                       const file = e.target.files?.[0];
@@ -1836,14 +1812,14 @@ export default function EpidemiologicalSimulation() {
               </div>
               <div className="flex justify-end p-6 pt-0">
                 <button onClick={() => setShowDataModal(false)}
-                  className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>Fermer</button>
+                  className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>{t('simulation.actions.close')}</button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Modal — Explanations */}
+      {/* Modal - Explanations */}
       <AnimatePresence>
         {showExplanationModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1853,17 +1829,17 @@ export default function EpidemiologicalSimulation() {
               className={`${UI.card} rounded-3xl w-full bg-white dark:bg-slate-900 max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
-                <h2 className="text-lg font-black">Documentation</h2>
+                <h2 className="text-lg font-black">{t('simulation.explanation_modal.title')}</h2>
                 <button onClick={() => setShowExplanationModal(false)} className={`p-2 ${UI.hover} rounded-xl ${UI.muted}`}><X size={16} /></button>
               </div>
               <div className="p-6 space-y-5 text-sm">
                 {[
-                  { title: 'Slider temporel', body: 'Faites glisser le slider J0–J365 pour visualiser l\'état épidémique à n\'importe quel jour. La carte et le tableau de bord se mettent à jour instantanément. Utilisez Play pour animer la progression.' },
-                  { title: 'Modèles disponibles', body: 'SIR, SEIR, SEIRD, SEIQRD. La trajectoire complète est précompilée au changement de paramètres — aucun scintillement pendant la lecture.' },
-                  { title: 'Rt effectif', body: 'Le Rt (taux de reproduction effectif) est calculé comme R0 × S/N × (1 − réductions). Rt < 1 signifie que l\'épidémie est sous contrôle.' },
-                  { title: 'Portrait de phase', body: 'Le graphique S–I trace la trajectoire dans l\'espace S × I. La forme en arc caractéristique est la signature d\'un modèle épidémique bien paramétré.' },
-                  { title: 'Interventions', body: 'Chaque intervention réduit β d\'un pourcentage, appliqué à partir du jour de début. Les effets sont cumulatifs (plafonnés à 95%).' },
-                  { title: 'Comparaison', body: 'Le bouton "Comparer" lance une simulation parallèle avec des paramètres différents. Les courbes s\'affichent en superposition.' },
+                  { title: t('simulation.explanation_modal.slider_title'),        body: t('simulation.explanation_modal.slider_body') },
+                  { title: t('simulation.explanation_modal.models_title'),         body: t('simulation.explanation_modal.models_body') },
+                  { title: t('simulation.explanation_modal.rt_title'),             body: t('simulation.explanation_modal.rt_body') },
+                  { title: t('simulation.explanation_modal.phase_title'),          body: t('simulation.explanation_modal.phase_body') },
+                  { title: t('simulation.explanation_modal.interventions_title'),  body: t('simulation.explanation_modal.interventions_body') },
+                  { title: t('simulation.explanation_modal.comparison_title'),     body: t('simulation.explanation_modal.comparison_body') },
                 ].map(({ title, body }) => (
                   <div key={title}>
                     <h3 className="font-bold mb-1">{title}</h3>
@@ -1874,7 +1850,7 @@ export default function EpidemiologicalSimulation() {
               <div className="flex justify-end p-6 pt-0">
                 <button onClick={() => setShowExplanationModal(false)}
                   className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-bold hover:opacity-90 transition-all">
-                  Fermer
+                  {t('simulation.actions.close')}
                 </button>
               </div>
             </motion.div>
@@ -1882,7 +1858,7 @@ export default function EpidemiologicalSimulation() {
         )}
       </AnimatePresence>
 
-      {/* Modal — Disease examples */}
+      {/* Modal - Disease examples */}
       <AnimatePresence>
         {showExamplesModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1893,8 +1869,8 @@ export default function EpidemiologicalSimulation() {
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
-                  <h2 className="text-lg font-black">Exemples de maladies</h2>
-                  <p className={`text-xs ${UI.muted} mt-0.5`}>Paramètres et conditions initiales inspirés de données réelles</p>
+                  <h2 className="text-lg font-black">{t('simulation.examples_modal.title')}</h2>
+                  <p className={`text-xs ${UI.muted} mt-0.5`}>{t('simulation.examples_modal.subtitle')}</p>
                 </div>
                 <button onClick={() => setShowExamplesModal(false)} className={`p-2 ${UI.hover} rounded-xl ${UI.muted}`}><X size={16} /></button>
               </div>
@@ -1909,28 +1885,28 @@ export default function EpidemiologicalSimulation() {
                     <div className="flex items-start justify-between mb-2 gap-2">
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ex.iconColor }} />
-                        <span className="font-bold text-sm">{ex.name}</span>
+                        <span className="font-bold text-sm">{t(`disease.${ex.id}.name`)}</span>
                       </div>
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${ex.badgeColor}`}>
-                        {ex.badge}
+                        {t(`disease.${ex.id}.badge`)}
                       </span>
                     </div>
-                    <p className={`text-[10px] ${UI.muted} mb-2 leading-relaxed`}>{ex.description}</p>
+                    <p className={`text-[10px] ${UI.muted} mb-2 leading-relaxed`}>{t(`disease.${ex.id}.description`)}</p>
                     <div className="flex flex-wrap gap-2 text-[9px]">
-                      <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono font-bold`}>R0 ≈ {ex.R0}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono font-bold`}>{t('simulation.examples_modal.r0_label', { value: ex.R0 })}</span>
                       <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono`}>{ex.model}</span>
                       <span className={`px-1.5 py-0.5 rounded-md bg-muted`}>{ex.pathogen}</span>
                     </div>
-                    <p className={`text-[9px] ${UI.muted} mt-2 italic`}>Source: {ex.source}</p>
+                    <p className={`text-[9px] ${UI.muted} mt-2 italic`}>{t('simulation.examples_modal.source_prefix')} {ex.source}</p>
                     {loadedExample === ex.id && (
-                      <p className="text-[9px] text-primary font-bold mt-1">— Actuellement chargé</p>
+                      <p className="text-[9px] text-primary font-bold mt-1">{t('simulation.examples_modal.loaded')}</p>
                     )}
                   </button>
                 ))}
               </div>
               <div className="flex justify-end p-4 pt-0">
                 <button onClick={() => setShowExamplesModal(false)}
-                  className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>Fermer</button>
+                  className={`px-4 py-2 rounded-xl text-sm ${UI.muted} ${UI.hover} transition-all`}>{t('simulation.actions.close')}</button>
               </div>
             </motion.div>
           </motion.div>
