@@ -312,7 +312,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
           <div className="px-4 py-4 animate-fade-in">
             <div className="flex items-center justify-between">
               <div className="text-xs text-gray-500 dark:text-gray-400">
-                R1.0.0
+                0.1.0a1
               </div>
               <div className="flex items-center space-x-2">
                 <select 
@@ -323,10 +323,12 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
                   }}
                   className="text-xs bg-transparent border-none text-gray-500 dark:text-gray-400 focus:outline-none cursor-pointer"
                 >
-                  <option value="fr">🇫🇷</option>
-                  <option value="en">🇬🇧</option>
-                  <option value="es">🇪🇸</option>
-                  <option value="sw">🇹🇿</option>
+                  <option value="fr">fr</option>
+                  <option value="en">en</option>
+                  <option value="mos">mos</option>
+                  <option value="wo">wo</option>
+                  <option value="ha">ha</option>
+                  <option value="sw">sw</option>
                 </select>
                 
                 <button
