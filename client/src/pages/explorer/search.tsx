@@ -13,7 +13,7 @@ import {
   RefreshCcw, ArrowUpRight, GitCompare, PenLine, Sun, Moon,
   AlertTriangle, Clock, CheckCircle2, HelpCircle, Info
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notifications';
 import axios from 'axios';
 
 /*  THEME CONTEXT  */
