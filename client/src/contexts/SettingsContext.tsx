@@ -7,7 +7,7 @@ export type Settings = {
   reducedMotion: boolean;
   highContrast: boolean;
   compactMode: boolean;
-  language: 'fr' | 'en' | 'es' | 'sw';
+  language: 'fr' | 'en' | 'mos' | 'wo' | 'ha' | 'sw';
   notificationsEnabled: boolean;
   notificationDuration: number;
   soundNotifications: boolean;
