@@ -480,8 +480,6 @@ export default function RandomNumberGenerator() {
                   </p>
                 </section>
 
-              
-
                 <section>
                 <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">

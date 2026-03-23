@@ -101,7 +101,7 @@ export default function TwoByTwo() {
     totalAll: (parseInt(a) || 0) + (parseInt(b) || 0) + (parseInt(c) || 0) + (parseInt(d) || 0),
   };
 
-  // ---------- Core calculation ----------
+  //  Core calculation 
   const calculate = () => {
     if (!validateInputs()) {
       setResults(null);
@@ -247,7 +247,7 @@ export default function TwoByTwo() {
     calculate();
   }, [a, b, c, d]);
 
-  // ---------- UI Handlers ----------
+  //  UI Handlers 
   const clearForm = () => {
     setA('');
     setB('');
@@ -339,7 +339,7 @@ Test exact de Fisher:
         doc.roundedRect(x, y, w, h, r, r, style);
       };
 
-      // ---------- Header ----------
+      //  Header 
       doc.setFillColor(...colorSlate[50]);
       roundedRect(0, 0, 210, 40, 0, 'F');
       doc.setFont('helvetica', 'bold');
@@ -352,7 +352,7 @@ Test exact de Fisher:
       doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
       doc.text('Calculateur 2×2 – Épidémiologie', 190, 32, { align: 'right' });
 
-      // ---------- Input data ----------
+      //  Input data 
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -397,7 +397,7 @@ Test exact de Fisher:
       doc.text(results.total.toString(), 160, y, { align: 'center' });
       y += 12;
 
-      // ---------- Incidence card ----------
+      //  Incidence card 
       doc.setFillColor(...colorPrimary.bg);
       doc.setDrawColor(...colorPrimary.border);
       roundedRect(20, y, 170, 35, 5, 'FD');
@@ -412,7 +412,7 @@ Test exact de Fisher:
       doc.text(`Totale: ${results.incidenceTotalPct}`, 175, y + 20, { align: 'center' });
       y += 45;
 
-      // ---------- Measures of association ----------
+      //  Measures of association 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
@@ -458,7 +458,7 @@ Test exact de Fisher:
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      // ---------- Statistical tests ----------
+      //  Statistical tests 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
@@ -498,7 +498,7 @@ Test exact de Fisher:
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      // ---------- Interpretation ----------
+      //  Interpretation 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
@@ -551,7 +551,7 @@ Test exact de Fisher:
     }
   };
 
-  // ---------- Render ----------
+  //  Render 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
