@@ -12,17 +12,10 @@
   <meta name="creator" content="F. Ariel Shadrac OUEDRAOGO" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
 
-  <!-- canonical & hreflang (language‑neutral root) -->
+  <!-- Canonical URL (unique for all languages) -->
   <link rel="canonical" href="https://wepisia.com/" />
-  <link rel="alternate" hreflang="fr"  href="https://wepisia.com/fr/" />
-  <link rel="alternate" hreflang="en"  href="https://wepisia.com/en/" />
-  <link rel="alternate" hreflang="mos" href="https://wepisia.com/mos/" />
-  <link rel="alternate" hreflang="sw"  href="https://wepisia.com/sw/" />
-  <link rel="alternate" hreflang="wo"  href="https://wepisia.com/wo/" />
-  <link rel="alternate" hreflang="ha"  href="https://wepisia.com/ha/" />
-  <link rel="alternate" hreflang="x-default" href="https://wepisia.com/" />
 
-  <!-- Open Graph (Facebook, LinkedIn) -->
+  <!-- Open Graph -->
   <meta property="og:type"        content="website" />
   <meta property="og:title"       content="Wepisia – OpenEPI reinvented | Biostatistics & Epidemiological Simulation" />
   <meta property="og:description" content="Wepisia is the modern evolution of OpenEPI: biostatistics, SIR/SEIR/SEIRD simulation, geospatial, R editor, PubMed explorer. Created by Xcept‑Health, developed by F. Ariel Shadrac OUEDRAOGO. Free and multilingual." />
@@ -49,38 +42,8 @@
   <link rel="manifest" href="/site.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
 
-  <!-- Language detection & redirection -->
-  <script>
-    (function() {
-      // Supported languages and their corresponding subdirectories
-      const langMap = {
-        'fr': '/fr/',
-        'en': '/en/',
-        'mos': '/mos/',
-        'sw': '/sw/',
-        'wo': '/wo/',
-        'ha': '/ha/'
-      };
-      // Default fallback
-      const defaultLang = '/fr/';
-
-      // Get browser language (first part, e.g., 'fr', 'en', 'mos'…)
-      let browserLang = (navigator.language || navigator.userLanguage || '').split('-')[0].toLowerCase();
-      // Check if we support it
-      let target = langMap[browserLang];
-      if (!target) {
-        // Try to match with a partial? e.g., 'wo' already exact; no need.
-        target = defaultLang;
-      }
-      // Avoid redirect loop: only redirect if not already on a language subdirectory
-      // (we are at root, pathname === '/')
-      if (window.location.pathname === '/' && window.location.search === '' && !window.location.hash) {
-        window.location.replace(target);
-      }
-    })();
-  </script>
-<!-- JSON‑LD : Organization (Xcept-Health) - en anglais -->
-<script type="application/ld+json">
+  <!-- JSON-LD : Organization -->
+  <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -100,27 +63,28 @@
   }
   </script>
 
-  <!-- JSON‑LD : Person -->
+  <!-- JSON-LD : Person -->
   <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Person",
-      "name": "F. Ariel Shadrac OUEDRAOGO",
-      "jobTitle": "Medical Student, Lead Developer & Founder",
-      "worksFor": {
-        "@type": "Organization",
-        "name": "Xcept-Health"
-      },
-      "url": "https://github.com/ArielShadrac",
-      "sameAs": [
-        "https://github.com/ArielShadrac",
-        "https://www.linkedin.com/in/ariel-shadrac-ouedraogo",
-        "https://orcid.org/0009-0003-3419-5985"
-      ],
-      "description": "Medical student and self-taught developer, founder and CEO of Xcept-Health. Creator of Wepisia and passionate about using AI and robotics to democratize healthcare worldwide, especially in low-resource environments."
-    }
-    </script>
-  <!-- JSON‑LD : Software Application (Wepisia) -->
+  {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "name": "F. Ariel Shadrac OUEDRAOGO",
+    "jobTitle": "Medical Student, Lead Developer & Founder",
+    "worksFor": {
+      "@type": "Organization",
+      "name": "Xcept-Health"
+    },
+    "url": "https://github.com/ArielShadrac",
+    "sameAs": [
+      "https://github.com/ArielShadrac",
+      "https://www.linkedin.com/in/ariel-shadrac-ouedraogo",
+      "https://orcid.org/0009-0003-3419-5985"
+    ],
+    "description": "Medical student and self-taught developer, founder and CEO of Xcept-Health. Creator of Wepisia and passionate about using AI and robotics to democratize healthcare worldwide, especially in low-resource environments."
+  }
+  </script>
+
+  <!-- JSON-LD : Software Application -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -162,7 +126,7 @@
   }
   </script>
 
-  <!-- JSON‑LD : WebSite + SearchAction -->
+  <!-- JSON-LD : WebSite + SearchAction -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -189,7 +153,7 @@
   }
   </script>
 
-  <!-- JSON‑LD : FAQ Page -->
+  <!-- JSON-LD : FAQ Page -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -247,9 +211,6 @@
   }
   </script>
 
-  <noscript>
-    <meta http-equiv="refresh" content="0;url=/fr/" />
-  </noscript>
 </head>
 <body>
   <div id="root"></div>
