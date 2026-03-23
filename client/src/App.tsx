@@ -1,3 +1,5 @@
+// App.tsx
+
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -29,42 +31,25 @@ import MeanDifference from "./pages/biostatistics/mean_difference_sample";
 import MeanDifferencePower from "./pages/biostatistics/mean_difference_power";
 import RandomNumberGenerator from "./pages/biostatistics/random_numbers";
 import SampleSizeCohortRCT from "./pages/biostatistics/cohort_rct";
-// Composants du chatbot
 import { ChatbotSidebar } from "./components/Chatbot/ChatbotSidebar";
 import { ChatbotToggle } from "./components/Chatbot/ChatbotToggle";
-// Composants de recherche
 import Explorer from "./pages/explorer/search";
-// Composants de Workspace
 import Workspace from "./pages/Workspace";
-// Composants Geospatial
 import Geospatial from "./pages/geospatial/map";
-// Composants de simulation épidémiologique
 import EpidemiologicalSimulation from "./pages/simulation/dashboard";
-// Composants d'aide
 import HelpPage from "./pages/help";
-// Composants de paramètres
 import Settings from "./pages/settings";
-
-
-
-
+import { useSettings } from "@/contexts/SettingsContext";
 
 function Router() {
   return (
     <Switch>
-      {/* Home Route */}  
-      <Route path={"/"} component={Home} />
-      {/* Tools Route */}
-      <Route path={"/tools"} component={Tools} />
-      {/* About Route */}
-      <Route path={"/about"} component={About} />
-      {/* Docs Route */}
-      <Route path={"/docs"} component={Docs} />
-      {/* Settings Route */}
+      <Route path="/" component={Home} />
+      <Route path="/tools" component={Tools} />
+      <Route path="/about" component={About} />
+      <Route path="/docs" component={Docs} />
       <Route path="/settings" component={Settings} />
-      {/* 404 Route */}
-      <Route path={"/404"} component={NotFound} />
-      {/* Biostatistics Routes */}
+      <Route path="/404" component={NotFound} />
       <Route path="/biostatistics/std_mortality_ratio" component={standardized_mortality_ratio} />
       <Route path="/biostatistics/proportions" component={Proportions} />
       <Route path="/biostatistics/r_by_c" component={RxCTable} />
@@ -74,7 +59,7 @@ function Router() {
       <Route path="/biostatistics/one_rate" component={OneRate} />
       <Route path="/biostatistics/compare_two_rates" component={TwoRatesComparison} />
       <Route path="/biostatistics/mean_confidence_interval" component={MeanConfidenceInterval} />
-      <Route path="/biostatistics/median_percentile_ci" component={MedianPercentileCI} /> 
+      <Route path="/biostatistics/median_percentile_ci" component={MedianPercentileCI} />
       <Route path="/biostatistics/t_test" component={TTestCalculator} />
       <Route path="/biostatistics/anova" component={ANOVA} />
       <Route path="/biostatistics/proportions_sample" component={ProportionsSample} />
@@ -83,32 +68,25 @@ function Router() {
       <Route path="/biostatistics/mean_difference_sample" component={MeanDifference} />
       <Route path="/biostatistics/mean_difference_power" component={MeanDifferencePower} />
       <Route path="/biostatistics/random_numbers" component={RandomNumberGenerator} />
-      {/* Search Route */} 
       <Route path="/explorer/search" component={Explorer} />
-      {/* Workspace Route */}
       <Route path="/workspace" component={Workspace} />
-      {/* Geospatial Route */}
       <Route path="/geospatial/map" component={Geospatial} />
-      {/* Epidemiological Simulation Route */}
       <Route path="/simulation/dashboard" component={EpidemiologicalSimulation} />
-      {/* Help Route */}
       <Route path="/help" component={HelpPage} />
-      {/* Fallback route */}
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-function App() {
+function AppContent() {
+  const { settings } = useSettings();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  // États pour le chatbot
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const [chatbotWidth, setChatbotWidth] = useState(420);
   const [chatbotNotificationCount, setChatbotNotificationCount] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Détecter si on est en mobile
   useEffect(() => {
     const checkIfMobile = () => {
       setIsMobile(window.innerWidth < 1024);
@@ -117,58 +95,51 @@ function App() {
         setChatbotWidth(Math.min(window.innerWidth * 0.9, 420));
       }
     };
-    
     checkIfMobile();
     window.addEventListener('resize', checkIfMobile);
-    
     return () => window.removeEventListener('resize', checkIfMobile);
   }, []);
 
+  return (
+    <TooltipProvider>
+      <Toaster position="top-center" duration={settings.notificationDuration * 1000} />
+      <div className="flex h-screen bg-background">
+        <Sidebar
+          isOpen={sidebarOpen}
+          setIsOpen={setSidebarOpen}
+          isCollapsed={sidebarCollapsed}
+          setIsCollapsed={setSidebarCollapsed}
+        />
+        <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
+          sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
+        } ${isChatbotOpen && !isMobile ? 'lg:mr-[420px]' : ''}`}>
+          <main className="flex-1 overflow-auto">
+            <Router />
+          </main>
+        </div>
+        <ChatbotToggle
+          onClick={() => setIsChatbotOpen(!isChatbotOpen)}
+          isActive={isChatbotOpen}
+          notificationCount={chatbotNotificationCount}
+        />
+        <ChatbotSidebar
+          isOpen={isChatbotOpen}
+          onClose={() => setIsChatbotOpen(false)}
+          width={chatbotWidth}
+          onWidthChange={setChatbotWidth}
+          position="right"
+        />
+      </div>
+    </TooltipProvider>
+  );
+}
 
-
+function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light" switchable>
-      <SettingsProvider>
-        <TooltipProvider>
-          <Toaster position="top-center"  />
-          
-          <div className="flex h-screen bg-background">
-            {/* Sidebar fixe */}
-            <Sidebar
-              isOpen={sidebarOpen}
-              setIsOpen={setSidebarOpen}
-              isCollapsed={sidebarCollapsed}
-              setIsCollapsed={setSidebarCollapsed}
-            />
-
-            {/* Contenu principal – ajusté selon l'état des sidebars */}
-            <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
-              sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
-            } ${isChatbotOpen && !isMobile ? 'lg:mr-[420px]' : ''}`}>
-              {/* Page content */}
-              <main className="flex-1 overflow-auto">
-                <Router />
-              </main>
-            </div>
-
-            {/* Chatbot Toggle Button */}
-            <ChatbotToggle
-              onClick={() => setIsChatbotOpen(!isChatbotOpen)}
-              isActive={isChatbotOpen}
-              notificationCount={chatbotNotificationCount}
-            />
-
-            {/* Chatbot Sidebar avec design textuel Vercel AI SDK */}
-            <ChatbotSidebar
-              isOpen={isChatbotOpen}
-              onClose={() => setIsChatbotOpen(false)}
-              width={chatbotWidth}
-              onWidthChange={setChatbotWidth}
-              position="right"
-            />
-          </div>
-        </TooltipProvider>
+        <SettingsProvider>
+          <AppContent />
         </SettingsProvider>
       </ThemeProvider>
     </ErrorBoundary>
