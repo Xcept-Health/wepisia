@@ -38,6 +38,7 @@ import EpidemiologicalSimulation from "./pages/simulation/dashboard";
 import HelpPage from "./pages/help";
 import Settings from "./pages/settings";
 import { useSettings } from "@/contexts/SettingsContext";
+import { setSoundEnabled } from "@/lib/notifications";
 
 function Router() {
   return (
@@ -97,6 +98,10 @@ function AppContent() {
     window.addEventListener('resize', checkIfMobile);
     return () => window.removeEventListener('resize', checkIfMobile);
   }, []);
+
+  useEffect(() => {
+    setSoundEnabled(settings.soundNotifications);
+  }, [settings.soundNotifications]);
 
   return (
     <TooltipProvider>
