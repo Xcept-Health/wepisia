@@ -313,7 +313,9 @@ export default function SettingsPage() {
                 >
                   <option value="fr">{t('settings.french')}</option>
                   <option value="en">{t('settings.english')}</option>
-                  <option value="es">{t('settings.spanish')}</option>
+                  <option value="mos">{t('settings.moore')}</option>
+                  <option value="wo">{t('settings.wolof')}</option>
+                  <option value="ha">{t('settings.haoussa')}</option>
                   <option value="sw">{t('settings.swahili')}</option>
                 </select>
                 <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
