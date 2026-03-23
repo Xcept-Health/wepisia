@@ -1885,13 +1885,13 @@ export default function EpidemiologicalSimulation() {
                     <div className="flex items-start justify-between mb-2 gap-2">
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ex.iconColor }} />
-                        <span className="font-bold text-sm">{t(`disease.${ex.id}.name`)}</span>
+                        <span className="font-bold text-sm">{t(`simulation.disease.${ex.id}.name`)}</span>
                       </div>
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${ex.badgeColor}`}>
-                        {t(`disease.${ex.id}.badge`)}
+                        {t(`simulation.disease.${ex.id}.badge`)}
                       </span>
                     </div>
-                    <p className={`text-[10px] ${UI.muted} mb-2 leading-relaxed`}>{t(`disease.${ex.id}.description`)}</p>
+                    <p className={`text-[10px] ${UI.muted} mb-2 leading-relaxed`}>{t(`simulation.disease.${ex.id}.description`)}</p>
                     <div className="flex flex-wrap gap-2 text-[9px]">
                       <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono font-bold`}>{t('simulation.examples_modal.r0_label', { value: ex.R0 })}</span>
                       <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono`}>{ex.model}</span>
