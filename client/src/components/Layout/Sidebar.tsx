@@ -324,7 +324,6 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
                   className="text-xs bg-transparent border-none text-gray-500 dark:text-gray-400 focus:outline-none cursor-pointer"
                 >
                   <option value="fr">fr</option>
-                  <option value="en">en</option>
                   <option value="mos">mos</option>
                   <option value="wo">wo</option>
                   <option value="ha">ha</option>
