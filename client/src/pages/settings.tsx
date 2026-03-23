@@ -10,13 +10,13 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSettings } from "@/contexts/SettingsContext";
 
-// ---------- COMPOSANT PRINCIPAL ----------
+// ---------- MAIN COMPONANT ----------
 export default function SettingsPage() {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { settings, updateSetting, resetToDefault } = useSettings();
 
-  // Mapping pour les libellés des positions du bouton flottant
+  // Mapping for the labels of the floating button's positions
   const positionLabels = {
     'top-left': t('settings.topLeft'),
     'top-right': t('settings.topRight'),
@@ -27,7 +27,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
-        {/* Fil d'Ariane */}
+        {/* Breadcrumb trail */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('settings.breadcrumbHome')}</Link></li>
@@ -36,7 +36,7 @@ export default function SettingsPage() {
           </ol>
         </nav>
 
-        {/* En-tête */}
+        {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
@@ -65,9 +65,9 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        {/* Grille des cartes */}
+        {/* Map grid */}
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {/* ---------- APPARENCE ---------- */}
+          {/* ---------- APPEARENCE ---------- */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-3">
@@ -81,7 +81,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="p-6 lg:p-8 space-y-6">
-              {/* Thème */}
+              {/* Theme */}
               <div className="space-y-2">
                 <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase ml-1">
                   {t('settings.interfaceTheme')}
@@ -102,7 +102,7 @@ export default function SettingsPage() {
 
               <Separator />
 
-              {/* Taille du texte */}
+              {/* Text size*/}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
@@ -127,7 +127,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Position du bouton flottant (menu mobile) */}
+              {/* Position of the floating button (mobile menu) */}
               <Separator />
               <div className="space-y-3">
                 <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase ml-1">
@@ -160,7 +160,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* ---------- CARTE : ACCESSIBILITÉ ---------- */}
+          {/* ---------- CARTE : ACCESSIBILITY ---------- */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-3">
@@ -200,7 +200,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* ---------- CARTE : NOTIFICATIONS ---------- */}
+          {/* ---------- CARD : NOTIFICATIONS ---------- */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-3">
@@ -218,7 +218,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="p-6 lg:p-8 space-y-6">
-              {/* Activation globale */}
+              {/* Global activation */}
               <SwitchRow
                 id="notifications-enabled"
                 label={t('settings.notificationsEnabled')}
@@ -227,12 +227,12 @@ export default function SettingsPage() {
                 onCheckedChange={(checked) => updateSetting("notificationsEnabled", checked)}
               />
 
-              {/* Options conditionnelles */}
+              {/* Conditional options */}
               {settings.notificationsEnabled && (
                 <>
                   <Separator />
 
-                  {/* Durée d'affichage */}
+                  {/* Display duration */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
@@ -266,7 +266,7 @@ export default function SettingsPage() {
 
                   <Separator />
 
-                  {/* Son */}
+                  {/* Sound */}
                   <SwitchRow
                     id="sound-notifications"
                     label={t('settings.soundNotifications')}
@@ -275,23 +275,12 @@ export default function SettingsPage() {
                     onCheckedChange={(checked) => updateSetting("soundNotifications", checked)}
                   />
 
-                  <Separator />
-
-                  {/* Retour haptique */}
-                  <SwitchRow
-                    id="haptic-feedback"
-                    label={t('settings.hapticFeedback')}
-                    description={t('settings.hapticFeedbackDescription')}
-                    checked={settings.hapticFeedback}
-                    onCheckedChange={(checked) => updateSetting("hapticFeedback", checked)}
-                    icon={<Vibrate className="w-4 h-4 text-slate-500" />}
-                  />
                 </>
               )}
             </div>
           </div>
 
-          {/* ---------- CARTE : LANGUE ---------- */}
+          {/* ---------- MAP: LANGUAGE ---------- */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-3">
@@ -324,7 +313,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Pied de page */}
+        {/* footer */}
         <div className="mt-12 text-center text-xs text-slate-400 dark:text-slate-500">
           <p className="mt-1">{t('settings.settingsSaved')}</p>
         </div>
@@ -333,7 +322,7 @@ export default function SettingsPage() {
   );
 }
 
-// ---------- COMPOSANTS AIDE ----------
+// ---------- HELP COMPONENTS ----------
 function Separator() {
   return <div className="border-t border-slate-100 dark:border-slate-700 my-4" />;
 }
