@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS: Settings = {
   language: 'fr',
   notificationsEnabled: true,
   notificationDuration: 5,
-  soundNotifications: true,
+  soundNotifications: false,
   hapticFeedback: false,
   floatingButtonPosition: 'top-left',
 };
