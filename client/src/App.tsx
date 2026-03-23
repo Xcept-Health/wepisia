@@ -31,8 +31,6 @@ import MeanDifference from "./pages/biostatistics/mean_difference_sample";
 import MeanDifferencePower from "./pages/biostatistics/mean_difference_power";
 import RandomNumberGenerator from "./pages/biostatistics/random_numbers";
 import SampleSizeCohortRCT from "./pages/biostatistics/cohort_rct";
-import { ChatbotSidebar } from "./components/Chatbot/ChatbotSidebar";
-import { ChatbotToggle } from "./components/Chatbot/ChatbotToggle";
 import Explorer from "./pages/explorer/search";
 import Workspace from "./pages/Workspace";
 import Geospatial from "./pages/geospatial/map";
@@ -117,18 +115,6 @@ function AppContent() {
             <Router />
           </main>
         </div>
-        <ChatbotToggle
-          onClick={() => setIsChatbotOpen(!isChatbotOpen)}
-          isActive={isChatbotOpen}
-          notificationCount={chatbotNotificationCount}
-        />
-        <ChatbotSidebar
-          isOpen={isChatbotOpen}
-          onClose={() => setIsChatbotOpen(false)}
-          width={chatbotWidth}
-          onWidthChange={setChatbotWidth}
-          position="right"
-        />
       </div>
     </TooltipProvider>
   );
