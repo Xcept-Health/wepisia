@@ -4,7 +4,7 @@ import {
   Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
 } from 'lucide-react';
 import { Link } from 'wouter';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notifications';
 import { useTranslation, Trans } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';

@@ -13,7 +13,7 @@ import {
   Target
 } from 'lucide-react';
 import { Link } from 'wouter';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notifications';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
