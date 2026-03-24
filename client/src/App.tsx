@@ -17,7 +17,7 @@ import standardized_mortality_ratio from "./pages/biostatistics/standardized_mor
 import Proportions from "./pages/biostatistics/proportions";
 import RxCTable from "./pages/biostatistics/r_by_c";
 import ScreeningTest from "./pages/biostatistics/screening";
-import DoseResponse from "./pages/biostatistics/dose-response";
+import DoseResponse from "./pages/biostatistics/dose_response";
 import TwoByTwoTable from "./pages/biostatistics/two_by_two";
 import OneRate from "./pages/biostatistics/one_rate";
 import TwoRatesComparison from "./pages/biostatistics/compare_two_rates";
@@ -35,7 +35,6 @@ import Explorer from "./pages/explorer/search";
 import Workspace from "./pages/Workspace";
 import Geospatial from "./pages/geospatial/map";
 import EpidemiologicalSimulation from "./pages/simulation/dashboard";
-import HelpPage from "./pages/help";
 import Settings from "./pages/settings";
 import { useSettings } from "@/contexts/SettingsContext";
 import { setSoundEnabled } from "@/lib/notifications";
@@ -53,7 +52,7 @@ function Router() {
       <Route path="/biostatistics/proportions" component={Proportions} />
       <Route path="/biostatistics/r_by_c" component={RxCTable} />
       <Route path="/biostatistics/screening" component={ScreeningTest} />
-      <Route path="/biostatistics/dose-response" component={DoseResponse} />
+      <Route path="/biostatistics/dose_response" component={DoseResponse} />
       <Route path="/biostatistics/two_by_two" component={TwoByTwoTable} />
       <Route path="/biostatistics/one_rate" component={OneRate} />
       <Route path="/biostatistics/compare_two_rates" component={TwoRatesComparison} />
@@ -71,7 +70,6 @@ function Router() {
       <Route path="/workspace" component={Workspace} />
       <Route path="/geospatial/map" component={Geospatial} />
       <Route path="/simulation/dashboard" component={EpidemiologicalSimulation} />
-      <Route path="/help" component={HelpPage} />
       <Route component={NotFound} />
     </Switch>
   );
