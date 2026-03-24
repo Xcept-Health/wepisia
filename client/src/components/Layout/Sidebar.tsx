@@ -198,8 +198,17 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
             <div className="flex items-center gap-3 cursor-pointer">
               {showLabels && (
                 <div className="animate-fade-in">
-                  <h1 className="font-bold text-lg text-gray-900 dark:text-white">OpenEPI</h1>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">Reedited</p>
+                      <div className="hidden md:flex items-center gap-2">
+    <div className="flex justify-center ">
+          <svg width="20" height="25" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-100">
+            <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+          </svg>
+        </div>
+      <span className="font-bold tracking-tighter text-lg">
+       Wepisia
+      </span>
+    </div>
                 </div>
               )}
             </div>
@@ -324,6 +333,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
                   className="text-xs bg-transparent border-none text-gray-500 dark:text-gray-400 focus:outline-none cursor-pointer"
                 >
                   <option value="fr">fr</option>
+                  <option value="en">en</option>
                   <option value="mos">mos</option>
                   <option value="wo">wo</option>
                   <option value="ha">ha</option>

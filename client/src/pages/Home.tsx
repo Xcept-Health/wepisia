@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'wouter';
 import Globe from 'react-globe.gl';
+import SplitText from "./SplitText";
 
 import {
   Calculator,
@@ -356,17 +357,21 @@ export default function Home() {
 <nav className="fixed top-6 inset-x-0 z-[100] max-w-5xl mx-auto px-4">
   <div className={`
     flex items-center justify-between px-6 h-16
-    /* Sur mobile : pas de fond, pas de bordure, pas d'ombre */
     bg-transparent dark:bg-transparent border-none shadow-none
-    /* À partir de md : fond semi-transparent, flou, bordure, ombre */
     md:bg-white/70 md:dark:bg-black/70 md:backdrop-blur-2xl 
     md:border md:border-white/20 md:dark:border-white/10 
     md:shadow-[0_8px_32px_rgba(0,0,0,0.05)] md:rounded-3xl
   `}>
-    {/* Logo - caché sur mobile */}
+    {/* Logo */}
     <div className="hidden md:flex items-center gap-2">
+    <div className="flex justify-center ">
+          <svg width="20" height="25" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-100">
+            <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+          </svg>
+        </div>
       <span className="font-bold tracking-tighter text-lg">
-        OpenEPI <span className="font-light opacity-50">Reedited</span>
+       Wepisia
       </span>
     </div>
 
@@ -432,20 +437,48 @@ export default function Home() {
 </nav>
 
       {/* Hero section */}
-      <header className="relative z-10 pt-45 pb-30 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-6xl md:text-8xl font-black tracking-tight text-gray-900 dark:text-white mb-8">
+      <header className="relative z-10 pt-36 pb-28 px-6 overflow-hidden">
+      {/* Background Tribal Pattern Overlay */}
+      <div className="absolute inset-0 opacity-[0.1] dark:opacity-[0.1] pointer-events-none">
+        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="tribal-pattern" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+              <path d="M0 50 L25 50 M75 50 L100 50 M50 0 L50 25 M50 75 L50 100" stroke="currentColor" strokeWidth="0.5" fill="none" />
+              <circle cx="50" cy="50" r="15" stroke="currentColor" strokeWidth="0.5" fill="none" />
+              <path d="M35 35 L65 65 M35 65 L65 35" stroke="currentColor" strokeWidth="0.5" fill="none" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#tribal-pattern)" />
+        </svg>
+      </div>
+
+   
+
+      <div className="max-w-4xl mx-auto text-center relative">
+        {/* Tribal Identity Symbol - Stylized Mask / Totem line */}
+        <div className="flex justify-center mb-8">
+          <svg width="40" height="60" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-80">
+            <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+          </svg>
+        </div>
+
+        <h1 className="text-6xl md:text-8xl font-black tracking-tight text-gray-900 dark:text-white mb-8">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-emerald-600 to-purple-600">
-              Open Epi
+              Wepisia
             </span>
           </h1>
-          <p className="max-w-xl mx-auto text-lg text-gray-600 dark:text-gray-400 leading-relaxed mb-10">
-            OpenEPi reedited est une nouvelle version de l'outil Open Source Statistiques
-            Épidémiologiques OpenEpi pour la Santé Publique.
+
+         
+
+          <p className="max-w-xxl mx-auto text-xl leading-relaxed mb-14 font-light italic">
+            "La connaissance est comme un baobab : une seule personne ne peut l'embrasser."
+            <br/>
+            <span className="not-italic text-base opacity-80 font-normal">L'expertise de OpenEpi réimaginée</span>
           </p>
 
-          {/* Search bar that opens command palette */}
-          <div
+    {/* Search bar that opens command palette */}
+    <div
             className="max-w-lg mx-auto relative group cursor-pointer"
             onClick={() => setOpen(true)}
           >
@@ -460,8 +493,8 @@ export default function Home() {
               </kbd>
             </div>
           </div>
-        </div>
-      </header>
+      </div>
+    </header>
 
       {/* Command palette dialog */}
       <CommandDialog open={open} onOpenChange={setOpen}>
