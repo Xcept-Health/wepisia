@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'wouter';
 import Globe from 'react-globe.gl';
-import SplitText from "./SplitText";
+import { useTranslation } from 'react-i18next';
 
 import {
   Calculator,
@@ -21,7 +21,6 @@ import {
   Menu,
   ArrowRight,
   ChevronRight,
-  BookOpen,
   Presentation,
   Table2,
   Map,
@@ -31,6 +30,8 @@ import {
   Layers,
   Sliders,
   Database,
+  Settings,
+  BookOpen,
   X,
   Sparkles,
   Users,
@@ -73,6 +74,7 @@ import {
  * - Dark mode support via Tailwind's dark: variants.
  */
 export default function Home() {
+  const { t } = useTranslation();
   // --- State ---
   const [open, setOpen] = useState(false);               // Command palette open state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -80,222 +82,222 @@ export default function Home() {
   // Refs
   const globeRef = useRef<any>();                         // Reference for the Globe component
 
-  // --- Constants ---
+  // --- Constants (with translations) ---
   // List of all modules for the command palette
   const modules = [
-    { title: 'Accueil', href: '/', category: 'Principal' },
-    { title: 'Rapport Std.Mort', href: '/biostatistics/std-mortality-ratio', category: 'Numérotations', icon: 'Blocks' },
-    { title: 'Proportions', href: '/proportions', category: 'Numérotations' },
-    { title: 'Tableaux 2×2', href: '/two-by-two', category: 'Numérotations' },
-    { title: 'Dose-Réponse', href: '/dose-response', category: 'Numérotations' },
-    { title: 'Tableaux R×C', href: '/r-by-c', category: 'Numérotations' },
-    { title: 'Dépistage', href: '/screening', category: 'Numérotations' },
-    { title: 'Taux 1', href: '/one-rate', category: 'Personnes temps' },
-    { title: 'Taux 2', href: '/compare-two-rates', category: 'Personnes temps' },
-    { title: 'Mean CI', href: '/mean-ci', category: 'Variables continues' },
-    { title: 'Mean Percentile Chi', href: '/median-percentile-ci', category: 'Variables continues' },
-    { title: 'Test t', href: '/t-test', category: 'Variables continues' },
-    { title: 'ANOVA', href: '/anova', category: 'Variables continues' },
-    { title: 'Proportions', href: '/sample-proportions', category: "Taille d'échantillon" },
-    { title: 'Cohort RCT', href: '/cohort-rct', category: "Taille d'échantillon" },
-    { title: 'Matched Case', href: '/matched-case', category: "Taille d'échantillon" },
-    { title: 'Mean difference', href: '/mean-difference-sample', category: "Taille d'échantillon" },
-    { title: 'Cohorte RCT', href: '/cohort-rct-power', category: 'Puissance' },
-    { title: 'Essai Cliniques', href: '/clinical-trial', category: 'Puissance' },
-    { title: 'Coupe X', href: '/case-control', category: 'Puissance' },
-    { title: 'Différence Moyenne', href: '/mean-difference-power', category: 'Puissance' },
-    { title: 'Cas-Témoins Appariés', href: '/matched-case-control', category: 'Puissance' },
-    { title: 'Nombres Aléatoires', href: '/random-numbers', category: 'Autres' },
-    { title: 'GeoSpatial', href: '/geospatial', category: 'GeoSpatial' },
-    { title: 'Explorer', href: '/explorer/search', category: 'Explorer' },
-    { title: 'Épidémiologique', href: '/simulation', category: 'Simulation' },
-    { title: 'Code Editor', desc: 'Atelier de code interactif.', href: '/workspace' },
-    { title: 'Aide', href: '/help', category: 'Support' },
-    { title: 'Documentation', href: '/docs', category: 'Support' },
-    { title: 'Paramètres', href: '/settings', category: 'Support' },
+    { title: t('sidebar.home'), href: '/', category: t('sidebar.principal'), icon: 'Blocks' },
+    { title: t('sidebar.stdMortalityRatio'), href: 'biostatistics/std_mortality_ratio', category: t('sidebar.numerotations'), icon: 'Blocks' },
+    { title: t('sidebar.proportions'), href: '/biostatistics/proportions', category: t('sidebar.numerotations') },
+    { title: t('sidebar.twoByTwo'), href: '/biostatistics/two_by_two', category: t('sidebar.numerotations') },
+    { title: t('sidebar.doseResponse'), href: '/biostatistics/dose_response', category: t('sidebar.numerotations') },
+    { title: t('sidebar.rByC'), href: '/biostatistics/r_by_c', category: t('sidebar.numerotations') },
+    { title: t('sidebar.screening'), href: '/biostatistics/screening', category: t('sidebar.numerotations') },
+    { title: t('sidebar.oneRate'), href: '/biostatistics/one_rate', category: t('sidebar.personnesTemps') },
+    { title: t('sidebar.twoRates'), href: '/biostatistics/compare_two_rates', category: t('sidebar.personnesTemps') },
+    { title: t('sidebar.meanCI'), href: '/biostatistics/mean_confidence_interval', category: t('sidebar.variablesContinues') },
+    { title: t('sidebar.meanPercentileCI'), href: '/biostatistics/median_percentile_ci', category: t('sidebar.variablesContinues') },
+    { title: t('sidebar.tTest'), href: '/biostatistics/t_test', category: t('sidebar.variablesContinues') },
+    { title: t('sidebar.anova'), href: '/biostatistics/anova', category: t('sidebar.variablesContinues') },
+    { title: t('sidebar.proportionsSample'), href: '/biostatistics/sample-proportions', category: t('sidebar.tailleEchantillon') },
+    { title: t('sidebar.cohortRCT'), href: '/biostatistics/cohort-rct', category: t('sidebar.tailleEchantillon') },
+    { title: t('sidebar.matchedCase'), href: '/biostatistics/matched_case', category: t('sidebar.tailleEchantillon') },
+    { title: t('sidebar.meanDifference'), href: '/biostatistics/mean_difference_sample', category: t('sidebar.tailleEchantillon') },
+    { title: t('sidebar.cohortRCT'), href: '/biostatistics/cohort_rct_power', category: t('sidebar.puissance') },
+    { title: t('sidebar.clinicalTrial'), href: '/biostatistics/clinical_trial', category: t('sidebar.puissance') },
+    { title: t('sidebar.caseControl'), href: '/biostatistics/case_control', category: t('sidebar.puissance') },
+    { title: t('sidebar.meanDifference'), href: '/biostatistics/mean_difference-power', category: t('sidebar.puissance') },
+    { title: t('sidebar.matchedCaseControl'), href: '/biostatistics/matched_case_control', category: t('sidebar.puissance') },
+    { title: t('sidebar.randomNumbers'), href: '/biostatistics/random_numbers', category: t('sidebar.autres') },
+    { title: t('sidebar.geospatial'), href: '/geospatial/map', category: t('sidebar.geospatial') },
+    { title: t('sidebar.explorer'), href: '/explorer/search', category: t('sidebar.explorer') },
+    { title: t('sidebar.simulation'), href: '/simulation/dashboard', category: t('sidebar.simulation') },
+    { title: t('sidebar.codeEditor'), desc: t('home.codeEditorDesc'), href: '/workspace' },
+    { title: t('common.help'), href: '/help', category: t('sidebar.support') },
+    { title: t('common.docs'), href: '/docs', category: t('sidebar.support') },
+    { title: t('common.settings'), href: '/settings', category: t('sidebar.support') },
   ];
 
   // List of tools displayed in the main grid
   const tools = [
     {
-      title: 'Rapport Std.Mort',
-      desc: "Analyse de mortalité standardisée.",
-      href: '/biostatistics/std-mortality-ratio',
+      title: t('sidebar.stdMortalityRatio'),
+      desc: t('home.stdMortalityRatioDesc'),
+      href: 'biostatistics/std_mortality_ratio',
       icon: Presentation,
       color: 'blue',
       size: 'col-span-1',
     },
     {
-      title: 'Proportions',
-      desc: "Intervalles de confiance et tests.",
-      href: '/proportions',
+      title: t('sidebar.proportions'),
+      desc: t('home.proportionsDesc'),
+      href: 'biostatistics/proportions',
       icon: PieChart,
       color: 'emerald',
       size: 'col-span-1',
     },
     {
-      title: 'Tableaux 2×2',
-      desc: 'Analyse de contingence, odds ratio et risque relatif.',
-      href: '/two-by-two',
+      title: t('sidebar.twoByTwo'),
+      desc: t('home.twoByTwoDesc'),
+      href: 'biostatistics/two_by_two',
       icon: Table2,
       color: 'blue',
       size: 'col-span-2',
     },
     {
-      title: 'Dose-Réponse',
-      desc: 'Analyse de tendance.',
-      href: '/dose-response',
+      title: t('sidebar.doseResponse'),
+      desc: t('home.doseResponseDesc'),
+      href: 'biostatistics/dose_response',
       icon: Activity,
       color: 'purple',
       size: 'col-span-1',
     },
     {
-      title: 'Tableaux R×C',
-      desc: 'Dimensions arbitraires.',
-      href: '/r-by-c',
+      title: t('sidebar.rByC'),
+      desc: t('home.rByCDesc'),
+      href: 'biostatistics/r_by_c',
       icon: Grid,
       color: 'blue',
       size: 'col-span-1',
     },
     {
-      title: 'Dépistage',
-      desc: 'Tests de dépistage diagnostique.',
-      href: '/screening',
+      title: t('sidebar.screening'),
+      desc: t('home.screeningDesc'),
+      href: 'biostatistics/screening',
       icon: FileText,
       color: 'emerald',
       size: 'col-span-1',
     },
     {
-      title: 'Taux 1',
-      desc: "Taux d'incidence unique.",
-      href: '/one-rate',
+      title: t('sidebar.oneRate'),
+      desc: t('home.oneRateDesc'),
+      href: 'biostatistics/one_rate',
       icon: Clock,
       color: 'purple',
       size: 'col-span-1',
     },
     {
-      title: 'Taux 2',
-      desc: 'Comparaison de deux taux.',
-      href: '/compare-two-rates',
+      title: t('sidebar.twoRates'),
+      desc: t('home.twoRatesDesc'),
+      href: 'biostatistics/compare_two_rates',
       icon: TrendingUp,
       color: 'blue',
       size: 'col-span-1',
     },
     {
-      title: 'Mean CI',
-      desc: 'Intervalles de confiance pour moyennes.',
-      href: '/mean-ci',
+      title: t('sidebar.meanCI'),
+      desc: t('home.meanCIDesc'),
+      href: 'biostatistics/mean_confidence_interval',
       icon: Presentation,
       color: 'emerald',
       size: 'col-span-1',
     },
     {
-      title: 'Percentile CI',
-      desc: 'Médiane et percentiles.',
-      href: '/median-percentile-ci',
+      title: t('sidebar.meanPercentileCI'),
+      desc: t('home.percentileCIDesc'),
+      href: 'biostatistics/median_percentile_ci',
       icon: Database,
       color: 'purple',
       size: 'col-span-2',
     },
     {
-      title: 'Test t',
-      desc: 'Comparaison de moyennes.',
-      href: '/t-test',
+      title: t('sidebar.tTest'),
+      desc: t('home.tTestDesc'),
+      href: 'biostatistics/t_test',
       icon: Activity,
       color: 'blue',
       size: 'col-span-1',
     },
     {
-      title: 'ANOVA',
-      desc: 'Analyse de variance.',
-      href: '/anova',
+      title: t('sidebar.anova'),
+      desc: t('home.anovaDesc'),
+      href: 'biostatistics/anova',
       icon: Presentation,
       color: 'emerald',
       size: 'col-span-1',
     },
     {
-      title: 'Sample Proportions',
-      desc: "Calcul d'effectifs pour proportions.",
-      href: '/sample-proportions',
+      title: t('sidebar.proportionsSample'),
+      desc: t('home.sampleProportionsDesc'),
+      href: 'biostatistics/proportions_sample',
       icon: Calculator,
       color: 'purple',
       size: 'col-span-1',
     },
     {
-      title: 'Cohort RCT',
-      desc: "Puissance pour études de cohorte.",
-      href: '/cohort-rct',
+      title: t('sidebar.cohortRCT'),
+      desc: t('home.cohortRCTDesc'),
+      href: 'biostatistics/cohort_rct',
       icon: Users,
       color: 'blue',
       size: 'col-span-2',
     },
     {
-      title: 'Cas Non Apparié',
-      desc: 'Cas-témoins non appariés.',
-      href: '/case-control',
+      title: t('sidebar.caseControl'),
+      desc: t('home.caseControlDesc'),
+      href: 'biostatistics/unmatched_case',
       icon: Grid,
       color: 'emerald',
       size: 'col-span-1',
     },
     {
-      title: 'Mean Difference',
-      desc: 'Différence de moyennes.',
-      href: '/mean-difference-sample',
+      title: t('sidebar.meanDifference'),
+      desc: t('home.meanDifferenceDesc'),
+      href: 'biostatistics/mean_difference_sample',
       icon: TrendingUp,
       color: 'purple',
       size: 'col-span-1',
     },
     {
-      title: 'Nombres Aléatoires',
-      desc: 'Générateur de nombres aléatoires.',
-      href: '/random-numbers',
+      title: t('sidebar.randomNumbers'),
+      desc: t('home.randomNumbersDesc'),
+      href: 'biostatistics/random_numbers',
       icon: Zap,
       color: 'blue',
       size: 'col-span-1',
     },
     {
-      title: 'Explorer',
-      desc: 'Explorer les modules disponibles.',
+      title: t('sidebar.explorer'),
+      desc: t('home.explorerDesc'),
       href: '/explorer/search',
       icon: GlobeIcon,
       color: 'blue',
-      size: 'col-span-2',
-    },
-    {
-      title: 'GeoSpatial',
-      desc: 'Visualisation géographique.',
-      href: '/geospatial',
-      icon: Map,
-      color: 'emerald',
       size: 'col-span-1',
     },
     {
-      title: 'Simulateur',
-      desc: 'Simulation épidémiologique.',
-      href: '/simulation',
+      title: t('sidebar.geospatial'),
+      desc: t('home.geospatialDesc'),
+      href: '/geospatial/map',
+      icon: Map,
+      color: 'emerald',
+      size: 'col-span-2',
+    },
+    {
+      title: t('sidebar.simulation'),
+      desc: t('home.simulatorDesc'),
+      href: '/simulation/dashboard',
       icon: Activity,
       color: 'purple',
       size: 'col-span-1',
     },
     {
-      title: 'Code Editor',
-      desc: 'Atelier de code interactif.',
+      title: t('sidebar.codeEditor'),
+      desc: t('home.codeEditorDesc'),
       href: '/workspace',
       icon: Code,
       color: 'blue',
-      size: 'col-span-1',
+      size: 'col-span-3',
     },
     {
-      title: 'Aide',
-      desc: "Centre d'aide et support.",
+      title: t('common.help'),
+      desc: t('home.helpDesc'),
       href: '/help',
       icon: FileText,
       color: 'emerald',
-      size: 'col-span-2',
+      size: 'col-span-1',
     },
     {
-      title: 'Documentation',
-      desc: 'Documentation complète.',
+      title: t('common.docs'),
+      desc: t('home.docsDesc'),
       href: '/docs',
       icon: BookOpen,
       color: 'purple',
@@ -319,7 +321,11 @@ export default function Home() {
     },
   };
 
-  const navLinks = ['Tour rapide', 'Documentation', 'Workspace'];
+  const navLinks = [
+    { label: t('nav.quickTour'), href: '#' },
+    { label: t('common.docs'), href: '#' },
+    { label: t('sidebar.workspace'), href: '#' },
+  ];
 
   // --- Effects ---
   // Keyboard shortcut: Cmd+K / Ctrl+K to open command palette
@@ -353,132 +359,127 @@ export default function Home() {
       </div>
 
       {/* Floating navigation bar */}
-{/* Floating navigation bar */}
-<nav className="fixed top-6 inset-x-0 z-[100] max-w-5xl mx-auto px-4">
-  <div className={`
-    flex items-center justify-between px-6 h-16
-    bg-transparent dark:bg-transparent border-none shadow-none
-    md:bg-white/70 md:dark:bg-black/70 md:backdrop-blur-2xl 
-    md:border md:border-white/20 md:dark:border-white/10 
-    md:shadow-[0_8px_32px_rgba(0,0,0,0.05)] md:rounded-3xl
-  `}>
-    {/* Logo */}
-    <div className="hidden md:flex items-center gap-2">
-    <div className="flex justify-center ">
-          <svg width="20" height="25" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-100">
-            <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-          </svg>
+      <nav className="fixed top-6 inset-x-0 z-[100] max-w-5xl mx-auto px-4">
+        <div className={`
+          flex items-center justify-between px-6 h-16
+          bg-transparent dark:bg-transparent border-none shadow-none
+          md:bg-white/70 md:dark:bg-black/70 md:backdrop-blur-2xl 
+          md:border md:border-white/20 md:dark:border-white/10 
+          md:shadow-[0_8px_32px_rgba(0,0,0,0.05)] md:rounded-3xl
+        `}>
+          {/* Logo */}
+          <div className="hidden md:flex items-center gap-2">
+            <div className="flex justify-center ">
+              <svg width="20" height="25" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-100">
+                <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+              </svg>
+            </div>
+            <span className="font-bold tracking-tighter text-lg">
+              {t('app.name', 'Wepisia')}
+            </span>
+          </div>
+
+          {/* Liens desktop (toujours cachés sur mobile) */}
+          <div className="hidden md:flex items-center gap-6">
+            {navLinks.map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                className="text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
+              >
+                {item.label}
+              </a>
+            ))}
+            <button className="bg-slate-900 dark:bg-white dark:text-black text-white px-5 py-2 rounded-2xl text-xs font-bold hover:scale-105 transition-transform active:scale-95">
+              {t('common.help')}
+            </button>
+          </div>
+
+          {/* Bouton hamburger - ml-auto pour le pousser à droite sur mobile */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden p-2 text-slate-900 dark:text-white ml-auto z-50"
+            aria-label={t('common.menu')}
+          >
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
-      <span className="font-bold tracking-tighter text-lg">
-       Wepisia
-      </span>
-    </div>
 
-    {/* Liens desktop (toujours cachés sur mobile) */}
-    <div className="hidden md:flex items-center gap-6">
-      {navLinks.map((item) => (
-        <a
-          key={item}
-          href="#"
-          className="text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
+        {/* Overlay mobile */}
+        {mobileMenuOpen && (
+          <div
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm md:hidden z-40 animate-fade-in"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* Drawer mobile – glisse depuis la droite */}
+        <div
+          className={`
+            fixed top-0 right-0 h-full w-64 bg-white dark:bg-slate-900 shadow-xl z-50
+            transform transition-transform duration-300 ease-in-out
+            ${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}
+            md:hidden
+          `}
         >
-          {item}
-        </a>
-      ))}
-      <button className="bg-slate-900 dark:bg-white dark:text-black text-white px-5 py-2 rounded-2xl text-xs font-bold hover:scale-105 transition-transform active:scale-95">
-        Aide
-      </button>
-    </div>
-
-    {/* Bouton hamburger - ml-auto pour le pousser à droite sur mobile */}
-    <button
-      onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-      className="md:hidden p-2 text-slate-900 dark:text-white ml-auto z-50"
-      aria-label="Menu"
-    >
-      {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-    </button>
-  </div>
-
-  {/* Overlay mobile */}
-  {mobileMenuOpen && (
-    <div
-      className="fixed inset-0 bg-black/20 backdrop-blur-sm md:hidden z-40 animate-fade-in"
-      onClick={() => setMobileMenuOpen(false)}
-    />
-  )}
-
-  {/* Drawer mobile – glisse depuis la droite */}
-  <div
-    className={`
-      fixed top-0 right-0 h-full w-64 bg-white dark:bg-slate-900 shadow-xl z-50
-      transform transition-transform duration-300 ease-in-out
-      ${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}
-      md:hidden
-    `}
-  >
-    <div className="flex flex-col p-6 pt-20 gap-4">
-      {navLinks.map((item) => (
-        <a
-          key={item}
-          href="#"
-          onClick={() => setMobileMenuOpen(false)}
-          className="text-lg font-medium py-2 border-b border-gray-100 dark:border-white/10"
-        >
-          {item}
-        </a>
-      ))}
-      <button className="w-full bg-slate-900 dark:bg-white dark:text-black text-white py-3 rounded-xl text-sm font-bold mt-4">
-        Aide
-      </button>
-    </div>
-  </div>
-</nav>
+          <div className="flex flex-col p-6 pt-20 gap-4">
+            {navLinks.map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-lg font-medium py-2 border-b border-gray-100 dark:border-white/10"
+              >
+                {item.label}
+              </a>
+            ))}
+            <button className="w-full bg-slate-900 dark:bg-white dark:text-black text-white py-3 rounded-xl text-sm font-bold mt-4">
+              {t('common.help')}
+            </button>
+          </div>
+        </div>
+      </nav>
 
       {/* Hero section */}
       <header className="relative z-10 pt-36 pb-28 px-6 overflow-hidden">
-      {/* Background Tribal Pattern Overlay */}
-      <div className="absolute inset-0 opacity-[0.1] dark:opacity-[0.1] pointer-events-none">
-        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="tribal-pattern" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
-              <path d="M0 50 L25 50 M75 50 L100 50 M50 0 L50 25 M50 75 L50 100" stroke="currentColor" strokeWidth="0.5" fill="none" />
-              <circle cx="50" cy="50" r="15" stroke="currentColor" strokeWidth="0.5" fill="none" />
-              <path d="M35 35 L65 65 M35 65 L65 35" stroke="currentColor" strokeWidth="0.5" fill="none" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#tribal-pattern)" />
-        </svg>
-      </div>
-
-   
-
-      <div className="max-w-4xl mx-auto text-center relative">
-        {/* Tribal Identity Symbol - Stylized Mask / Totem line */}
-        <div className="flex justify-center mb-8">
-          <svg width="40" height="60" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-80">
-            <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+        {/* Background Tribal Pattern Overlay */}
+        <div className="absolute inset-0 opacity-[0.1] dark:opacity-[0.1] pointer-events-none">
+          <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="tribal-pattern" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+                <path d="M0 50 L25 50 M75 50 L100 50 M50 0 L50 25 M50 75 L50 100" stroke="currentColor" strokeWidth="0.5" fill="none" />
+                <circle cx="50" cy="50" r="15" stroke="currentColor" strokeWidth="0.5" fill="none" />
+                <path d="M35 35 L65 65 M35 65 L65 35" stroke="currentColor" strokeWidth="0.5" fill="none" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#tribal-pattern)" />
           </svg>
         </div>
 
-        <h1 className="text-6xl md:text-8xl font-black tracking-tight text-gray-900 dark:text-white mb-8">
+        <div className="max-w-4xl mx-auto text-center relative">
+          {/* Tribal Identity Symbol - Stylized Mask / Totem line */}
+          <div className="flex justify-center mb-8">
+            <svg width="40" height="60" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-80">
+              <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+            </svg>
+          </div>
+
+          <h1 className="text-6xl md:text-8xl font-black tracking-tight text-gray-900 dark:text-white mb-8">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-emerald-600 to-purple-600">
-              Wepisia
+              {t('home.title', 'Wepisia')}
             </span>
           </h1>
 
-         
-
           <p className="max-w-xxl mx-auto text-xl leading-relaxed mb-14 font-light italic">
-            "La connaissance est comme un baobab : une seule personne ne peut l'embrasser."
-            <br/>
-            <span className="not-italic text-base opacity-80 font-normal">L'expertise de OpenEpi réimaginée</span>
+            {t('home.quote')}
+            <br />
+            <span className="not-italic text-base opacity-80 font-normal">{t('home.subquote')}</span>
           </p>
 
-    {/* Search bar that opens command palette */}
-    <div
+          {/* Search bar that opens command palette */}
+          <div
             className="max-w-lg mx-auto relative group cursor-pointer"
             onClick={() => setOpen(true)}
           >
@@ -486,22 +487,22 @@ export default function Home() {
             <div className="relative flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl p-2 transition-transform hover:scale-[1.02] group-hover:shadow-2xl">
               <Search className="w-5 h-5 ml-4 text-gray-400" />
               <div className="w-full px-4 py-3 text-gray-700 dark:text-gray-200">
-                Chercher (ex: Chi-carré, Odds Ratio...)
+                {t('home.searchPlaceholder')}
               </div>
               <kbd className="hidden sm:inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 px-2 py-1 rounded-md text-xs text-gray-500 dark:text-gray-400 mr-2">
                 <Command className="w-3 h-3" /> K
               </kbd>
             </div>
           </div>
-      </div>
-    </header>
+        </div>
+      </header>
 
       {/* Command palette dialog */}
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Rechercher un module ou un test..." />
+        <CommandInput placeholder={t('command.searchPlaceholder')} />
         <CommandList>
-          <CommandEmpty>Aucun résultat trouvé.</CommandEmpty>
-          <CommandGroup heading="Modules principaux">
+          <CommandEmpty>{t('command.noResults')}</CommandEmpty>
+          <CommandGroup heading={t('command.principalModules')}>
             {modules.map((module) => (
               <CommandItem
                 key={module.href}
@@ -533,13 +534,12 @@ export default function Home() {
           <div className="md:col-span-8 bg-white dark:bg-white/5 border border-slate-200/60 dark:border-white/5 rounded-[2.5rem] p-10 relative overflow-hidden group">
             <div className="relative z-10">
               <Calculator className="text-blue-500 mb-6" size={32} />
-              <h3 className="text-3xl font-bold mb-4">Calcul Biostatistiques</h3>
+              <h3 className="text-3xl font-bold mb-4">{t('home.biostatistics')}</h3>
               <p className="text-slate-500 dark:text-slate-400 max-w-md mb-8">
-                Des calculs de puissance aux tests de Mantel-Haenszel, accédez à une suite d'outils
-                validés scientifiquement.
+                {t('home.biostatisticsDesc')}
               </p>
               <button className="flex items-center gap-2 text-sm font-bold text-blue-600 group-hover:gap-4 transition-all">
-                Explorer le module <ArrowRight size={16} />
+                {t('home.exploreModule')} <ArrowRight size={16} />
               </button>
             </div>
             {/* Decorative chart */}
@@ -563,10 +563,9 @@ export default function Home() {
           <div className="md:col-span-4 bg-slate-900 text-white rounded-[2.5rem] p-10 flex flex-col justify-between overflow-hidden relative">
             <Brain className="text-blue-400 mb-6" size={32} />
             <div>
-              <h3 className="text-2xl font-bold mb-2">Analyse IA</h3>
+              <h3 className="text-2xl font-bold mb-2">{t('home.aiAnalysis')}</h3>
               <p className="text-slate-400 text-sm leading-relaxed">
-                Interprétez vos résultats automatiquement grâce à notre moteur d'intelligence
-                contextuelle.
+                {t('home.aiDescription')}
               </p>
             </div>
             <div className="absolute top-0 right-0 p-8 opacity-20">
@@ -578,10 +577,9 @@ export default function Home() {
           <div className="md:col-span-6 bg-white dark:bg-white/5 border border-slate-200/60 dark:border-white/5 rounded-[2.5rem] p-10 flex flex-col md:flex-row gap-8 items-center overflow-hidden">
             <div className="flex-1">
               <Map className="text-indigo-500 mb-6" size={32} />
-              <h3 className="text-2xl font-bold mb-4">Visualisation Géo</h3>
+              <h3 className="text-2xl font-bold mb-4">{t('home.geospatial')}</h3>
               <p className="text-slate-500 text-sm italic">
-                "Visualisez vos évènements épidémiologiques sur des cartes interactives avec des
-                heatmaps dynamiques et des clusters intelligents."
+                {t('home.geospatialDescription')}
               </p>
             </div>
             <div className="w-full md:w-64 h-64 flex items-center justify-center relative">
@@ -615,17 +613,16 @@ export default function Home() {
           <div className="md:col-span-6 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-[2.5rem] p-10 group cursor-pointer overflow-hidden relative">
             <div className="relative z-10">
               <Activity className="mb-6" size={32} />
-              <h3 className="text-2xl font-bold mb-4">Moteur de Simulation</h3>
+              <h3 className="text-2xl font-bold mb-4">{t('home.simulationEngine')}</h3>
               <p className="opacity-80 text-sm mb-6 max-w-xs">
-                Simulez des scénarios épidémiologiques complexes avec notre moteur de simulation
-                avancé avec des performances optimales.
+                {t('home.simulationDescription')}
               </p>
               <div className="flex gap-4">
                 <span className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                  WebR Powered
+                  {t('home.webrPowered')}
                 </span>
                 <span className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                  60 FPS
+                  {t('home.sixtyFps')}
                 </span>
               </div>
             </div>
@@ -662,15 +659,15 @@ export default function Home() {
                 <X size={24} />
               </button>
               <nav className="flex flex-col gap-8">
-                      {navLinks.map((item) => (
-                <a
-                  key={item}
-                  href="#"
-                  className="text-base font-medium opacity-60 hover:opacity-100 transition-opacity"
-                >
-                  {item}
-                </a>
-              ))}
+                {navLinks.map((item) => (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    className="text-base font-medium opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    {item.label}
+                  </a>
+                ))}
               </nav>
             </motion.div>
           </>
@@ -716,7 +713,7 @@ export default function Home() {
                     <span
                       className={`text-xs font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300 ${textColor}`}
                     >
-                      Lancer le module
+                      {t('home.launchModule')}
                     </span>
                     <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 flex items-center justify-center group-hover:bg-slate-900 dark:group-hover:bg-slate-100 group-hover:text-white dark:group-hover:text-slate-900 transition-all duration-300 shadow-sm">
                       <ArrowUpRight className="w-5 h-5" />
@@ -743,9 +740,10 @@ export default function Home() {
             {/* Floating social/action bar */}
             <div className="flex items-center gap-2 p-1.5 rounded-full bg-slate-50/50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 backdrop-blur-md">
               {[
-                { icon: <ExternalLink size={16} />, label: 'Web' },
-                { icon: <Code size={16} />, label: 'Github' },
-                { icon: <Database size={16} />, label: 'Data' },
+                { icon: <ExternalLink size={16} />, label: t('footer.web') },
+                { icon: <Code size={16} />, label: t('footer.github') },
+                { icon: <Settings size={16} />, label: t('footer.data') },
+                { icon: <BookOpen size={16} />, label: t('footer.documentation') },
               ].map((item, i) => (
                 <button
                   key={i}
@@ -762,23 +760,23 @@ export default function Home() {
             {/* Text and branding */}
             <div className="text-center space-y-3">
               <p className="text-[13px] tracking-tight text-slate-500 dark:text-slate-400 font-light">
-                © {new Date().toLocaleDateString('fr-FR', { year: 'numeric'})}{' '}
-                <span className="font-semibold text-slate-800 dark:text-white"> OpenEPI</span>
+                {t('footer.copyright', { year: new Date().getFullYear() })}{' '}
+                <span className="font-semibold text-slate-800 dark:text-white">wepisia</span>
                 <span className="mx-3 opacity-20">|</span>
-                A precision tool for Epidemiology
+                {t('footer.tagline')}
               </p>
 
               <div className="flex items-center justify-center gap-4 text-[10px] uppercase tracking-[0.2em] text-slate-400">
                 <span className="hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-crosshair">
-                  Privacy
+                  {t('footer.privacy')}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-slate-300" />
                 <span className="hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-crosshair">
-                  Terms
+                  {t('footer.terms')}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-slate-300" />
                 <div className="group flex items-center gap-1">
-                  Propulsed by
+                  {t('footer.poweredBy')}
                   <a
                     href="#"
                     target="_blank"
