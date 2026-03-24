@@ -11,7 +11,7 @@
     "lightMode": "Light mode"
   },
   "sidebar": {
-    "title": "OpenEPI",
+    "title": "Wepisia",
     "subtitle": "Reedited",
     "numerotations": "Numerations",
     "stdMortalityRatio": "Standardized Mortality Ratio",
@@ -37,6 +37,8 @@
     "nombresAleatoires": "Random Numbers",
     "recherches": "Search",
     "explorer": "Explorer",
+    "randomNumbers": "Random Numbers",
+    "caseControl": "Case-Control",
     "geospatial": "Geospatial",
     "geospatialModule": "Geospatial",
     "simulation": "Simulation",
@@ -46,18 +48,17 @@
     "support": "Support",
     "closeMenu": "Close menu",
     "expandSidebar": "Expand sidebar",
-    "collapseSidebar": "Collapse sidebar"
+    "collapseSidebar": "Collapse sidebar",
+    "docs": "Documentation"
   },
   "home": {
-    "title": "OpenEPI",
-    "subtitle": "Epidemiology and Biostatistics Tools",
-    "searchPlaceholder": "Search for a tool...",
-    "searchDescription": "Press Cmd+K to open command palette",
-    "featuredTools": "Featured Tools",
-    "allTools": "All Tools",
+    "title": "Wepisia",
+    "quote": "“Knowledge is like a baobab: no one person can embrace it.”",
+    "subquote": "The expertise of OpenEpi reimagined",
+    "searchPlaceholder": "Search (e.g., Chi-square, Odds Ratio…)",
     "stdMortalityRatioDesc": "Standardized mortality analysis.",
     "proportionsDesc": "Confidence intervals and tests.",
-    "twoByTwoDesc": "Contingency analysis, odds ratio, relative risk.",
+    "twoByTwoDesc": "Contingency analysis, odds ratio, and relative risk.",
     "doseResponseDesc": "Trend analysis.",
     "rByCDesc": "Arbitrary dimensions.",
     "screeningDesc": "Diagnostic screening tests.",
@@ -70,14 +71,45 @@
     "sampleProportionsDesc": "Sample size for proportions.",
     "cohortRCTDesc": "Power for cohort studies.",
     "caseControlDesc": "Unmatched case-control.",
-    "meanDifferenceDesc": "Mean difference.",
+    "meanDifferenceDesc": "Difference in means.",
     "randomNumbersDesc": "Random number generator.",
     "explorerDesc": "Explore available modules.",
     "geospatialDesc": "Geographic visualization.",
     "simulatorDesc": "Epidemiological simulation.",
     "codeEditorDesc": "Interactive code workshop.",
     "helpDesc": "Help center and support.",
-    "docsDesc": "Complete documentation."
+    "docsDesc": "Complete documentation.",
+    "biostatistics": "Biostatistics",
+    "biostatisticsDesc": "From power calculations to Mantel‑Haenszel tests, access a suite of scientifically validated tools.",
+    "exploreModule": "Explore module",
+    "aiAnalysis": "AI Analysis",
+    "aiDescription": "Interpret your results automatically with our contextual intelligence engine.",
+    "geospatial": "Geospatial",
+    "geospatialDescription": "Visualize epidemiological events on interactive maps with dynamic heatmaps and intelligent clusters.",
+    "simulationEngine": "Simulation Engine",
+    "simulationDescription": "Simulate complex epidemiological scenarios with our advanced simulation engine for optimal performance.",
+    "webrPowered": "WebR Powered",
+    "sixtyFps": "60 FPS",
+    "launchModule": "Launch module"
+  },
+  "nav": {
+    "quickTour": "Quick tour"
+  },
+  "command": {
+    "searchPlaceholder": "Search for a module or test…",
+    "noResults": "No results found.",
+    "principalModules": "Main modules"
+  },
+  "footer": {
+    "web": "Web",
+    "github": "Github",
+    "data": "Data",
+    "copyright": "© {{year}}",
+    "tagline": "A precision tool for epidemiology",
+    "privacy": "Privacy",
+    "terms": "Terms",
+    "poweredBy": "Powered by",
+    "documentation": "Documentation"
   },
   "settings": {
     "title": "Settings",

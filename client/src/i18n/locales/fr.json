@@ -11,7 +11,7 @@
     "lightMode": "Mode clair"
   },
   "sidebar": {
-    "title": "OpenEPI",
+    "title": "Wepisia",
     "subtitle": "Reedited",
     "numerotations": "Numérotations",
     "stdMortalityRatio": "Rapport de mortalité standardisé",
@@ -38,6 +38,8 @@
     "recherches": "Recherches",
     "explorer": "Explorateur",
     "geospatial": "Géospatial",
+    "randomNumbers": "Nombres aléatoires",
+    "caseControl": "Cas-témoins",
     "geospatialModule": "Géospatial",
     "simulation": "Simulation",
     "simulateur": "Simulateur",
@@ -46,15 +48,14 @@
     "support": "Support",
     "closeMenu": "Fermer le menu",
     "expandSidebar": "Développer la barre latérale",
-    "collapseSidebar": "Réduire la barre latérale"
+    "collapseSidebar": "Réduire la barre latérale",
+    "docs": "Documentation"
   },
   "home": {
-    "title": "OpenEPI",
-    "subtitle": "Outils d'épidémiologie et de biostatistiques",
-    "searchPlaceholder": "Rechercher un outil...",
-    "searchDescription": "Appuyez sur Cmd+K pour ouvrir la palette de commandes",
-    "featuredTools": "Outils en vedette",
-    "allTools": "Tous les outils",
+    "title": "Wepisia",
+    "quote": "« La connaissance est comme un baobab : une seule personne ne peut l'embrasser. »",
+    "subquote": "L'expertise de OpenEpi réimaginée",
+    "searchPlaceholder": "Chercher (ex: Chi‑carré, Odds Ratio…)",
     "stdMortalityRatioDesc": "Analyse de mortalité standardisée.",
     "proportionsDesc": "Intervalles de confiance et tests.",
     "twoByTwoDesc": "Analyse de contingence, odds ratio et risque relatif.",
@@ -69,7 +70,7 @@
     "anovaDesc": "Analyse de variance.",
     "sampleProportionsDesc": "Calcul d'effectifs pour proportions.",
     "cohortRCTDesc": "Puissance pour études de cohorte.",
-    "caseControlDesc": "Cas-témoins non appariés.",
+    "caseControlDesc": "Cas‑témoins non appariés.",
     "meanDifferenceDesc": "Différence de moyennes.",
     "randomNumbersDesc": "Générateur de nombres aléatoires.",
     "explorerDesc": "Explorer les modules disponibles.",
@@ -77,7 +78,38 @@
     "simulatorDesc": "Simulation épidémiologique.",
     "codeEditorDesc": "Atelier de code interactif.",
     "helpDesc": "Centre d'aide et support.",
-    "docsDesc": "Documentation complète."
+    "docsDesc": "Documentation complète.",
+    "biostatistics": "Calcul Biostatistiques",
+    "biostatisticsDesc": "Des calculs de puissance aux tests de Mantel‑Haenszel, accédez à une suite d'outils validés scientifiquement.",
+    "exploreModule": "Explorer le module",
+    "aiAnalysis": "Analyse IA",
+    "aiDescription": "Interprétez vos résultats automatiquement grâce à notre moteur d'intelligence contextuelle.",
+    "geospatial": "Visualisation Géo",
+    "geospatialDescription": "Visualisez vos évènements épidémiologiques sur des cartes interactives avec des heatmaps dynamiques et des clusters intelligents.",
+    "simulationEngine": "Moteur de Simulation",
+    "simulationDescription": "Simulez des scénarios épidémiologiques complexes avec notre moteur de simulation avancé avec des performances optimales.",
+    "webrPowered": "WebR Powered",
+    "sixtyFps": "60 FPS",
+    "launchModule": "Lancer le module"
+  },
+  "nav": {
+    "quickTour": "Tour rapide"
+  },
+  "command": {
+    "searchPlaceholder": "Rechercher un module ou un test…",
+    "noResults": "Aucun résultat trouvé.",
+    "principalModules": "Modules principaux"
+  },
+  "footer": {
+    "web": "Web",
+    "github": "Github",
+    "data": "Data",
+    "copyright": "© {{year}}",
+    "tagline": "Un outil de précision pour l'épidémiologie",
+    "privacy": "Confidentialité",
+    "terms": "Conditions",
+    "poweredBy": "Propulsé par",
+    "documentation": "Documentation"
   },
   "settings": {
     "title": "Paramètres",
