@@ -73,7 +73,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
         { id: 'std_mortality_ratio', label: t('sidebar.stdMortalityRatio'), icon: Blocks, href: '/biostatistics/std_mortality_ratio' },
         { id: 'proportions', label: t('sidebar.proportions'), icon: ProportionsIcon, href: '/biostatistics/proportions' },
         { id: 'two_by_two', label: t('sidebar.twoByTwo'), icon: Grid2x2, href: '/biostatistics/two_by_two' },
-        { id: 'dose_response', label: t('sidebar.doseResponse'), icon: ChartNoAxesCombined, href: '/biostatistics/dose-response' },
+        { id: 'dose_response', label: t('sidebar.doseResponse'), icon: ChartNoAxesCombined, href: '/biostatistics/dose_response' },
         { id: 'r_by_c', label: t('sidebar.rByC'), icon: TableCellsSplit, href: '/biostatistics/r_by_c' },
         { id: 'screening', label: t('sidebar.screening'), icon: ScanEye, href: '/biostatistics/screening' },
       ]
@@ -145,7 +145,6 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
       id: 'support',
       title: t('sidebar.support'),
       items: [
-        { id: 'help', label: t('sidebar.help'), icon: HeartHandshake, href: '/help' },
         { id: 'docs', label: t('sidebar.docs'), icon: BookOpen, href: '/docs' },
       ]
     }
