@@ -3,13 +3,19 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host",
     "build": "node scripts/generate-sitemap.js && vite build",
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.139",
@@ -118,6 +124,7 @@
     "react-helmet-async": "^3.0.0",
     "react-hook-form": "^7.72.0",
     "react-i18next": "^16.6.2",
+    "react-icons": "^5.6.0",
     "react-jsx-parser": "^2.4.1",
     "react-leaflet": "^5.0.0",
     "react-leaflet-cluster": "^4.0.0",
@@ -161,6 +168,7 @@
     "add": "^2.0.6",
     "autoprefixer": "^10.4.27",
     "cesium": "^1.139.1",
+    "cross-env": "^7.0.3",
     "electron": "^41.0.3",
     "electron-builder": "^26.8.1",
     "esbuild": "^0.27.4",
@@ -174,6 +182,39 @@
     "vite-plugin-cesium": "^1.2.23",
     "vite-plugin-sitemap": "^0.8.2",
     "vitest": "^4.1.1"
+  },
+  "build": {
+    "appId": "com.wepisia.desktop",
+    "productName": "Wepisia",
+    "copyright": "Copyright © 2026 Xcept-Health",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "client/dist/**/*",
+      "electron/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icon.png"
+    }
   },
   "packageManager": "npm@11.12.0"
 }

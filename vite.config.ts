@@ -20,7 +20,7 @@ export default defineConfig({
   envDir: path.resolve(import.meta.dirname),
   root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
   },
   server: {
@@ -28,7 +28,6 @@ export default defineConfig({
     strictPort: false, 
     host: true,
     allowedHosts: [
-
       "localhost",
       "127.0.0.1",
     ],
