@@ -36,6 +36,9 @@ import Workspace from "./pages/Workspace";
 import Geospatial from "./pages/geospatial/map";
 import EpidemiologicalSimulation from "./pages/simulation/dashboard";
 import Settings from "./pages/settings";
+import PrivacyPage from "./pages/Privacy";
+import TermsPage from "./pages/Terms";
+import AboutPage from "./pages/About";
 import { useSettings } from "@/contexts/SettingsContext";
 import { setSoundEnabled } from "@/lib/notifications";
 
@@ -70,6 +73,9 @@ function Router() {
       <Route path="/workspace" component={Workspace} />
       <Route path="/geospatial/map" component={Geospatial} />
       <Route path="/simulation/dashboard" component={EpidemiologicalSimulation} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/about" component={AboutPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -10,7 +10,7 @@ import {
   AlignHorizontalSpaceAround, Globe,
   ChartBarStacked, UnfoldHorizontal, Shuffle, Dices,
   MapPinHouse, ChartScatter, HeartHandshake, Moon, Sun,
-  ChevronRight, Code, UsersRound, ChevronsLeft
+  ChevronRight, Code, UsersRound, ChevronsLeft, Info
 } from 'lucide-react';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useTranslation } from 'react-i18next'; 
@@ -137,8 +137,16 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
     },
     {
       id: 'workspace',
+      title: t('sidebar.workspace'),
       items: [
-        { id: 'Atelier code', label: t('sidebar.codeEditor'), icon: Code, href: '/workspace' },
+        { id: 'workspace', label: t('sidebar.codeEditor'), icon: Code, href: '/workspace' },
+      ]
+    },
+    {
+      id: 'about',
+      title: t('sidebar.about'),
+      items: [
+        { id: 'about', label: t('sidebar.about'), icon: Info, href: '/About' },
       ]
     },
     {
