@@ -1,13 +1,21 @@
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Home, Compass } from "lucide-react";
+import { ArrowLeft, Home, Compass, ExternalLink } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
+/**
+ * 404 Not Found page with a parallax effect that responds to mouse movement.
+ * Easter egg: coordinates point to the Martyrs' Monument in Burkina Faso.
+ * Clicking them opens a modal or external link to learn more.
+ */
 export default function NotFound() {
+  const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [showModal, setShowModal] = useState(false);
 
-  // Calcul du mouvement pour l'effet parallaxe
+  // Track mouse position to create a parallax effect
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const x = (e.clientX - window.innerWidth / 2) / 50;
@@ -19,10 +27,14 @@ export default function NotFound() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
+  // Coordinates of the Martyrs' Monument (Ouagadougou, Burkina Faso)
+  const monumentLat = 12.3952;
+  const monumentLng = -1.5581;
+
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-background">
       
-      {/* --- PARALLAXE : 404 GÉANT (Arrière-plan, bouge à l'opposé) --- */}
+      {/* --- BACKGROUND: Giant "404" with opposite movement for depth --- */}
       <div 
         className="absolute inset-0 flex items-center justify-center select-none pointer-events-none transition-transform duration-200 ease-out"
         style={{ 
@@ -34,7 +46,7 @@ export default function NotFound() {
         </span>
       </div>
 
-      {/* --- ACCENTS DE COULEUR (Variables Chart) --- */}
+      {/* --- COLOR ACCENTS: Floating blurred circles with slight movement --- */}
       <div 
         className="absolute top-1/4 left-1/4 w-64 h-64 bg-chart-1 opacity-20 blur-[100px] animate-bounce-gentle"
         style={{ transform: `translate(${offset.x * 0.5}px, ${offset.y * 0.5}px)` }}
@@ -44,7 +56,7 @@ export default function NotFound() {
         style={{ transform: `translate(${offset.x * -0.8}px, ${offset.y * -0.8}px)` }}
       />
 
-      {/* --- CONTENU PRINCIPAL (Premier plan) --- */}
+      {/* --- MAIN CONTENT --- */}
       <div 
         className="relative z-10 w-full max-w-lg mx-4 transition-transform duration-300 ease-out"
         style={{ 
@@ -53,7 +65,7 @@ export default function NotFound() {
       >
         <div className="glass border border-border p-8 md:p-12 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-scale-in overflow-hidden">
           
-          {/* Lueur interne qui suit la souris */}
+          {/* Inner glow that follows the cursor */}
           <div 
             className="absolute pointer-events-none inset-0 opacity-30"
             style={{
@@ -70,11 +82,10 @@ export default function NotFound() {
 
             <div className="text-center space-y-4">
               <h1 className="text-4xl font-bold tracking-tight text-foreground">
-                Perdu dans le vide ?
+                {t('notFound.title', 'Lost in the void?')}
               </h1>
               <p className="text-muted-foreground text-lg leading-relaxed">
-                Cette page a dérivé hors de notre radar. <br />
-                Utilisez vos instruments pour revenir à bon port.
+                {t('notFound.message', 'This page has drifted off our radar. Use your instruments to return to safe harbor.')}
               </p>
             </div>
 
@@ -85,7 +96,7 @@ export default function NotFound() {
                 className="control-button h-12 px-8 rounded-lg border-border bg-background/50 hover:bg-secondary text-foreground backdrop-blur-md"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Précédent
+                {t('notFound.back', 'Go Back')}
               </Button>
 
               <Button
@@ -93,19 +104,63 @@ export default function NotFound() {
                 className="control-button h-12 px-8 rounded-lg bg-primary text-primary-foreground hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-primary/20 transition-all"
               >
                 <Home className="w-4 h-4 mr-2" />
-                Accueil
+                {t('notFound.home', 'Home')}
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Coordonnées fictives pour le style pro/innovant */}
-        <div className="mt-6 flex justify-between items-center px-4 text-[10px] font-mono text-muted-foreground opacity-50">
-          <span>LAT: 40.444 N</span>
+        {/* Easter egg: coordinates that point to the Martyrs' Monument */}
+        <div className="mt-6 flex justify-between items-center px-4 text-[10px] font-mono text-muted-foreground opacity-50 group">
+          <span
+            className="cursor-pointer hover:text-primary transition-colors duration-200"
+            onClick={() => setShowModal(true)}
+          >
+            LAT: {monumentLat.toFixed(4)}° N
+          </span>
           <div className="h-[1px] flex-1 mx-4 bg-border" />
-          <span>LONG: 12.001 W</span>
+          <span
+            className="cursor-pointer hover:text-primary transition-colors duration-200"
+            onClick={() => setShowModal(true)}
+          >
+            LONG: {Math.abs(monumentLng).toFixed(4)}° W
+          </span>
         </div>
       </div>
+
+      {/* Modal for the easter egg */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)}>
+          <div className="bg-background border border-border rounded-2xl max-w-md w-full p-6 shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowModal(false)}
+              className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
+            >
+              ✕
+            </button>
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                <Compass className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold mb-2">
+                {t('notFound.modalTitle', 'Monument des Martyrs')}
+              </h3>
+              <p className="text-muted-foreground text-sm mb-4">
+                {t('notFound.modalText', 'These coordinates lead to the Martyrs\' Monument in Ouagadougou, Burkina Faso – a memorial to those who sacrificed for freedom. A place of remembrance and hope.')}
+              </p>
+              <a
+                href="https://www.openstreetmap.org/?mlat=12.3952&mlon=-1.5581#map=15/12.3952/-1.5581"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
+              >
+                {t('notFound.modalLink', 'View on map')}
+                <ExternalLink size={12} />
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
