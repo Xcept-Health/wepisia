@@ -1,9 +1,10 @@
 import { Link } from "wouter";
 import {
-  FileText, Scale, Shield, Globe, Code, Mail, Calendar,
-  AlertTriangle, CheckCircle, XCircle, Users, Lock, Eye
+  FileText, Scale, Shield, Globe, Code, Mail, Calendar, BookOpen,
+  AlertTriangle, CheckCircle, XCircle, Users, Lock, Eye,Settings,ExternalLink
 } from "lucide-react";
 import { useTranslation } from 'react-i18next';
+import { FaGithub, FaLinkedin } from 'react-icons/fa';
 
 export default function TermsPage() {
   const { t } = useTranslation();
