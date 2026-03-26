@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -48,9 +49,11 @@ interface TrendResults {
 }
 
 export default function DoseResponse() {
+  const { t } = useTranslation();
+
   // Input state
   const [rows, setRows] = useState<DoseRow[]>([
-    { id: '1', exposure: 'Niveau 0', dose: 0, cases: 0, controls: 0 },
+    { id: '1', exposure: t('doseResponse.level') + ' 0', dose: 0, cases: 0, controls: 0 },
   ]);
 
   const [results, setResults] = useState<TrendResults | null>(null);
@@ -79,29 +82,28 @@ export default function DoseResponse() {
     }
   }, [results]);
 
-  // ---------- Core calculation ----------
+  //  Core calculation 
   const calculateTrend = () => {
-    // Filter rows with valid numbers (cases/controls >=0)
+    // Filtrer les lignes valides
     const validRows = rows.filter(r => r.cases >= 0 && r.controls >= 0 && (r.cases + r.controls) > 0);
     if (validRows.length < 2) {
       setResults(null);
       return;
     }
-
-    // Sort by dose (ascending)
+  
+    // Trier par dose (croissant)
     const sorted = [...validRows].sort((a, b) => a.dose - b.dose);
-    const ref = sorted[0]; // reference level (lowest dose)
-
-    // Compute odds and proportions for reference
+    const ref = sorted[0]; // niveau de référence (dose la plus faible)
+  
+    // Calculs pour OR, RR (inchangés)
     const refOdds = ref.controls > 0 ? ref.cases / ref.controls : 0;
     const refProp = (ref.cases + ref.controls) > 0 ? ref.cases / (ref.cases + ref.controls) : 0;
-
-    // Compute results for each level
+  
     const levels: LevelResult[] = sorted.map(row => {
       const total = row.cases + row.controls;
       const proportion = total > 0 ? row.cases / total : 0;
-
-      // Odds Ratio vs reference
+  
+      // Odds Ratio vs référence
       let oddsRatio: number | null = null;
       let orLower: number | null = null;
       let orUpper: number | null = null;
@@ -110,13 +112,13 @@ export default function DoseResponse() {
         if (Number.isFinite(oddsRatio) && oddsRatio > 0) {
           const lnOR = Math.log(oddsRatio);
           const seOR = Math.sqrt(1/row.cases + 1/row.controls + 1/ref.cases + 1/ref.controls);
-          const z = 1.96; // 95% CI
+          const z = 1.96;
           orLower = Math.exp(lnOR - z * seOR);
           orUpper = Math.exp(lnOR + z * seOR);
         }
       }
-
-      // Relative Risk vs reference
+  
+      // Risque relatif vs référence
       let relativeRisk: number | null = null;
       let rrLower: number | null = null;
       let rrUpper: number | null = null;
@@ -130,7 +132,7 @@ export default function DoseResponse() {
           rrUpper = Math.exp(lnRR + z * seRR);
         }
       }
-
+  
       return {
         exposure: row.exposure,
         dose: row.dose,
@@ -143,44 +145,53 @@ export default function DoseResponse() {
         rrUpper,
       };
     });
-
-    // Trend test (Mantel extension)
-    // Compute sums for the linear trend statistic
-    let sumCases = 0;
-    let sumTotal = 0;
-    let sumScore = 0;
-    let sumScoreCases = 0;
-    let sumScoreSquared = 0;
-
+  
+    // ---- Test de tendance de Mantel‑Haenszel (correct) ----
+    let sumW = 0;          // ∑ n_i
+    let sumWx = 0;         // ∑ n_i * x_i
+    let sumWxx = 0;        // ∑ n_i * x_i²
+    let sumWp = 0;         // ∑ a_i
+    let sumWxp = 0;        // ∑ a_i * x_i
+  
     sorted.forEach(row => {
-      const score = row.dose;
-      const total = row.cases + row.controls;
-
-      sumCases += row.cases;
-      sumTotal += total;
-      sumScore += score * total;
-      sumScoreCases += score * row.cases;
-      sumScoreSquared += score * score * total;
+      const n = row.cases + row.controls;
+      const x = row.dose;
+      const a = row.cases;
+  
+      sumW += n;
+      sumWx += n * x;
+      sumWxx += n * x * x;
+      sumWp += a;
+      sumWxp += a * x;
     });
-
-    const expectedScoreCases = (sumCases / sumTotal) * sumScore;
-    const meanScore = sumScore / sumTotal;
-    const variance = (sumCases * (sumTotal - sumCases) / (sumTotal * (sumTotal - 1))) *
-                     (sumScoreSquared - sumTotal * meanScore * meanScore);
-
+  
+    const pBar = sumWp / sumW;            // proportion globale de cas
+    const xBar = sumWx / sumW;            // moyenne pondérée des doses
+  
+    // Variance de la somme pondérée des cas
+    // = pBar * (1-pBar) * (∑ n_i (x_i - xBar)²)
+    let sumWxxc = 0;
+    sorted.forEach(row => {
+      const n = row.cases + row.controls;
+      const x = row.dose;
+      sumWxxc += n * (x - xBar) * (x - xBar);
+    });
+    const variance = pBar * (1 - pBar) * sumWxxc;
+  
+    const numerator = sumWxp - sumWp * xBar; // équivaut à ∑ (a_i - n_i pBar) * (x_i - xBar)
     let chiSquare = 0;
     if (variance > 0) {
-      chiSquare = Math.pow(sumScoreCases - expectedScoreCases, 2) / variance;
+      chiSquare = (numerator * numerator) / variance;
     }
-
+  
     const pValue = hasJStat ? 1 - jStat.chisquare.cdf(chiSquare, 1) : NaN;
-
-    const diff = sumScoreCases - expectedScoreCases;
+  
+    const diff = numerator;
     let trendDirection: 'positive' | 'negative' | 'none' = 'none';
     if (Math.abs(diff) > 1e-12) {
       trendDirection = diff > 0 ? 'positive' : 'negative';
     }
-
+  
     setResults({
       levels,
       chiSquare,
@@ -188,14 +199,13 @@ export default function DoseResponse() {
       trendDirection,
     });
   };
-
-  // ---------- UI Handlers ----------
+  //  UI Handlers 
   const addRow = () => {
     const newId = (rows.length + 1).toString();
     const newDose = rows.length; // default dose increment
     setRows([
       ...rows,
-      { id: newId, exposure: `Niveau ${rows.length}`, dose: newDose, cases: 0, controls: 0 },
+      { id: newId, exposure: `${t('doseResponse.level')} ${rows.length}`, dose: newDose, cases: 0, controls: 0 },
     ]);
   };
 
@@ -214,9 +224,9 @@ export default function DoseResponse() {
   };
 
   const clearForm = () => {
-    setRows([{ id: '1', exposure: 'Niveau 0', dose: 0, cases: 0, controls: 0 }]);
+    setRows([{ id: '1', exposure: `${t('doseResponse.level')} 0`, dose: 0, cases: 0, controls: 0 }]);
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('doseResponse.clearMessage'));
   };
 
   const loadExample = () => {
@@ -225,35 +235,36 @@ export default function DoseResponse() {
       { id: '2', exposure: '7.5 cig/j', dose: 7.5, cases: 15, controls: 85 },
       { id: '3', exposure: '17.5 cig/j', dose: 17.5, cases: 30, controls: 70 },
       { id: '4', exposure: '27.5 cig/j', dose: 27.5, cases: 50, controls: 50 },
+      { id: '5', exposure: `${t('doseResponse.level')} 4`, dose: 37.5, cases: 75, controls: 25 }, // dose corrigée
     ]);
-    toast.success('Exemple chargé');
+    toast.success(t('doseResponse.exampleLoaded'));
   };
 
   const copyResults = async () => {
     if (!results) return;
 
-    const formatNum = (val: number | null, digits = 3) => val?.toFixed(digits) ?? 'N/A';
+    const formatNum = (val: number | null, digits = 3) => val?.toFixed(digits) ?? t('common.na', 'N/A');
     const formatCI = (lower: number | null, upper: number | null) => 
-      lower && upper ? `${formatNum(lower)}–${formatNum(upper)}` : 'N/A';
+      lower && upper ? `${formatNum(lower)}–${formatNum(upper)}` : t('common.na', 'N/A');
 
-    let text = `Résultats de l'Analyse Dose-Réponse\n\n`;
-    text += `Niveaux (référence = premier niveau) :\n`;
+    let text = `${t('doseResponse.copyPrefix')}\n\n`;
+    text += `${t('doseResponse.resultsPerLevel')}\n`;
     results.levels.forEach(level => {
-      text += `${level.exposure} (dose ${level.dose}) :\n`;
-      text += `  Proportion cas : ${(level.proportion * 100).toFixed(1)}%\n`;
-      text += `  Odds Ratio : ${formatNum(level.oddsRatio)} (95% CI : ${formatCI(level.orLower, level.orUpper)})\n`;
-      text += `  Risque Relatif : ${formatNum(level.relativeRisk)} (95% CI : ${formatCI(level.rrLower, level.rrUpper)})\n\n`;
+      text += `${level.exposure} (${t('doseResponse.dose')} ${level.dose}) :\n`;
+      text += `  ${t('doseResponse.percentCases')} : ${(level.proportion * 100).toFixed(1)}%\n`;
+      text += `  ${t('doseResponse.or')} : ${formatNum(level.oddsRatio)} (95% CI : ${formatCI(level.orLower, level.orUpper)})\n`;
+      text += `  ${t('doseResponse.rr')} : ${formatNum(level.relativeRisk)} (95% CI : ${formatCI(level.rrLower, level.rrUpper)})\n\n`;
     });
-    text += `Test de tendance linéaire (Mantel extension) :\n`;
-    text += `  χ² = ${results.chiSquare.toFixed(3)}\n`;
+    text += `${t('doseResponse.trendTestTitle')} :\n`;
+    text += `  ${t('doseResponse.chiSquare')} = ${results.chiSquare.toFixed(3)}\n`;
     text += `  p = ${results.pValue.toFixed(4)}\n`;
-    text += `  Direction : ${results.trendDirection === 'positive' ? 'positive' : results.trendDirection === 'negative' ? 'négative' : 'aucune'}\n`;
+    text += `  ${t('doseResponse.direction')} : ${results.trendDirection === 'positive' ? t('doseResponse.positive') : results.trendDirection === 'negative' ? t('doseResponse.negative') : t('doseResponse.none')}\n`;
 
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('doseResponse.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('doseResponse.copyError'));
     }
   };
 
@@ -286,19 +297,19 @@ export default function DoseResponse() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'Analyse Dose-Réponse", 20, 25);
+      doc.text(t('doseResponse.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
-      doc.text('Calculateur Dose-Réponse – Épidémiologie', 190, 32, { align: 'right' });
+      doc.text(`${t('doseResponse.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')} ${t('doseResponse.at')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text(t('doseResponse.reportSubtitle'), 190, 32, { align: 'right' });
 
       // Input data table
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Données analysées', 20, y);
+      doc.text(t('doseResponse.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
@@ -308,7 +319,7 @@ export default function DoseResponse() {
 
       autoTable(doc, {
         startY: y,
-        head: [['Niveau', 'Dose', 'Cas', 'Témoins', 'Total']],
+        head: [[t('doseResponse.level'), t('doseResponse.dose'), t('doseResponse.cases'), t('doseResponse.controls'), t('doseResponse.total')]],
         body: inputRows,
         theme: 'striped',
         headStyles: { fillColor: colorSlate[100], textColor: colorSlate[900], fontStyle: 'bold', halign: 'center' },
@@ -329,7 +340,7 @@ export default function DoseResponse() {
       // Results per level
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Résultats par niveau (vs référence)', 20, y);
+      doc.text(t('doseResponse.resultsVsRef'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
@@ -338,15 +349,15 @@ export default function DoseResponse() {
         l.exposure,
         l.dose.toString(),
         (l.proportion * 100).toFixed(1) + '%',
-        l.oddsRatio?.toFixed(3) ?? 'N/A',
-        l.orLower && l.orUpper ? `${l.orLower.toFixed(3)}–${l.orUpper.toFixed(3)}` : 'N/A',
-        l.relativeRisk?.toFixed(3) ?? 'N/A',
-        l.rrLower && l.rrUpper ? `${l.rrLower.toFixed(3)}–${l.rrUpper.toFixed(3)}` : 'N/A',
+        l.oddsRatio?.toFixed(3) ?? t('common.na', 'N/A'),
+        l.orLower && l.orUpper ? `${l.orLower.toFixed(3)}–${l.orUpper.toFixed(3)}` : t('common.na', 'N/A'),
+        l.relativeRisk?.toFixed(3) ?? t('common.na', 'N/A'),
+        l.rrLower && l.rrUpper ? `${l.rrLower.toFixed(3)}–${l.rrUpper.toFixed(3)}` : t('common.na', 'N/A'),
       ]);
 
       autoTable(doc, {
         startY: y,
-        head: [['Niveau', 'Dose', '% Cas', 'OR', 'IC 95% OR', 'RR', 'IC 95% RR']],
+        head: [[t('doseResponse.level'), t('doseResponse.dose'), t('doseResponse.percentCases'), t('doseResponse.or'), t('doseResponse.ci95OR'), t('doseResponse.rr'), t('doseResponse.ci95RR')]],
         body: levelRows,
         theme: 'striped',
         headStyles: { fillColor: colorSlate[100], textColor: colorSlate[900], fontStyle: 'bold', halign: 'center' },
@@ -369,20 +380,20 @@ export default function DoseResponse() {
       // Trend test
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Test de tendance linéaire (Mantel extension)', 20, y);
+      doc.text(t('doseResponse.trendTestLabel'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
 
       const trendRows = [
-        ['χ²', results.chiSquare.toFixed(3)],
-        ['p-value', results.pValue.toFixed(4)],
-        ['Direction', results.trendDirection === 'positive' ? 'positive' : results.trendDirection === 'negative' ? 'négative' : 'aucune'],
+        [t('doseResponse.chiSquare'), results.chiSquare.toFixed(3)],
+        ['p-value', results.pValue.toFixed(8)],
+        [t('doseResponse.direction'), results.trendDirection === 'positive' ? t('doseResponse.positive') : results.trendDirection === 'negative' ? t('doseResponse.negative') : t('doseResponse.none')],
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Paramètre', 'Valeur']],
+        head: [[t('doseResponse.parameter'), t('doseResponse.value')]],
         body: trendRows,
         theme: 'grid',
         headStyles: { fillColor: colorSlate[100], textColor: colorSlate[900], fontStyle: 'bold', halign: 'center' },
@@ -400,16 +411,17 @@ export default function DoseResponse() {
       // Interpretation
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Interprétation', 20, y);
+      doc.text(t('doseResponse.interpretation'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
 
       let interpretation = '';
       if (results.pValue < 0.05) {
-        interpretation = `Tendance ${results.trendDirection === 'positive' ? 'positive' : 'négative'} statistiquement significative (p < 0.05). `;
+        const dir = results.trendDirection === 'positive' ? t('doseResponse.positive').toLowerCase() : t('doseResponse.negative').toLowerCase();
+        interpretation = t('doseResponse.significantTrend', { direction: dir });
       } else {
-        interpretation = 'Aucune tendance significative (p ≥ 0.05). ';
+        interpretation = t('doseResponse.nonSignificantTrend');
       }
 
       doc.setFont('helvetica', 'normal');
@@ -425,28 +437,28 @@ export default function DoseResponse() {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Calculateur Dose-Réponse – Outil statistique pour épidémiologie', 20, footerY + 5);
+      doc.text(t('doseResponse.reportFooter'), 20, footerY + 5);
       doc.text('Page 1 / 1', 190, footerY + 5, { align: 'right' });
-      doc.text(`Méthode : ${hasJStat ? 'jStat (exact)' : 'Approximation'}`, 20, footerY + 10);
+      doc.text(`${t('doseResponse.method')} : ${hasJStat ? 'jStat (exact)' : 'Approximation'}`, 20, footerY + 10);
 
       doc.save('Rapport_Dose_Response.pdf');
-      toast.success('Rapport PDF exporté avec succès');
+      toast.success(t('doseResponse.exportSuccess'));
     } catch (error) {
       console.error('Erreur PDF :', error);
-      toast.error('Erreur lors de la génération du PDF');
+      toast.error(t('doseResponse.exportError'));
     }
   };
 
-  // ---------- Render ----------
+  //  Render 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Réponse à la Dose</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('doseResponse.title')}</span></li>
           </ol>
         </nav>
 
@@ -457,8 +469,8 @@ export default function DoseResponse() {
               <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Analyse de la Réponse à la Dose</h1>
-              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Test de tendance linéaire pour différents niveaux d'exposition.</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{t('doseResponse.title')}</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">{t('doseResponse.description')}</p>
             </div>
           </div>
           <button
@@ -474,7 +486,7 @@ export default function DoseResponse() {
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('doseResponse.parameters')}
               </h2>
               <div className="space-y-5">
                 <div className="w-full max-w-2xl mx-auto">
@@ -482,11 +494,11 @@ export default function DoseResponse() {
                     <table className="w-full border-collapse text-sm text-left">
                       <thead>
                         <tr className="border-b border-gray-100 dark:border-slate-800">
-                          <th className="py-4 px-4 font-medium text-gray-400 dark:text-slate-500">Niveau</th>
-                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">Dose</th>
-                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">Cas</th>
-                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">Témoins</th>
-                          <th className="py-4 px-4 font-medium text-center text-gray-400 dark:text-slate-500">Action</th>
+                          <th className="py-4 px-4 font-medium text-gray-400 dark:text-slate-500">{t('doseResponse.level')}</th>
+                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">{t('doseResponse.dose')}</th>
+                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">{t('doseResponse.cases')}</th>
+                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">{t('doseResponse.controls')}</th>
+                          <th className="py-4 px-4 font-medium text-center text-gray-400 dark:text-slate-500">{t('doseResponse.action')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 dark:divide-slate-800/50">
@@ -501,7 +513,7 @@ export default function DoseResponse() {
                                 value={row.exposure}
                                 onChange={(e) => updateRow(row.id, 'exposure', e.target.value)}
                                 className="w-full bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none transition-all"
-                                placeholder="Niveau"
+                                placeholder={t('doseResponse.level')}
                               />
                             </td>
                             <td className="py-5 px-4 text-center">
@@ -555,7 +567,7 @@ export default function DoseResponse() {
                   onClick={addRow}
                   className="w-full inline-flex items-center justify-center px-4 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all flex gap-2"
                 >
-                  <Plus className="w-4 h-4" /> Ajouter un niveau
+                  <Plus className="w-4 h-4" /> {t('doseResponse.addLevel')}
                 </button>
               </div>
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
@@ -563,7 +575,7 @@ export default function DoseResponse() {
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('doseResponse.example')}
                 </button>
                 <button
                   onClick={clearForm}
@@ -580,21 +592,21 @@ export default function DoseResponse() {
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('doseResponse.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier le résultat principal"
+                      title={t('doseResponse.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('doseResponse.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -606,14 +618,13 @@ export default function DoseResponse() {
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('doseResponse.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">0.00</div>
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    
-                      {/* Trend test card */}
-                      <div
+                    {/* Trend test card */}
+                    <div
                       className={`p-8 rounded-3xl text-center border ${
                         results.pValue < 0.05
                           ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
@@ -621,46 +632,46 @@ export default function DoseResponse() {
                       }`}
                     >
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Test de tendance linéaire (Mantel extension)
+                        {t('doseResponse.trendTestTitle')}
                       </p>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
                           <div className={`text-3xl font-bold tracking-tight mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
-                            {results.chiSquare.toFixed(3)}
+                            {results.chiSquare.toFixed(5)}
                           </div>
-                          <span className="text-xs">χ²</span>
+                          <span className="text-xs">{t('doseResponse.chiSquare')}</span>
                         </div>
                         <div>
                           <div className={`text-3xl font-bold tracking-tight mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
-                            {results.pValue.toFixed(4)}
+                            {results.pValue.toFixed(8)}
                           </div>
                           <span className="text-xs">p-value</span>
                         </div>
                         <div>
                           <div className={`text-3xl font-bold tracking-tight mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
-                            {results.trendDirection === 'positive' ? 'Positive' : results.trendDirection === 'negative' ? 'Négative' : 'Aucune'}
+                            {results.trendDirection === 'positive' ? t('doseResponse.positive') : results.trendDirection === 'negative' ? t('doseResponse.negative') : t('doseResponse.none')}
                           </div>
-                          <span className="text-xs">Direction</span>
+                          <span className="text-xs">{t('doseResponse.direction')}</span>
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Results per level table */}
                     <div className="p-6 rounded-3xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Résultats par niveau (référence = premier niveau)
+                      <p className="text-xs font-bold tracking-widest text-slate-400 mb-2">
+                        {t('doseResponse.resultsPerLevel')}
                       </p>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs sm:text-sm">
                           <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
                             <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Niveau</th>
-                              <th className="px-3 py-2 text-center font-semibold">Dose</th>
-                              <th className="px-3 py-2 text-center font-semibold">% Cas</th>
-                              <th className="px-3 py-2 text-center font-semibold">OR</th>
-                              <th className="px-3 py-2 text-center font-semibold">IC 95% OR</th>
-                              <th className="px-3 py-2 text-center font-semibold">RR</th>
-                              <th className="px-3 py-2 text-center font-semibold">IC 95% RR</th>
+                              <th className="px-3 py-2 text-left font-semibold">{t('doseResponse.level')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('doseResponse.dose')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('doseResponse.percentCases')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('doseResponse.or')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('doseResponse.ci95OR')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('doseResponse.rr')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('doseResponse.ci95RR')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -669,13 +680,13 @@ export default function DoseResponse() {
                                 <td className="px-3 py-2 font-medium">{level.exposure}</td>
                                 <td className="px-3 py-2 text-center font-mono">{level.dose}</td>
                                 <td className="px-3 py-2 text-center font-mono">{(level.proportion * 100).toFixed(1)}%</td>
-                                <td className="px-3 py-2 text-center font-mono">{level.oddsRatio?.toFixed(3) ?? 'N/A'}</td>
+                                <td className="px-3 py-2 text-center font-mono">{level.oddsRatio?.toFixed(3) ?? t('common.na', 'N/A')}</td>
                                 <td className="px-3 py-2 text-center font-mono">
-                                  {level.orLower && level.orUpper ? `${level.orLower.toFixed(3)}–${level.orUpper.toFixed(3)}` : 'N/A'}
+                                  {level.orLower && level.orUpper ? `${level.orLower.toFixed(3)}–${level.orUpper.toFixed(3)}` : t('common.na', 'N/A')}
                                 </td>
-                                <td className="px-3 py-2 text-center font-mono">{level.relativeRisk?.toFixed(3) ?? 'N/A'}</td>
+                                <td className="px-3 py-2 text-center font-mono">{level.relativeRisk?.toFixed(3) ?? t('common.na', 'N/A')}</td>
                                 <td className="px-3 py-2 text-center font-mono">
-                                  {level.rrLower && level.rrUpper ? `${level.rrLower.toFixed(3)}–${level.rrUpper.toFixed(3)}` : 'N/A'}
+                                  {level.rrLower && level.rrUpper ? `${level.rrLower.toFixed(3)}–${level.rrUpper.toFixed(3)}` : t('common.na', 'N/A')}
                                 </td>
                               </tr>
                             ))}
@@ -684,16 +695,15 @@ export default function DoseResponse() {
                       </div>
                     </div>
 
-
                     {/* Interpretation block */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
                       <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-500" /> Interprétation
+                        <Info className="w-4 h-4 text-blue-500" /> {t('doseResponse.interpretation')}
                       </h3>
                       <p className="text-sm leading-relaxed">
                         {results.pValue < 0.05
-                          ? `Tendance ${results.trendDirection === 'positive' ? 'positive' : 'négative'} statistiquement significative (p < 0.05).`
-                          : 'Aucune tendance significative (p ≥ 0.05).'}
+                          ? t('doseResponse.significantTrend', { direction: results.trendDirection === 'positive' ? t('doseResponse.positive').toLowerCase() : t('doseResponse.negative').toLowerCase() })
+                          : t('doseResponse.nonSignificantTrend')}
                       </p>
                     </div>
                   </div>
@@ -712,7 +722,7 @@ export default function DoseResponse() {
             />
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide – Dose-Réponse</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('doseResponse.helpTitle')}</h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
@@ -725,30 +735,30 @@ export default function DoseResponse() {
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">1</div>
-                    Le Principe
+                    {t('doseResponse.principleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce test évalue s'il existe une tendance linéaire entre le niveau d'exposition (dose) et le risque de maladie. Il est utilisé dans les études cas-témoins ou de cohorte avec plusieurs niveaux d'exposition ordonnés.
+                    {t('doseResponse.principleText')}
                   </p>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">2</div>
-                    Méthodes
+                    {t('doseResponse.methodsTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Pour chaque niveau, on calcule l'odds ratio et le risque relatif par rapport au niveau de référence (le plus faible). Le test de tendance est une extension du test du χ² (Mantel), avec une statistique distribuée selon un χ² à 1 degré de liberté.
+                    {t('doseResponse.methodsText')}
                   </p>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">3</div>
-                    Interprétation
+                    {t('doseResponse.interpretationTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Une p-value &lt; 0.05 indique une tendance significative. La direction (positive/négative) indique si le risque augmente ou diminue avec la dose.
+                    {t('doseResponse.interpretationText')}
                   </p>
                 </section>
 
@@ -758,7 +768,7 @@ export default function DoseResponse() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700"
                 >
-                  Source: OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                  {t('doseResponse.source')} <ArrowRight className="w-3 h-3 ml-1" />
                 </a>
               </div>
             </div>
