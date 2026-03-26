@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -39,9 +40,11 @@ import autoTable from 'jspdf-autotable';
  */
 
 export default function MedianPercentileCI() {
+  const { t } = useTranslation();
+
   // ----- State declarations -----
   const [sampleSize, setSampleSize] = useState<string>('');       // Sample size (n)
-  const [percentile, setPercentile] = useState<string>('50');     // Desired percentile (p)
+  const [percentile, setPercentile] = useState<string>('');     // Desired percentile (p)
   const [confidenceLevel, setConfidenceLevel] = useState<string>('95'); // Confidence level (90,95,99)
   const [results, setResults] = useState<any>(null);              // Computed results object
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false); // Help modal visibility
@@ -92,7 +95,7 @@ export default function MedianPercentileCI() {
       : conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
 
     // Expected rank and its standard error (normal approximation)
-    const expectedRank = (n+1) * p;
+    const expectedRank = (n + 1) * p;
     const displayedExpectedRank = Math.round(n * p);
     const se = Math.sqrt(n * p * (1 - p));
 
@@ -110,7 +113,7 @@ export default function MedianPercentileCI() {
       percentile: perc,
       conf,
       p,
-      expectedRank: displayedExpectedRank,    
+      expectedRank: displayedExpectedRank,
       expectedRankPrecise: expectedRank,
       se,
       z,
@@ -135,44 +138,50 @@ export default function MedianPercentileCI() {
     setPercentile('50');
     setConfidenceLevel('95');
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('medianCi.clearMessage'));
   };
 
   // Load an example dataset (typical values)
   const loadExample = () => {
     setSampleSize('100');
     setPercentile('50');
-    toast.success('Exemple chargé');
+    toast.success(t('medianCi.exampleLoaded'));
   };
 
   // Copy results to clipboard as formatted text
   const copyResults = async () => {
     if (!results) return;
-    const text = `Intervalle de confiance pour le percentile – OpenEpi MedianCI
-Taille échantillon : ${results.n}
-Percentile : ${results.percentile}%
-Niveau de confiance : ${results.conf}%
+    const text = `${t('medianCi.copyPrefix')}
+${t('medianCi.sampleSize')} : ${results.n}
+${t('medianCi.percentile')} : ${results.percentile}%
+${t('medianCi.confidenceLevel')} : ${results.conf}%
 
-Rang attendu : ${formatNumber(results.expectedRank, 2)}
-Erreur standard : ${formatNumber(results.se, 4)}
-Valeur critique Z : ${formatNumber(results.z, 4)}
+${t('medianCi.expectedRank')} : ${formatNumber(results.expectedRank, 2)}
+${t('medianCi.standardError')} : ${formatNumber(results.se, 4)}
+${t('medianCi.zCritical')} : ${formatNumber(results.z, 4)}
 
-IC ${results.conf}% du rang : [${results.lowerRank} – ${results.upperRank}]
-IC ${results.conf}% du percentile : [${formatNumber(results.lowerPercentile)}% – ${formatNumber(results.upperPercentile)}%]
+${t('medianCi.rankInterval', { level: results.conf })} : [${results.lowerRank} – ${results.upperRank}]
+${t('medianCi.percentileInterval', { level: results.conf })} : [${formatNumber(results.lowerPercentile)}% – ${formatNumber(results.upperPercentile)}%]
 
-Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème percentile correspond aux rangs ${results.lowerRank} à ${results.upperRank} dans un échantillon trié de taille ${results.n}.`;
+${t('medianCi.interpretationText', {
+  level: results.conf,
+  percentile: results.percentile,
+  lowerRank: results.lowerRank,
+  upperRank: results.upperRank,
+  n: results.n
+})}`;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('medianCi.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('medianCi.copyError'));
     }
   };
 
   // Export a comprehensive PDF report
   const exportPDF = () => {
     if (!results) {
-      toast.error('Veuillez d’abord effectuer un calcul');
+      toast.error(t('medianCi.exportNoData'));
       return;
     }
 
@@ -196,27 +205,27 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'intervalle de confiance – Percentile", 20, 25);
+      doc.text(t('medianCi.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
+      doc.text(`${t('medianCi.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
       doc.text('MedianCI – OpenEpi', 190, 32, { align: 'right' });
 
       // ----- Input data summary -----
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Données analysées', 20, y);
+      doc.text(t('medianCi.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
       y += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.text(`Taille échantillon : ${results.n}`, 25, y); y += 6;
-      doc.text(`Percentile : ${results.percentile}%`, 25, y); y += 6;
-      doc.text(`Niveau de confiance : ${results.conf}%`, 25, y); y += 12;
+      doc.text(`${t('medianCi.sampleSize')} : ${results.n}`, 25, y); y += 6;
+      doc.text(`${t('medianCi.percentile')} : ${results.percentile}%`, 25, y); y += 6;
+      doc.text(`${t('medianCi.confidenceLevel')} : ${results.conf}%`, 25, y); y += 12;
 
       // ----- Rank interval card -----
       doc.setFillColor(236, 253, 245);
@@ -225,31 +234,31 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.setTextColor(5, 150, 105);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text(`INTERVALLE DE CONFIANCE À ${results.conf}%`, 105, y + 8, { align: 'center' });
+      doc.text(t('medianCi.rankIntervalCard', { level: results.conf }), 105, y + 8, { align: 'center' });
       doc.setFontSize(16);
-      doc.text(`[${results.lowerRank} – ${results.upperRank}] (rangs)`, 105, y + 22, { align: 'center' });
+      doc.text(`[${results.lowerRank} – ${results.upperRank}] (${t('medianCi.ranks')})`, 105, y + 22, { align: 'center' });
       y += 45;
 
       // ----- Detailed results table -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Résultats détaillés', 20, y);
+      doc.text(t('medianCi.detailedResults'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
 
       const tableBody = [
-        ['Rang attendu', formatNumber(results.expectedRank, 2), ''],
-        ['Erreur standard du rang', formatNumber(results.se, 4), ''],
-        ['Valeur critique Z', formatNumber(results.z, 4), ''],
-        ['Limite inférieure (rang)', results.lowerRank.toString(), `${formatNumber(results.lowerPercentile)}%`],
-        ['Limite supérieure (rang)', results.upperRank.toString(), `${formatNumber(results.upperPercentile)}%`],
-        ['Largeur de l’intervalle (rangs)', (results.upperRank - results.lowerRank).toString(), ''],
+        [t('medianCi.expectedRank'), formatNumber(results.expectedRank, 2), ''],
+        [t('medianCi.standardError'), formatNumber(results.se, 4), ''],
+        [t('medianCi.zCritical'), formatNumber(results.z, 4), ''],
+        [t('medianCi.lowerRank'), results.lowerRank.toString(), `${formatNumber(results.lowerPercentile)}%`],
+        [t('medianCi.upperRank'), results.upperRank.toString(), `${formatNumber(results.upperPercentile)}%`],
+        [t('medianCi.intervalWidth'), (results.upperRank - results.lowerRank).toString(), ''],
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Paramètre', 'Valeur', 'Percentile correspondant']],
+        head: [[t('medianCi.parameter'), t('medianCi.value'), t('medianCi.correspondingPercentile')]],
         body: tableBody,
         theme: 'striped',
         headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -268,14 +277,20 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       // ----- Interpretation -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Interprétation', 20, y);
+      doc.text(t('medianCi.interpretation'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
-      const interpretation = `À ${results.conf}% de confiance, le ${results.percentile}ème percentile de la population correspond aux rangs ${results.lowerRank} à ${results.upperRank} dans un échantillon trié de taille ${results.n}.\n\nPour obtenir l’intervalle de confiance sur la valeur du percentile :\n1. Triez vos ${results.n} observations par ordre croissant.\n2. La valeur à la position ${results.lowerRank} est la borne inférieure.\n3. La valeur à la position ${results.upperRank} est la borne supérieure.`;
+      const interpretation = t('medianCi.interpretationHowTo', {
+        n: results.n,
+        lowerRank: results.lowerRank,
+        upperRank: results.upperRank,
+        level: results.conf,
+        percentile: results.percentile
+      });
       const splitText = doc.splitTextToSize(interpretation, 170);
       doc.text(splitText, 20, y);
       y += splitText.length * 5 + 10;
@@ -284,8 +299,8 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Méthode basée sur l’approximation normale des rangs (Conover, 1999).', 20, y); y += 4;
-      doc.text('Conforme à OpenEpi – Module Median/Percentile CI.', 20, y); y += 4;
+      doc.text(t('medianCi.referenceNote'), 20, y); y += 4;
+      doc.text(t('medianCi.openEpiNote'), 20, y); y += 4;
 
       // ----- Footer -----
       const footerY = 280;
@@ -298,10 +313,10 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
       doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
 
       doc.save(`MedianCI_n${results.n}_p${results.percentile}_${results.conf}pc.pdf`);
-      toast.success('Rapport PDF exporté');
+      toast.success(t('medianCi.exportSuccess'));
     } catch (error) {
       console.error(error);
-      toast.error('Erreur PDF');
+      toast.error(t('medianCi.exportError'));
     }
   };
 
@@ -312,9 +327,9 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
         {/* Breadcrumb navigation */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">Intervalle de confiance pour la médiane / percentile</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('medianCi.title')}</span></li>
           </ol>
         </nav>
 
@@ -326,10 +341,10 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Intervalle de confiance pour la médiane / percentile
+                {t('medianCi.title')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Estimation du rang du percentile dans la population
+                {t('medianCi.description')}
               </p>
             </div>
           </div>
@@ -346,12 +361,12 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('medianCi.parameters')}
               </h2>
               <div className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Taille de l'échantillon (n)
+                    {t('medianCi.sampleSize')}
                   </label>
                   <input
                     type="number"
@@ -360,12 +375,12 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     min="2"
                     step="1"
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 100"
+                    placeholder={t('medianCi.sampleSizePlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Percentile (p)
+                    {t('medianCi.percentile')}
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -376,6 +391,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                       max="100"
                       step="1"
                       className="flex-1 px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+                      placeholder={t('medianCi.percentilePlaceholder')}
                     />
                     <span className="text-slate-500 dark:text-slate-400 text-lg font-medium">%</span>
                   </div>
@@ -390,7 +406,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                       onClick={() => setPercentile('50')}
                       className="px-3 py-1.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 transition-colors"
                     >
-                      Médiane (50%)
+                      {t('medianCi.median')} (50%)
                     </button>
                     <button
                       onClick={() => setPercentile('75')}
@@ -402,7 +418,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Niveau de confiance
+                    {t('medianCi.confidenceLevel')}
                   </label>
                   <select
                     value={confidenceLevel}
@@ -410,7 +426,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
                     <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
+                    <option value="95">95% ({t('medianCi.standard')})</option>
                     <option value="99">99%</option>
                   </select>
                 </div>
@@ -420,7 +436,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('medianCi.example')}
                 </button>
                 <button
                   onClick={clear}
@@ -430,8 +446,6 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                 </button>
               </div>
             </div>
-
-
           </div>
 
           {/* Right column – results display */}
@@ -439,21 +453,21 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('medianCi.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier les résultats"
+                      title={t('medianCi.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('medianCi.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -466,7 +480,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                   // Placeholder when no results
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('medianCi.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">
                       0.00
                     </div>
@@ -477,32 +491,32 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     {/* Rank interval card */}
                     <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-6 text-center">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
-                        IC {results.conf}% du rang – percentile {results.percentile}%
+                        {t('medianCi.rankIntervalCard', { level: results.conf, percentile: results.percentile })}
                       </p>
                       <div className="text-3xl md:text-4xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
                         [{results.lowerRank} – {results.upperRank}]
                       </div>
                       <p className="text-sm text-slate-500">
-                        Rang attendu = {formatNumber(results.expectedRank, 2)}
+                        {t('medianCi.expectedRank')} = {formatNumber(results.expectedRank, 2)}
                       </p>
                     </div>
 
                     {/* Key statistics cards */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Taille (n)</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('medianCi.sampleSize')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{results.n}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Percentile</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('medianCi.percentile')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{results.percentile}%</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Erreur std</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('medianCi.standardError')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.se, 4)}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Z critique</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('medianCi.zCritical')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.z, 4)}</p>
                       </div>
                     </div>
@@ -511,11 +525,11 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Détail de l'intervalle de confiance
+                          {t('medianCi.detailTitle')}
                         </h3>
                         {!hasJStat && (
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
-                            Approximation (jStat non chargé)
+                            {t('medianCi.approximationWarning')}
                           </span>
                         )}
                       </div>
@@ -523,14 +537,14 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                         <table className="w-full text-sm">
                           <thead className="bg-slate-100 dark:bg-slate-700/50">
                             <tr>
-                              <th className="px-6 py-3 text-left font-semibold">Description</th>
-                              <th className="px-6 py-3 text-center font-semibold">Rang</th>
-                              <th className="px-6 py-3 text-center font-semibold">Percentile</th>
+                              <th className="px-6 py-3 text-left font-semibold">{t('medianCi.description')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('medianCi.rank')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('medianCi.percentile')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             <tr>
-                              <td className="px-6 py-3 font-medium">Borne inférieure</td>
+                              <td className="px-6 py-3 font-medium">{t('medianCi.lowerBound')}</td>
                               <td className="px-6 py-3 text-center font-mono font-bold text-green-600 dark:text-green-400">
                                 {results.lowerRank}
                               </td>
@@ -539,7 +553,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                               </td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Rang attendu</td>
+                              <td className="px-6 py-3 font-medium">{t('medianCi.expectedRankLabel')}</td>
                               <td className="px-6 py-3 text-center font-mono">
                                 {formatNumber(results.expectedRank, 2)}
                               </td>
@@ -548,7 +562,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                               </td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Borne supérieure</td>
+                              <td className="px-6 py-3 font-medium">{t('medianCi.upperBound')}</td>
                               <td className="px-6 py-3 text-center font-mono font-bold text-red-600 dark:text-red-400">
                                 {results.upperRank}
                               </td>
@@ -561,23 +575,22 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                       </div>
                     </div>
 
-                
-
                     {/* Interpretation */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
                       <div className="flex items-start gap-3">
                         <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                         <div>
                           <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
-                            Comment utiliser ce résultat ?
+                            {t('medianCi.howToUse')}
                           </h4>
                           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                            1. Triez vos <strong>{results.n}</strong> observations par ordre croissant.<br />
-                            2. La <strong>{results.lowerRank}e</strong> valeur est la borne inférieure de l’IC.<br />
-                            3. La <strong>{results.upperRank}e</strong> valeur est la borne supérieure.<br />
-                            <span className="block mt-1 text-blue-700 dark:text-blue-300">
-                              À {results.conf}% de confiance, le vrai {results.percentile}e percentile se situe entre ces deux valeurs.
-                            </span>
+                            {t('medianCi.howToUseSteps', {
+                              n: results.n,
+                              lowerRank: results.lowerRank,
+                              upperRank: results.upperRank,
+                              level: results.conf,
+                              percentile: results.percentile
+                            })}
                           </p>
                         </div>
                       </div>
@@ -599,7 +612,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide – MedianCI (Percentile)
+                  {t('medianCi.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -615,25 +628,25 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       1
                     </div>
-                    Le principe
+                    {t('medianCi.helpPrincipleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce module reproduit l'outil <strong>Median/Percentile CI</strong> d'OpenEpi. Il estime l’intervalle de confiance pour le <strong>rang</strong> d’un percentile dans la population, à partir de la taille de l’échantillon. L’approximation normale de la distribution binomiale est utilisée.
+                    {t('medianCi.helpPrincipleText')}
                   </p>
                 </section>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                      IC sur le rang
+                      {t('medianCi.rankIntervalTitle')}
                     </div>
-                    <div className="text-xs text-slate-500">L’intervalle est donné en position dans l’échantillon trié, pas directement en valeur.</div>
+                    <div className="text-xs text-slate-500">{t('medianCi.rankIntervalDesc')}</div>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                      Condition d’application
+                      {t('medianCi.conditionTitle')}
                     </div>
-                    <div className="text-xs text-slate-500">L’approximation est valable si n·p ≥ 5 et n·(1‑p) ≥ 5.</div>
+                    <div className="text-xs text-slate-500">{t('medianCi.conditionDesc')}</div>
                   </div>
                 </div>
 
@@ -642,13 +655,13 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       2
                     </div>
-                    Méthode de calcul
+                    {t('medianCi.helpMethodsTitle')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p><strong className="text-slate-900 dark:text-white">Rang attendu</strong> – n × p</p>
-                    <p><strong className="text-slate-900 dark:text-white">Erreur standard</strong> – √(n·p·(1‑p))</p>
-                    <p><strong className="text-slate-900 dark:text-white">Intervalle</strong> – [max(1, floor(rang – z·SE)) , min(n, ceil(rang + z·SE))]</p>
-                    <p><strong className="text-slate-900 dark:text-white">Percentiles correspondants</strong> – (rang / n) × 100%</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('medianCi.expectedRank')}</strong> – n × p</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('medianCi.standardError')}</strong> – √(n·p·(1‑p))</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('medianCi.intervalFormula')}</strong> – [max(1, floor(rank – z·SE)) , min(n, ceil(rank + z·SE))]</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('medianCi.percentileConversion')}</strong> – (rank / n) × 100%</p>
                   </div>
                   <a
                     href="https://www.openepi.com/Median/Median.htm"
@@ -656,7 +669,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Source : OpenEpi – Median/Percentile CI <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('medianCi.sourceLink')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
 
@@ -665,12 +678,12 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       3
                     </div>
-                    Ressources
+                    {t('medianCi.helpResourcesTitle')}
                   </h4>
                   <div className="space-y-2 text-sm">
                     <p>
                       <a href="https://www.openepi.com/PDFDocs/MedianDoc.pdf" target="_blank" className="text-blue-600 hover:underline">
-                        Documentation officielle OpenEpi (PDF)
+                        {t('medianCi.openEpiPdf')}
                       </a>
                     </p>
                     <p>
