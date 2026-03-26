@@ -10,18 +10,18 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import jStat from 'jstat';
 
-// ============================================================
+
 // Types
-// ============================================================
+
 
 interface SampleSizeResult {
   confidenceLevel: number;
   sampleSize: number;
 }
 
-// ============================================================
+
 // Pure calculation helpers
-// ============================================================
+
 
 /** Two-tailed z-score for a given confidence level (in percent) */
 const Z = (confidence: number): number => {
@@ -32,13 +32,6 @@ const Z = (confidence: number): number => {
 /**
  * Sample size for one confidence level.
  * Uses the standard formula with finite population correction (FPC).
- *
- * @param N   Population size
- * @param p   Anticipated proportion (0..100)
- * @param d   Absolute precision (0..100)
- * @param deff Design effect (≥1)
- * @param conf Confidence level (e.g., 95)
- * @returns Sample size (rounded up to nearest integer)
  */
 function computeSampleSize(
   N: number,
@@ -78,9 +71,9 @@ function computeAllSampleSizes(
   }));
 }
 
-// ============================================================
+
 // PDF Export
-// ============================================================
+
 
 type RGB = [number, number, number];
 
@@ -136,17 +129,17 @@ function exportSampleSizePdf(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
   color(P.slate800);
-  doc.text(t('sampleSizeProportion.reportTitle', 'Sample Size for a Proportion'), M + 5, 20);
+  doc.text(t('sampleSizeProportion.reportTitle'), M + 5, 20);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   color(P.slate500);
-  doc.text(t('sampleSizeProportion.reportSubtitle', 'OpenEpi style calculator'), M + 5, 28);
+  doc.text(t('sampleSizeProportion.reportSubtitle'), M + 5, 28);
 
   const dateStr = new Date().toLocaleDateString(lang, { year: 'numeric', month: 'long', day: 'numeric' });
   const timeStr = new Date().toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
   doc.text(
-    t('sampleSizeProportion.reportGenerated', 'Generated on {date} at {time}', { date: dateStr, time: timeStr }),
+    t('sampleSizeProportion.reportGenerated', { date: dateStr, time: timeStr }),
     W - M, 28,
     { align: 'right' }
   );
@@ -161,10 +154,10 @@ function exportSampleSizePdf(
   const cardW = (CW - gap * 3) / 4;
   const cardH = 22;
   const inputsData = [
-    { label: t('sampleSizeProportion.populationLabel', 'Population size (N)'), value: inputs.N.toLocaleString() },
-    { label: t('sampleSizeProportion.pLabel', 'Anticipated frequency (p)'), value: `${inputs.p} %` },
-    { label: t('sampleSizeProportion.dLabel', 'Precision (±)'), value: `${inputs.d} %` },
-    { label: t('sampleSizeProportion.deffLabel', 'Design effect (DEFF)'), value: inputs.deff.toFixed(1) },
+    { label: t('sampleSizeProportion.populationLabel'), value: inputs.N.toLocaleString() },
+    { label: t('sampleSizeProportion.pLabel'), value: `${inputs.p} %` },
+    { label: t('sampleSizeProportion.dLabel'), value: `${inputs.d} %` },
+    { label: t('sampleSizeProportion.deffLabel'), value: inputs.deff.toFixed(1) },
   ];
 
   inputsData.forEach((item, i) => {
@@ -187,7 +180,7 @@ function exportSampleSizePdf(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   color(P.slate700);
-  doc.text(t('sampleSizeProportion.resultsTitle', 'Sample sizes for different confidence levels').toUpperCase(), M, y);
+  doc.text(t('sampleSizeProportion.resultsTitle').toUpperCase(), M, y);
   y += 2;
   draw(P.slate200);
   ln(M, y, M + CW, y, 0.3);
@@ -201,8 +194,8 @@ function exportSampleSizePdf(
   autoTable(doc, {
     startY: y,
     head: [[
-      t('sampleSizeProportion.tableHeaderConfidence', 'Confidence level'),
-      t('sampleSizeProportion.tableHeaderSampleSize', 'Sample size (n)'),
+      t('sampleSizeProportion.tableHeaderConfidence'),
+      t('sampleSizeProportion.tableHeaderSampleSize'),
     ]],
     body: tableRows,
     theme: 'plain',
@@ -234,16 +227,13 @@ function exportSampleSizePdf(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   color(P.slate600);
-  doc.text(t('sampleSizeProportion.equationTitle', 'Formula'), M, y);
+  doc.text(t('sampleSizeProportion.equationTitle'), M, y);
   y += 4;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   color(P.slate500);
   const eqLines = doc.splitTextToSize(
-    t(
-      'sampleSizeProportion.equation',
-      'n = [DEFF × N × p(1-p)] / [ (d² / Z²_{1-α/2}) × (N-1) + p(1-p) ]'
-    ),
+    t('sampleSizeProportion.equation'),
     CW
   );
   doc.text(eqLines, M, y);
@@ -254,7 +244,7 @@ function exportSampleSizePdf(
   doc.setFontSize(6.5);
   color(P.slate400);
   const foot = doc.splitTextToSize(
-    t('sampleSizeProportion.footnote', 'Results computed using finite population correction. p and d are expressed as percentages.'),
+    t('sampleSizeProportion.footnote'),
     CW
   );
   doc.text(foot, M, y);
@@ -266,7 +256,7 @@ function exportSampleSizePdf(
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(6.5);
   color(P.slate400);
-  doc.text(t('sampleSizeProportion.reportFooter', 'OpenEpi style sample size calculator · jStat · autoTable'), M, fY + 4.5);
+  doc.text(t('sampleSizeProportion.reportFooter'), M, fY + 4.5);
   doc.setFont('helvetica', 'bold');
   color(P.slate500);
   doc.text('1 / 1', W - M, fY + 6.5, { align: 'right' });
@@ -274,9 +264,9 @@ function exportSampleSizePdf(
   doc.save(`SampleSize_${inputs.N}_p${inputs.p}_d${inputs.d}.pdf`);
 }
 
-// ============================================================
+
 // Main Component
-// ============================================================
+
 
 export default function SampleSizeProportion() {
   const { t, i18n } = useTranslation();
@@ -318,7 +308,7 @@ export default function SampleSizeProportion() {
     setD('');
     setDeff('');
     setResults([]);
-    toast.info(t('sampleSizeProportion.clearMessage', 'Inputs cleared'));
+    toast.info(t('sampleSizeProportion.clearMessage'));
   };
 
   const handleExample = () => {
@@ -326,7 +316,7 @@ export default function SampleSizeProportion() {
     setP('50');
     setD('5');
     setDeff('1');
-    toast.success(t('sampleSizeProportion.exampleLoaded', 'Example data loaded'));
+    toast.success(t('sampleSizeProportion.exampleLoaded'));
   };
 
   const handleCopy = async () => {
@@ -334,12 +324,12 @@ export default function SampleSizeProportion() {
     const lines = results.map(
       (r) => `${r.confidenceLevel}% : ${r.sampleSize.toLocaleString()}`
     );
-    const text = `Sample sizes:\n${lines.join('\n')}`;
+    const text = `${t('sampleSizeProportion.copyPrefix')}\n${lines.join('\n')}`;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(t('sampleSizeProportion.copySuccess', 'Results copied to clipboard'));
+      toast.success(t('sampleSizeProportion.copySuccess'));
     } catch {
-      toast.error(t('sampleSizeProportion.copyError', 'Could not copy'));
+      toast.error(t('sampleSizeProportion.copyError'));
     }
   };
 
@@ -349,15 +339,15 @@ export default function SampleSizeProportion() {
     const prec = parseFloat(d);
     const design = parseFloat(deff);
     if (results.length === 0 || isNaN(N) || isNaN(prop) || isNaN(prec) || isNaN(design)) {
-      toast.error(t('sampleSizeProportion.exportError', 'No valid results to export'));
+      toast.error(t('sampleSizeProportion.exportError'));
       return;
     }
     try {
       exportSampleSizePdf(results, { N, p: prop, d: prec, deff: design }, t, i18n.language);
-      toast.success(t('sampleSizeProportion.exportSuccess', 'PDF exported'));
+      toast.success(t('sampleSizeProportion.exportSuccess'));
     } catch (err) {
       console.error(err);
-      toast.error(t('sampleSizeProportion.exportError', 'Export failed'));
+      toast.error(t('sampleSizeProportion.exportError'));
     }
   };
 
@@ -372,7 +362,7 @@ export default function SampleSizeProportion() {
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li>
               <Link href="/" className="hover:text-blue-500 transition-colors">
-                {t('common.home', 'Home')}
+                {t('common.home')}
               </Link>
             </li>
             <li>
@@ -380,7 +370,7 @@ export default function SampleSizeProportion() {
             </li>
             <li>
               <span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">
-                {t('sampleSizeProportion.title', 'Sample Size for a Proportion')}
+                {t('sampleSizeProportion.title')}
               </span>
             </li>
           </ol>
@@ -394,13 +384,10 @@ export default function SampleSizeProportion() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {t('sampleSizeProportion.title', 'Sample Size for a Proportion')}
+                {t('sampleSizeProportion.title')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                {t(
-                  'sampleSizeProportion.subtitle',
-                  'Calculate required sample size for a population proportion (OpenEpi style)'
-                )}
+                {t('sampleSizeProportion.subtitle')}
               </p>
             </div>
           </div>
@@ -419,13 +406,13 @@ export default function SampleSizeProportion() {
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
                 <Calculator className="w-5 h-5 mr-3 text-blue-500" />
-                {t('sampleSizeProportion.parameters', 'Parameters')}
+                {t('sampleSizeProportion.parameters')}
               </h2>
 
               <div className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('sampleSizeProportion.populationLabel', 'Population size (N)')}
+                    {t('sampleSizeProportion.populationLabel')}
                   </label>
                   <input
                     type="number"
@@ -434,16 +421,16 @@ export default function SampleSizeProportion() {
                     value={population}
                     onChange={(e) => setPopulation(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder={t('sampleSizeProportion.populationPlaceholder', 'e.g., 1000000')}
+                    placeholder={t('sampleSizeProportion.populationPlaceholder')}
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    {t('sampleSizeProportion.populationNote', 'If large, leave at 1,000,000')}
+                    {t('sampleSizeProportion.populationNote')}
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('sampleSizeProportion.pLabel', 'Anticipated frequency (p) %')}
+                    {t('sampleSizeProportion.pLabel')}
                   </label>
                   <input
                     type="number"
@@ -455,13 +442,13 @@ export default function SampleSizeProportion() {
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    {t('sampleSizeProportion.pNote', 'Between 0 and 99.99. If unknown, use 50%')}
+                    {t('sampleSizeProportion.pNote')}
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('sampleSizeProportion.dLabel', 'Absolute precision (±) %')}
+                    {t('sampleSizeProportion.dLabel')}
                   </label>
                   <input
                     type="number"
@@ -476,7 +463,7 @@ export default function SampleSizeProportion() {
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('sampleSizeProportion.deffLabel', 'Design effect (DEFF)')}
+                    {t('sampleSizeProportion.deffLabel')}
                   </label>
                   <input
                     type="number"
@@ -487,7 +474,7 @@ export default function SampleSizeProportion() {
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    {t('sampleSizeProportion.deffNote', '1.0 for simple random sample')}
+                    {t('sampleSizeProportion.deffNote')}
                   </p>
                 </div>
               </div>
@@ -497,12 +484,12 @@ export default function SampleSizeProportion() {
                   onClick={handleExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> {t('sampleSizeProportion.btnExample', 'Example')}
+                  <Info className="w-4 h-4" /> {t('sampleSizeProportion.btnExample')}
                 </button>
                 <button
                   onClick={handleClear}
                   className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl"
-                  aria-label="Clear"
+                  aria-label={t('sampleSizeProportion.btnClear')}
                 >
                   <RotateCcw className="w-5 h-5" />
                 </button>
@@ -516,21 +503,21 @@ export default function SampleSizeProportion() {
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
                   <Presentation className="w-5 h-5 mr-3 text-indigo-500" />
-                  {t('sampleSizeProportion.resultsTitle', 'Sample sizes')}
+                  {t('sampleSizeProportion.resultsTitle')}
                 </h2>
                 {showResults && (
                   <div className="flex gap-2">
                     <button
                       onClick={handleCopy}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title={t('sampleSizeProportion.btnCopy', 'Copy results')}
+                      title={t('sampleSizeProportion.btnCopy')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={handleExport}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title={t('sampleSizeProportion.btnExport', 'Export PDF')}
+                      title={t('sampleSizeProportion.btnExport')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -543,7 +530,7 @@ export default function SampleSizeProportion() {
                   <div className="flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
                     <p className="text-lg">
-                      {t('sampleSizeProportion.enterData', 'Enter valid inputs to see results')}
+                      {t('sampleSizeProportion.enterData')}
                     </p>
                   </div>
                 ) : (
@@ -554,12 +541,12 @@ export default function SampleSizeProportion() {
                         <thead>
                           <tr className="border-b border-slate-200 dark:border-slate-700">
                             <th className="px-4 py-3 text-left font-semibold text-slate-500">
-                              {t('sampleSizeProportion.tableHeaderConfidence', 'Confidence level')}
+                              {t('sampleSizeProportion.tableHeaderConfidence')}
                             </th>
                             <th className="px-4 py-3 text-right font-semibold text-slate-500">
-                              {t('sampleSizeProportion.tableHeaderSampleSize', 'Sample size (n)')}
+                              {t('sampleSizeProportion.tableHeaderSampleSize')}
                             </th>
-                          </tr>
+                           </tr>
                         </thead>
                         <tbody>
                           {results.map((r) => (
@@ -582,16 +569,13 @@ export default function SampleSizeProportion() {
                     {/* Equation box */}
                     <div className="bg-slate-100 dark:bg-slate-800/50 rounded-xl p-5 text-xs font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                       <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
-                        {t('sampleSizeProportion.equationTitle', 'Formula')}
+                        {t('sampleSizeProportion.equationTitle')}
                       </div>
                       <div className="leading-relaxed">
                         n = [DEFF × N × p(1-p)] / [ (d² / Z²<sub>1-α/2</sub>) × (N-1) + p(1-p) ]
                       </div>
                       <div className="mt-3 text-[11px] text-slate-400 italic">
-                        {t(
-                          'sampleSizeProportion.footnote',
-                          'Results use finite population correction. p and d are expressed as percentages.'
-                        )}
+                        {t('sampleSizeProportion.footnote')}
                       </div>
                     </div>
                   </div>
@@ -611,7 +595,7 @@ export default function SampleSizeProportion() {
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  {t('sampleSizeProportion.helpTitle', 'Help & Methods')}
+                  {t('sampleSizeProportion.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelp(false)}
@@ -626,13 +610,10 @@ export default function SampleSizeProportion() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       1
                     </div>
-                    {t('sampleSizeProportion.helpPrincipleTitle', 'Principle')}
+                    {t('sampleSizeProportion.helpPrincipleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    {t(
-                      'sampleSizeProportion.helpPrinciple',
-                      'This calculator determines the sample size required to estimate a population proportion with a given absolute precision, using the finite population correction (FPC) when the population size is known. It follows the OpenEpi methodology and provides sample sizes for multiple confidence levels.'
-                    )}
+                    {t('sampleSizeProportion.helpPrinciple')}
                   </p>
                 </section>
 
@@ -641,17 +622,17 @@ export default function SampleSizeProportion() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       2
                     </div>
-                    {t('sampleSizeProportion.helpFormulaTitle', 'Formula')}
+                    {t('sampleSizeProportion.helpFormulaTitle')}
                   </h4>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-sm font-mono text-slate-700 dark:text-slate-300">
                     n = [DEFF × N × p(1-p)] / [ (d² / Z²) × (N-1) + p(1-p) ]
                   </div>
                   <ul className="mt-3 text-sm text-slate-600 dark:text-slate-400 list-disc list-inside space-y-1">
-                    <li>N = population size</li>
-                    <li>p = anticipated proportion (0–100%)</li>
-                    <li>d = absolute precision (±%)</li>
-                    <li>DEFF = design effect (≥1)</li>
-                    <li>Z = two-tailed normal deviate for chosen confidence level</li>
+                    <li>{t('sampleSizeProportion.helpFormulaN')}</li>
+                    <li>{t('sampleSizeProportion.helpFormulaP')}</li>
+                    <li>{t('sampleSizeProportion.helpFormulaD')}</li>
+                    <li>{t('sampleSizeProportion.helpFormulaDeff')}</li>
+                    <li>{t('sampleSizeProportion.helpFormulaZ')}</li>
                   </ul>
                 </section>
 
@@ -660,13 +641,10 @@ export default function SampleSizeProportion() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       3
                     </div>
-                    {t('sampleSizeProportion.helpUsageTitle', 'Usage')}
+                    {t('sampleSizeProportion.helpUsageTitle')}
                   </h4>
                   <p className="text-sm text-slate-600 dark:text-slate-300">
-                    {t(
-                      'sampleSizeProportion.helpUsage',
-                      'Enter the population size (use 1,000,000 for "infinite"), the expected frequency (p), the desired absolute precision (± d), and the design effect (1 for simple random sampling). The table will show the required sample size for confidence levels from 80% to 99.99%.'
-                    )}
+                    {t('sampleSizeProportion.helpUsage')}
                   </p>
                 </section>
 
@@ -677,7 +655,7 @@ export default function SampleSizeProportion() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700"
                   >
-                    {t('sampleSizeProportion.helpSource', 'OpenEpi reference')}
+                    {t('sampleSizeProportion.helpSource')}
                     <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </div>
