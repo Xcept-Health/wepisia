@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -92,8 +93,9 @@ interface ScreeningResults {
 }
 
 export default function ScreeningTest() {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<LevelRow[]>([
-    { id: '1', level: 'Niveau 1', cases: '', nonCases: '' },
+    { id: '1', level: t('screening.levelPlaceholder', 'Niveau 1'), cases: '', nonCases: '' },
   ]);
   const [results, setResults] = useState<ScreeningResults | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
@@ -156,7 +158,7 @@ export default function ScreeningTest() {
       return;
     }
 
-    //  Level‑specific likelihood ratios (method of Katz) 
+    // Level‑specific likelihood ratios (method of Katz)
     const levelLRs: LevelLR[] = levels.map((l) => {
       const cases = l.cases;
       const nonCases = l.nonCases;
@@ -178,7 +180,8 @@ export default function ScreeningTest() {
         lrUpper: isFinite(lrUpper) ? lrUpper : 0,
       };
     });
-    //  Prepare ROC points (from most pathological to least) 
+
+    // Prepare ROC points (from most pathological to least)
     let rocPoints: { fpr: number; tpr: number }[] = [{ fpr: 0, tpr: 0 }];
     let cumCasesPositive = 0;
     let cumNonCasesPositive = 0;
@@ -195,7 +198,7 @@ export default function ScreeningTest() {
     // Sort by fpr ascending (just in case)
     rocPoints.sort((a, b) => a.fpr - b.fpr);
 
-    //  AUC via trapezoidal rule 
+    // AUC via trapezoidal rule
     let auc = 0;
     for (let i = 1; i < rocPoints.length; i++) {
       const prev = rocPoints[i - 1];
@@ -203,7 +206,7 @@ export default function ScreeningTest() {
       auc += (curr.fpr - prev.fpr) * (curr.tpr + prev.tpr) / 2;
     }
 
-    //  AUC confidence interval (Hanley‑McNeil) 
+    // AUC confidence interval (Hanley‑McNeil)
     const Q1 = auc / (2 - auc);
     const Q2 = 2 * auc * auc / (1 + auc);
     const seAuc = Math.sqrt(
@@ -215,7 +218,7 @@ export default function ScreeningTest() {
     const aucLower = Math.max(0, auc - 1.96 * seAuc);
     const aucUpper = Math.min(1, auc + 1.96 * seAuc);
 
-    //  Cutoff‑specific calculations 
+    // Cutoff‑specific calculations
     const cutoffs: CutoffResult[] = [];
     let cumCasesNegative = 0;
     let cumNonCasesNegative = 0;
@@ -245,7 +248,7 @@ export default function ScreeningTest() {
       // LR+ and its CI (Katz method)
       let lrPos = 0, lrPosLower = 0, lrPosUpper = 0;
       if (tp > 0 && fp > 0) {
-        lrPos = sens / (1 - spec); // equivalent to (tp/(tp+fn)) / (fp/(fp+tn))
+        lrPos = sens / (1 - spec);
         const seLRPos = Math.sqrt((1-sens)/(sens*(tp+fn)) + spec/((1-spec)*(fp+tn)));
         const lnLRPos = Math.log(lrPos);
         lrPosLower = Math.exp(lnLRPos - 1.96 * seLRPos);
@@ -255,7 +258,7 @@ export default function ScreeningTest() {
       // LR- and its CI (Katz method)
       let lrNeg = 0, lrNegLower = 0, lrNegUpper = 0;
       if (fn > 0 && tn > 0) {
-        lrNeg = (1 - sens) / spec; // equivalent to (fn/(tp+fn)) / (tn/(tn+fp))
+        lrNeg = (1 - sens) / spec;
         const seLRNeg = Math.sqrt(1 / fn - 1 / (tp + fn) + 1 / tn - 1 / (tn + fp));
         const lnLRNeg = Math.log(lrNeg);
         lrNegLower = Math.exp(lnLRNeg - 1.96 * seLRNeg);
@@ -284,12 +287,12 @@ export default function ScreeningTest() {
       // Entropy reduction (Shannon, natural log)
       const prev = totalCases / total;
       const hPre = prev > 0 && prev < 1
-      ? -prev * Math.log2(prev) - (1 - prev) * Math.log2(1 - prev)
+        ? -prev * Math.log2(prev) - (1 - prev) * Math.log2(1 - prev)
         : 0;
       const hPostPos = ppv > 0 && ppv < 1
         ? -ppv * Math.log2(ppv) - (1 - ppv) * Math.log2(1 - ppv)
         : 0;
-      const entropyPos = hPre > 0 ? 100 * (hPre - hPostPos) / hPre : 0; 
+      const entropyPos = hPre > 0 ? 100 * (hPre - hPostPos) / hPre : 0;
       const pDiseaseGivenNeg = fn / (fn + tn);
       const hPostNeg = pDiseaseGivenNeg > 0 && pDiseaseGivenNeg < 1
         ? -pDiseaseGivenNeg * Math.log2(pDiseaseGivenNeg) - (1 - pDiseaseGivenNeg) * Math.log2(1 - pDiseaseGivenNeg)
@@ -300,7 +303,10 @@ export default function ScreeningTest() {
       const bias = (tp + fp) / total - (tp + fn) / total;
 
       cutoffs.push({
-        cutoff: `entre ${levels[cutoff].level} et ${levels[cutoff + 1].level}`,
+        cutoff: t('screening.cutoffBetween', {
+          level1: levels[cutoff].level,
+          level2: levels[cutoff + 1].level
+        }),
         sensitivity: sens * 100,
         sensitivityLower: sensCI.lower * 100,
         sensitivityUpper: sensCI.upper * 100,
@@ -348,7 +354,7 @@ export default function ScreeningTest() {
     const newId = (rows.length + 1).toString();
     setRows([
       ...rows,
-      { id: newId, level: `Niveau ${rows.length + 1}`, cases: '', nonCases: '' },
+      { id: newId, level: `${t('screening.levelPlaceholder')} ${rows.length + 1}`, cases: '', nonCases: '' },
     ]);
   };
 
@@ -363,9 +369,9 @@ export default function ScreeningTest() {
   };
 
   const clearForm = () => {
-    setRows([{ id: '1', level: 'Niveau 1', cases: '', nonCases: '' }]);
+    setRows([{ id: '1', level: t('screening.levelPlaceholder') + ' 1', cases: '', nonCases: '' }]);
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('screening.clearMessage'));
   };
 
   const loadExample = () => {
@@ -376,47 +382,47 @@ export default function ScreeningTest() {
       { id: '4', level: 'Niveau 4', cases: '7', nonCases: '8' },
       { id: '5', level: 'Niveau 5', cases: '9', nonCases: '10' },
     ]);
-    toast.success('Exemple chargé');
+    toast.success(t('screening.exampleLoaded'));
   };
 
   const copyResults = async () => {
     if (!results) return;
 
-    let text = `Résultats Dépistage\n\n`;
+    let text = `${t('screening.copyPrefix')}\n\n`;
     results.cutoffs.forEach((c) => {
-      text += `Point de coupure ${c.cutoff}\n`;
-      text += `Sensibilité: ${c.sensitivity.toFixed(2)}% (${c.sensitivityLower.toFixed(2)} - ${c.sensitivityUpper.toFixed(2)})\n`;
-      text += `Spécificité: ${c.specificity.toFixed(2)}% (${c.specificityLower.toFixed(2)} - ${c.specificityUpper.toFixed(2)})\n`;
-      text += `Valeur prédictive positive: ${c.ppv.toFixed(2)}% (${c.ppvLower.toFixed(2)} - ${c.ppvUpper.toFixed(2)})\n`;
-      text += `Valeur prédictive négative: ${c.npv.toFixed(2)}% (${c.npvLower.toFixed(2)} - ${c.npvUpper.toFixed(2)})\n`;
-      text += `Exactitude du diagnostic: ${c.accuracy.toFixed(2)}% (${c.accuracyLower.toFixed(2)} - ${c.accuracyUpper.toFixed(2)})\n`;
-      text += `Rapport de vraisemblance du test positif: ${c.lrPositive.toFixed(4)} (${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)})\n`;
-      text += `Rapport de vraisemblance du test négatif: ${c.lrNegative.toFixed(4)} (${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)})\n`;
-      text += `Diagnostic du rapport de cotes: ${c.oddsRatio.toFixed(4)} (${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)})\n`;
-      text += `Coefficient kappa de Cohen: ${c.kappa.toFixed(4)} (${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)})\n`;
-      text += `Réduction d’entropie après un test positif: ${c.entropyPositive.toFixed(2)}%\n`;
-      text += `Réduction d’entropie après un test négatif: ${c.entropyNegative.toFixed(2)}%\n`;
-      text += `Index Biais: ${c.biasIndex.toFixed(4)}\n\n`;
+      text += `${t('screening.cutoff')} ${c.cutoff}\n`;
+      text += `${t('screening.sensitivity')}: ${c.sensitivity.toFixed(2)}% (${c.sensitivityLower.toFixed(2)} - ${c.sensitivityUpper.toFixed(2)})\n`;
+      text += `${t('screening.specificity')}: ${c.specificity.toFixed(2)}% (${c.specificityLower.toFixed(2)} - ${c.specificityUpper.toFixed(2)})\n`;
+      text += `${t('screening.ppv')}: ${c.ppv.toFixed(2)}% (${c.ppvLower.toFixed(2)} - ${c.ppvUpper.toFixed(2)})\n`;
+      text += `${t('screening.npv')}: ${c.npv.toFixed(2)}% (${c.npvLower.toFixed(2)} - ${c.npvUpper.toFixed(2)})\n`;
+      text += `${t('screening.accuracy')}: ${c.accuracy.toFixed(2)}% (${c.accuracyLower.toFixed(2)} - ${c.accuracyUpper.toFixed(2)})\n`;
+      text += `${t('screening.lrPositive')}: ${c.lrPositive.toFixed(4)} (${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)})\n`;
+      text += `${t('screening.lrNegative')}: ${c.lrNegative.toFixed(4)} (${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)})\n`;
+      text += `${t('screening.oddsRatio')}: ${c.oddsRatio.toFixed(4)} (${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)})\n`;
+      text += `${t('screening.kappa')}: ${c.kappa.toFixed(4)} (${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)})\n`;
+      text += `${t('screening.entropyPositive')}: ${c.entropyPositive.toFixed(2)}%\n`;
+      text += `${t('screening.entropyNegative')}: ${c.entropyNegative.toFixed(2)}%\n`;
+      text += `${t('screening.biasIndex')}: ${c.biasIndex.toFixed(4)}\n\n`;
     });
 
-    text += `Rapports de vraisemblance de niveau spécifique\n`;
+    text += `${t('screening.levelLRsTitle')}\n`;
     results.levelLRs.forEach((l) => {
       text += `${l.level}: ${l.lr.toFixed(4)} (${l.lrLower.toFixed(4)} - ${l.lrUpper.toFixed(4)})\n`;
     });
 
-    text += `\nAire sous la courbe ROC: ${results.auc.toFixed(7)} (${results.aucLower.toFixed(7)} - ${results.aucUpper.toFixed(7)})\n`;
+    text += `\n${t('screening.auc')}: ${results.auc.toFixed(7)} (${results.aucLower.toFixed(7)} - ${results.aucUpper.toFixed(7)})\n`;
 
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('screening.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('screening.copyError'));
     }
   };
 
   const exportPDF = () => {
     if (!results) {
-      toast.error('Veuillez d\'abord effectuer un calcul');
+      toast.error(t('screening.exportNoData'));
       return;
     }
 
@@ -439,19 +445,19 @@ export default function ScreeningTest() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'Analyse Dépistage", 20, 25);
+      doc.text(t('screening.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
-      doc.text('Dépistage – OpenEpi', 190, 32, { align: 'right' });
+      doc.text(`${t('screening.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')} ${t('screening.at')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text(t('screening.reportSubtitle'), 190, 32, { align: 'right' });
 
       // Input data
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Données analysées', 20, y);
+      doc.text(t('screening.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
@@ -459,11 +465,11 @@ export default function ScreeningTest() {
 
       const tableData = rows.map(r => [r.level, parseInt(r.cases) || 0, parseInt(r.nonCases) || 0]);
       const totals = tableData.reduce((acc, [, c, nc]) => [acc[0] + c, acc[1] + nc], [0, 0]);
-      tableData.push(['Total', totals[0], totals[1], totals[0] + totals[1]]);
+      tableData.push([t('screening.total'), totals[0], totals[1], totals[0] + totals[1]]);
 
       autoTable(doc, {
         startY: y,
-        head: [['Niveau', 'Cas', 'Non-cas', 'Total']],
+        head: [[t('screening.level'), t('screening.cases'), t('screening.nonCases'), t('screening.total')]],
         body: tableData.map(r => r.map(v => v.toString())),
         theme: 'grid',
         headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -483,7 +489,7 @@ export default function ScreeningTest() {
       // Cutoff results
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Résultats par point de coupure', 20, y);
+      doc.text(t('screening.cutoffResults'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
@@ -494,23 +500,23 @@ export default function ScreeningTest() {
           y = 20;
         }
         doc.setFontSize(10);
-        doc.text(`Point de coupure ${c.cutoff}`, 20, y);
+        doc.text(`${t('screening.cutoff')} ${c.cutoff}`, 20, y);
         y += 8;
 
         const cutoffTable = [
-          ['Paramètre', 'Estimation', 'IC 95%', 'Méthode'],
-          ['Sensibilité', `${c.sensitivity.toFixed(2)}%`, `${c.sensitivityLower.toFixed(2)} - ${c.sensitivityUpper.toFixed(2)}`, 'Score de Wilson'],
-          ['Spécificité', `${c.specificity.toFixed(2)}%`, `${c.specificityLower.toFixed(2)} - ${c.specificityUpper.toFixed(2)}`, 'Score de Wilson'],
-          ['VPP', `${c.ppv.toFixed(2)}%`, `${c.ppvLower.toFixed(2)} - ${c.ppvUpper.toFixed(2)}`, 'Score de Wilson'],
-          ['VPN', `${c.npv.toFixed(2)}%`, `${c.npvLower.toFixed(2)} - ${c.npvUpper.toFixed(2)}`, 'Score de Wilson'],
-          ['Exactitude', `${c.accuracy.toFixed(2)}%`, `${c.accuracyLower.toFixed(2)} - ${c.accuracyUpper.toFixed(2)}`, 'Score de Wilson'],
-          ['LR+', c.lrPositive.toFixed(4), `${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)}`, 'Katz'],
-          ['LR-', c.lrNegative.toFixed(4), `${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)}`, 'Katz'],
-          ['OR', c.oddsRatio.toFixed(4), `${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)}`, 'Log'],
-          ['Kappa', c.kappa.toFixed(4), `${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)}`, 'Normal'],
-          ['Entropie +', c.entropyPositive.toFixed(2) + '%', '', 'Shannon'],
-          ['Entropie -', c.entropyNegative.toFixed(2) + '%', '', 'Shannon'],
-          ['Biais', c.biasIndex.toFixed(4), '', 'Définition']
+          [t('screening.parameter'), t('screening.estimate'), t('screening.ci95'), t('screening.method')],
+          [t('screening.sensitivity'), `${c.sensitivity.toFixed(2)}%`, `${c.sensitivityLower.toFixed(2)} - ${c.sensitivityUpper.toFixed(2)}`, t('screening.wilsonScore')],
+          [t('screening.specificity'), `${c.specificity.toFixed(2)}%`, `${c.specificityLower.toFixed(2)} - ${c.specificityUpper.toFixed(2)}`, t('screening.wilsonScore')],
+          [t('screening.ppv'), `${c.ppv.toFixed(2)}%`, `${c.ppvLower.toFixed(2)} - ${c.ppvUpper.toFixed(2)}`, t('screening.wilsonScore')],
+          [t('screening.npv'), `${c.npv.toFixed(2)}%`, `${c.npvLower.toFixed(2)} - ${c.npvUpper.toFixed(2)}`, t('screening.wilsonScore')],
+          [t('screening.accuracy'), `${c.accuracy.toFixed(2)}%`, `${c.accuracyLower.toFixed(2)} - ${c.accuracyUpper.toFixed(2)}`, t('screening.wilsonScore')],
+          [t('screening.lrPositive'), c.lrPositive.toFixed(4), `${c.lrPositiveLower.toFixed(4)} - ${c.lrPositiveUpper.toFixed(4)}`, t('screening.katz')],
+          [t('screening.lrNegative'), c.lrNegative.toFixed(4), `${c.lrNegativeLower.toFixed(4)} - ${c.lrNegativeUpper.toFixed(4)}`, t('screening.katz')],
+          [t('screening.oddsRatio'), c.oddsRatio.toFixed(4), `${c.oddsRatioLower.toFixed(4)} - ${c.oddsRatioUpper.toFixed(4)}`, t('screening.logMethod')],
+          [t('screening.kappa'), c.kappa.toFixed(4), `${c.kappaLower.toFixed(4)} - ${c.kappaUpper.toFixed(4)}`, t('screening.normalApprox')],
+          [t('screening.entropyPositive'), c.entropyPositive.toFixed(2) + '%', '', t('screening.shannon')],
+          [t('screening.entropyNegative'), c.entropyNegative.toFixed(2) + '%', '', t('screening.shannon')],
+          [t('screening.biasIndex'), c.biasIndex.toFixed(4), '', t('screening.definition')]
         ];
 
         autoTable(doc, {
@@ -539,7 +545,7 @@ export default function ScreeningTest() {
       }
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Rapports de vraisemblance par niveau', 20, y);
+      doc.text(t('screening.levelLRsTitle'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
@@ -552,7 +558,7 @@ export default function ScreeningTest() {
 
       autoTable(doc, {
         startY: y,
-        head: [['Niveau', 'Ratio', 'IC 95%']],
+        head: [[t('screening.level'), t('screening.lr'), t('screening.ci95')]],
         body: levelTable,
         theme: 'grid',
         headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -575,24 +581,24 @@ export default function ScreeningTest() {
       }
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Courbe ROC', 20, y);
+      doc.text(t('screening.rocCurve'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.text(`Aire sous la courbe ROC = ${results.auc.toFixed(7)} (${results.aucLower.toFixed(7)} - ${results.aucUpper.toFixed(7)})`, 20, y);
+      doc.text(`${t('screening.auc')} = ${results.auc.toFixed(7)} (${results.aucLower.toFixed(7)} - ${results.aucUpper.toFixed(7)})`, 20, y);
       y += 10;
 
       // Simple textual approximation of ROC curve (no space for complex drawing)
-      doc.text('Courbe caractéristique (ROC) – approximation textuelle', 20, y);
+      doc.text(t('screening.rocTextApprox'), 20, y);
       y += 5;
       doc.text('0.0   0.2   0.4   0.6   0.8   1.0  TPR', 20, y);
       y += 5;
       doc.text('0.0   0.2   0.4   0.6   0.8   1.0  FPR', 20, y);
       y += 5;
-      doc.text('TPR = taux vrais positifs, FPR = taux faux positifs', 20, y);
+      doc.text(t('screening.rocLabel'), 20, y);
 
       // Footer
       const footerY = 280;
@@ -601,14 +607,14 @@ export default function ScreeningTest() {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Dépistage – conforme OpenEpi', 20, footerY + 5);
+      doc.text(t('screening.reportFooter'), 20, footerY + 5);
       doc.text(`Page ${doc.getNumberOfPages()} / ${doc.getNumberOfPages()}`, 190, footerY + 5, { align: 'right' });
 
       doc.save('Rapport_Screening_Test.pdf');
-      toast.success('Rapport PDF exporté avec succès');
+      toast.success(t('screening.exportSuccess'));
     } catch (error) {
-      console.error('Erreur PDF :', error);
-      toast.error('Erreur lors de la génération du PDF');
+      console.error('PDF error:', error);
+      toast.error(t('screening.exportError'));
     }
   };
 
@@ -630,9 +636,9 @@ export default function ScreeningTest() {
         {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Dépistage</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">{t('screening.title')}</span></li>
           </ol>
         </nav>
 
@@ -643,10 +649,8 @@ export default function ScreeningTest() {
               <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Dépistage</h1>
-              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Analyse des performances d'un test de dépistage à plusieurs niveaux.
-              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{t('screening.title')}</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">{t('screening.description')}</p>
             </div>
           </div>
           <button
@@ -662,7 +666,7 @@ export default function ScreeningTest() {
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('screening.parameters')}
               </h2>
               <div className="space-y-5">
                 <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-600">
@@ -670,16 +674,16 @@ export default function ScreeningTest() {
                     <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600">
                       <tr>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 dark:text-gray-200">
-                          Niveau
+                          {t('screening.level')}
                         </th>
                         <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                          Cas
+                          {t('screening.cases')}
                         </th>
                         <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                          Non-cas
+                          {t('screening.nonCases')}
                         </th>
                         <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                          Action
+                          {t('screening.action')}
                         </th>
                       </tr>
                     </thead>
@@ -692,9 +696,9 @@ export default function ScreeningTest() {
                               value={row.level}
                               onChange={(e) => updateRow(row.id, 'level', e.target.value)}
                               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              placeholder="Niveau"
+                              placeholder={t('screening.levelPlaceholder')}
                             />
-                          </td>
+                           </td>
                           <td className="px-6 py-4 text-center">
                             <input
                               type="number"
@@ -704,7 +708,7 @@ export default function ScreeningTest() {
                               className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                               placeholder="0"
                             />
-                          </td>
+                           </td>
                           <td className="px-6 py-4 text-center">
                             <input
                               type="number"
@@ -714,7 +718,7 @@ export default function ScreeningTest() {
                               className="w-20 px-3 py-2 text-center text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                               placeholder="0"
                             />
-                          </td>
+                           </td>
                           <td className="px-6 py-4 text-center">
                             <button
                               onClick={() => removeRow(row.id)}
@@ -723,7 +727,7 @@ export default function ScreeningTest() {
                             >
                               <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                             </button>
-                          </td>
+                           </td>
                         </tr>
                       ))}
                     </tbody>
@@ -733,7 +737,7 @@ export default function ScreeningTest() {
                   onClick={addRow}
                   className="w-full px-5 py-4 bg-blue-600 text-white rounded-2xl font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  <Plus className="w-5 h-5" /> Ajouter un niveau
+                  <Plus className="w-5 h-5" /> {t('screening.addLevel')}
                 </button>
               </div>
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
@@ -741,7 +745,7 @@ export default function ScreeningTest() {
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('screening.example')}
                 </button>
                 <button
                   onClick={clearForm}
@@ -758,21 +762,21 @@ export default function ScreeningTest() {
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('screening.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier le résultat principal"
+                      title={t('screening.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('screening.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -783,27 +787,26 @@ export default function ScreeningTest() {
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('screening.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">
                       0.00
                     </div>
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    
                     {/* ROC Curve SVG - Clickable */}
                     <div className="bg-white dark:bg-slate-900">
                       <div className="flex justify-between items-start mb-8">
                         <div>
                           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                            Analyse de Performance ROC
+                            {t('screening.rocPerformance')}
                           </h3>
                           <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
-                            Compromis Sensibilité vs Spécificité
+                            {t('screening.rocSubtitle')}
                           </p>
                         </div>
                         <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
-                          <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">AUC: {results.auc.toFixed(2)}</span>
+                          <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">{t('screening.auc')}: {results.auc.toFixed(2)}</span>
                         </div>
                       </div>
 
@@ -811,7 +814,6 @@ export default function ScreeningTest() {
                         className="relative flex justify-center cursor-pointer group"
                         onClick={() => setIsRocModalOpen(true)}
                       >
-                        {/* Zoom indicator on hover */}
                         <div className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
@@ -898,22 +900,22 @@ export default function ScreeningTest() {
                           ))}
 
                           {/* Axis labels */}
-                          <text 
-                            x={margin.left + plotWidth / 2} 
-                            y={margin.top + plotHeight + 35} 
+                          <text
+                            x={margin.left + plotWidth / 2}
+                            y={margin.top + plotHeight + 35}
                             className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
                             textAnchor="middle"
                           >
-                            TAUX DE FAUX POSITIFS (1 - SPÉCIFICITÉ)
+                            {t('screening.rocFprLabel')}
                           </text>
-                          <text 
-                            x={margin.left - 35} 
-                            y={margin.top + plotHeight / 2} 
+                          <text
+                            x={margin.left - 35}
+                            y={margin.top + plotHeight / 2}
                             className="fill-slate-400 dark:fill-slate-500 text-[11px] font-medium"
-                            textAnchor="middle" 
+                            textAnchor="middle"
                             transform={`rotate(-90, ${margin.left - 35}, ${margin.top + plotHeight / 2})`}
                           >
-                            TAUX DE VRAIS POSITIFS (SENSIBILITÉ)
+                            {t('screening.rocTprLabel')}
                           </text>
                         </svg>
                       </div>
@@ -921,16 +923,16 @@ export default function ScreeningTest() {
                       {/* Legend */}
                       <div className="flex justify-center gap-8 mt-10 border-t border-slate-50 dark:border-slate-800 pt-6">
                         <div className="flex items-center gap-2">
-                          <div className="w-4 h-1 bg-blue-500 rounded-full"></div>
-                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">Modèle Actuel</span>
+                          <div className="w-4 h-1 bg-blue-500 rounded-full" />
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">{t('screening.currentModel')}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className="w-4 h-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600"></div>
-                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Hasard</span>
+                          <div className="w-4 h-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600" />
+                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">{t('screening.chance')}</span>
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* AUC card */}
                     <div
                       className={`p-6 rounded-3xl text-center border ${
@@ -940,7 +942,7 @@ export default function ScreeningTest() {
                       }`}
                     >
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Aire sous la courbe ROC (AUC)
+                        {t('screening.aucTitle')}
                       </p>
                       <div
                         className={`text-4xl font-bold tracking-tight mb-2 ${
@@ -950,7 +952,7 @@ export default function ScreeningTest() {
                         {results.auc.toFixed(4)}
                       </div>
                       <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
-                        IC 95% : [{results.aucLower.toFixed(4)} – {results.aucUpper.toFixed(4)}]
+                        {t('screening.ci95')}: [{results.aucLower.toFixed(4)} – {results.aucUpper.toFixed(4)}]
                       </span>
                     </div>
 
@@ -958,77 +960,77 @@ export default function ScreeningTest() {
                     {results.cutoffs.map((c, index) => (
                       <div key={index} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
                         <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                          Point de coupure {c.cutoff}
+                          {t('screening.cutoff')} {c.cutoff}
                         </h3>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                           <div>
-                            <p className="text-slate-400 text-xs">Sensibilité</p>
+                            <p className="text-slate-400 text-xs">{t('screening.sensitivity')}</p>
                             <p className="font-mono font-medium">
                               {c.sensitivity.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.sensitivityLower.toFixed(2)}–{c.sensitivityUpper.toFixed(2)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">Spécificité</p>
+                            <p className="text-slate-400 text-xs">{t('screening.specificity')}</p>
                             <p className="font-mono font-medium">
                               {c.specificity.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.specificityLower.toFixed(2)}–{c.specificityUpper.toFixed(2)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">VPP</p>
+                            <p className="text-slate-400 text-xs">{t('screening.ppv')}</p>
                             <p className="font-mono font-medium">
                               {c.ppv.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.ppvLower.toFixed(2)}–{c.ppvUpper.toFixed(2)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">VPN</p>
+                            <p className="text-slate-400 text-xs">{t('screening.npv')}</p>
                             <p className="font-mono font-medium">
                               {c.npv.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.npvLower.toFixed(2)}–{c.npvUpper.toFixed(2)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">Exactitude</p>
+                            <p className="text-slate-400 text-xs">{t('screening.accuracy')}</p>
                             <p className="font-mono font-medium">
                               {c.accuracy.toFixed(2)}% <span className="text-slate-400 text-[10px]">({c.accuracyLower.toFixed(2)}–{c.accuracyUpper.toFixed(2)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">LR+</p>
+                            <p className="text-slate-400 text-xs">{t('screening.lrPositive')}</p>
                             <p className="font-mono font-medium">
                               {c.lrPositive.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.lrPositiveLower.toFixed(4)}–{c.lrPositiveUpper.toFixed(4)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">LR-</p>
+                            <p className="text-slate-400 text-xs">{t('screening.lrNegative')}</p>
                             <p className="font-mono font-medium">
                               {c.lrNegative.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.lrNegativeLower.toFixed(4)}–{c.lrNegativeUpper.toFixed(4)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">Odds Ratio</p>
+                            <p className="text-slate-400 text-xs">{t('screening.oddsRatio')}</p>
                             <p className="font-mono font-medium">
                               {c.oddsRatio.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.oddsRatioLower.toFixed(4)}–{c.oddsRatioUpper.toFixed(4)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">Kappa</p>
+                            <p className="text-slate-400 text-xs">{t('screening.kappa')}</p>
                             <p className="font-mono font-medium">
                               {c.kappa.toFixed(4)} <span className="text-slate-400 text-[10px]">({c.kappaLower.toFixed(4)}–{c.kappaUpper.toFixed(4)})</span>
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">Entropie +</p>
+                            <p className="text-slate-400 text-xs">{t('screening.entropyPositive')}</p>
                             <p className="font-mono font-medium">
                               {c.entropyPositive.toFixed(2)}%
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">Entropie -</p>
+                            <p className="text-slate-400 text-xs">{t('screening.entropyNegative')}</p>
                             <p className="font-mono font-medium">
                               {c.entropyNegative.toFixed(2)}%
                             </p>
                           </div>
                           <div>
-                            <p className="text-slate-400 text-xs">Biais</p>
+                            <p className="text-slate-400 text-xs">{t('screening.biasIndex')}</p>
                             <p className="font-mono font-medium">
                               {c.biasIndex.toFixed(4)}
                             </p>
@@ -1039,34 +1041,34 @@ export default function ScreeningTest() {
 
                     {/* Level‑specific likelihood ratios */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
-                      <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4">Rapports de vraisemblance par niveau</h3>
+                      <h3 className="text-md font-semibold text-slate-900 dark:text-white mb-4">{t('screening.levelLRsTitle')}</h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
-                              <th className="px-4 py-2 text-left">Niveau</th>
-                              <th className="px-4 py-2 text-center">LR</th>
-                              <th className="px-4 py-2 text-center">IC 95%</th>
+                              <th className="px-4 py-2 text-left">{t('screening.level')}</th>
+                              <th className="px-4 py-2 text-center">{t('screening.lr')}</th>
+                              <th className="px-4 py-2 text-center">{t('screening.ci95')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                          {results.levelLRs.map((l, idx) => (
-                                <tr key={idx}>
-                                  <td className="px-4 py-2 font-medium">{l.level}</td>
-                                  <td className="px-4 py-2 text-center font-mono">
-                                    {l.lr.toFixed(4)}
-                                    {l.lr > 0 && rows[idx] && parseInt(rows[idx].cases) < 5 && (
-                                      <span className="text-[10px] text-amber-500 ml-1">*</span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-2 text-center font-mono">
-                                    [{l.lrLower.toFixed(4)} – {l.lrUpper.toFixed(4)}]
-                                    {rows[idx] && parseInt(rows[idx].cases) < 5 && (
-                                      <span className="text-[10px] text-amber-500 ml-1">IC approx.</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
+                            {results.levelLRs.map((l, idx) => (
+                              <tr key={idx}>
+                                <td className="px-4 py-2 font-medium">{l.level}</td>
+                                <td className="px-4 py-2 text-center font-mono">
+                                  {l.lr.toFixed(4)}
+                                  {l.lr > 0 && rows[idx] && parseInt(rows[idx].cases) < 5 && (
+                                    <span className="text-[10px] text-amber-500 ml-1">*</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2 text-center font-mono">
+                                  [{l.lrLower.toFixed(4)} – {l.lrUpper.toFixed(4)}]
+                                  {rows[idx] && parseInt(rows[idx].cases) < 5 && (
+                                    <span className="text-[10px] text-amber-500 ml-1">{t('screening.ciApprox')}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
@@ -1088,7 +1090,6 @@ export default function ScreeningTest() {
               className="relative bg-white dark:bg-slate-900 rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-auto p-6"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Close button */}
               <button
                 onClick={() => setIsRocModalOpen(false)}
                 className="absolute top-4 right-4 p-2 bg-slate-200 dark:bg-slate-800 rounded-full hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors z-10"
@@ -1096,20 +1097,18 @@ export default function ScreeningTest() {
                 <X className="w-5 h-5" />
               </button>
 
-              {/* Title and AUC */}
               <div className="flex justify-between items-start mb-6 pr-12">
                 <div>
                   <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                    Analyse de Performance ROC
+                    {t('screening.rocPerformance')}
                   </h3>
-                  <p className="text-sm text-slate-500">Compromis Sensibilité vs Spécificité</p>
+                  <p className="text-sm text-slate-500">{t('screening.rocSubtitle')}</p>
                 </div>
-                <div >
-                  <span className="text-blue-600 dark:text-blue-400 font-bold">AUC: {results.auc.toFixed(2)}</span>
+                <div>
+                  <span className="text-blue-600 dark:text-blue-400 font-bold">{t('screening.auc')}: {results.auc.toFixed(2)}</span>
                 </div>
               </div>
 
-              {/* SVG with viewBox for scalability */}
               <svg
                 viewBox={`0 0 ${svgWidth} ${svgHeight}`}
                 className="w-full h-auto"
@@ -1197,10 +1196,10 @@ export default function ScreeningTest() {
                 <text
                   x={margin.left + plotWidth / 2}
                   y={margin.top + plotHeight + 35}
-                  className="fill-slate-400 dark:fill-slate-500 text-[10px] font-medium "
+                  className="fill-slate-400 dark:fill-slate-500 text-[10px] font-medium"
                   textAnchor="middle"
                 >
-                  TAUX DE FAUX POSITIFS (1 - SPÉCIFICITÉ)
+                  {t('screening.rocFprLabel')}
                 </text>
                 <text
                   x={margin.left - 35}
@@ -1209,7 +1208,7 @@ export default function ScreeningTest() {
                   textAnchor="middle"
                   transform={`rotate(-90, ${margin.left - 35}, ${margin.top + plotHeight / 2})`}
                 >
-                  TAUX DE VRAIS POSITIFS (SENSIBILITÉ)
+                  {t('screening.rocTprLabel')}
                 </text>
               </svg>
 
@@ -1218,13 +1217,13 @@ export default function ScreeningTest() {
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-1 bg-blue-500 rounded-full" />
                   <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">
-                    Modèle Actuel
+                    {t('screening.currentModel')}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600" />
                   <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">
-                    Hasard
+                    {t('screening.chance')}
                   </span>
                 </div>
               </div>
@@ -1242,7 +1241,7 @@ export default function ScreeningTest() {
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide : Dépistage
+                  {t('screening.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -1255,140 +1254,98 @@ export default function ScreeningTest() {
               <div className="p-6 md:p-8 space-y-8">
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      1
-                    </div>
-                    Principe du test de dépistage
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">1</div>
+                    {t('screening.helpPrincipleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce module reproduit fidèlement l’outil <strong>« Screening Test » d’OpenEpi</strong>. 
-                    Il évalue les performances d’un test diagnostique ou de dépistage à plusieurs niveaux 
-                    (ordinal ou continu). Pour chaque seuil de coupure, il calcule :
+                    {t('screening.helpPrincipleText')}
                   </p>
                   <ul className="list-disc pl-5 mt-2 text-sm text-slate-600 dark:text-slate-300">
-                    <li>Sensibilité, Spécificité, Valeurs prédictives</li>
-                    <li>Rapports de vraisemblance (LR+, LR–)</li>
-                    <li>Odds ratio diagnostique</li>
-                    <li>Coefficient Kappa de Cohen</li>
-                    <li>Réduction d’entropie (information gagnée)</li>
-                    <li>Index de biais</li>
+                    <li>{t('screening.helpSensitivity')}</li>
+                    <li>{t('screening.helpSpecificity')}</li>
+                    <li>{t('screening.helpPredictiveValues')}</li>
+                    <li>{t('screening.helpLikelihoodRatios')}</li>
+                    <li>{t('screening.helpDiagnosticOdds')}</li>
+                    <li>{t('screening.helpKappa')}</li>
+                    <li>{t('screening.helpEntropy')}</li>
+                    <li>{t('screening.helpBias')}</li>
                   </ul>
-                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                    Il fournit également les rapports de vraisemblance spécifiques à chaque niveau 
-                    et l’aire sous la courbe ROC (AUC) avec son intervalle de confiance.
-                  </p>
                 </section>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                      AUC &gt; 0,70
+                      {t('screening.helpAucHigh')}
                     </div>
-                    <div className="text-xs text-slate-500">Test performant – discrimination acceptable à excellente</div>
+                    <div className="text-xs text-slate-500">{t('screening.helpAucHighDesc')}</div>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                      AUC &lt; 0,60
+                      {t('screening.helpAucLow')}
                     </div>
-                    <div className="text-xs text-slate-500">Test peu informatif – proche du hasard</div>
+                    <div className="text-xs text-slate-500">{t('screening.helpAucLowDesc')}</div>
                   </div>
                 </div>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      2
-                    </div>
-                    Intervalles de confiance (IC 95 %)
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">2</div>
+                    {t('screening.helpConfidenceTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-3">
-                    Tous les intervalles sont calculés selon des méthodes reconnues, identiques à OpenEpi.
+                    {t('screening.helpConfidenceText')}
                   </p>
                   <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-300 space-y-1">
                     <li>
-                      <strong className="text-slate-900 dark:text-white">Wilson score</strong> – 
-                      Proportions (sensibilité, spécificité, VPP, VPN, exactitude)
+                      <strong className="text-slate-900 dark:text-white">{t('screening.helpWilson')}</strong> – 
+                      {t('screening.helpWilsonDesc')}
                     </li>
                     <li>
-                      <strong className="text-slate-900 dark:text-white">Katz (log)</strong> – 
-                      Rapports de vraisemblance (LR+, LR–)
+                      <strong className="text-slate-900 dark:text-white">{t('screening.helpKatz')}</strong> – 
+                      {t('screening.helpKatzDesc')}
                     </li>
                     <li>
-                      <strong className="text-slate-900 dark:text-white">Hanley & McNeil (1982)</strong> – 
-                      Aire sous la courbe ROC (AUC)
+                      <strong className="text-slate-900 dark:text-white">{t('screening.helpHanley')}</strong> – 
+                      {t('screening.helpHanleyDesc')}
                     </li>
                     <li>
-                      <strong className="text-slate-900 dark:text-white">Approximation normale</strong> – 
-                      Coefficient kappa de Cohen
+                      <strong className="text-slate-900 dark:text-white">{t('screening.helpNormal')}</strong> – 
+                      {t('screening.helpNormalDesc')}
                     </li>
                   </ul>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      3
-                    </div>
-                    Méthodes de calcul
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">3</div>
+                    {t('screening.helpMethodsTitle')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Courbe ROC & AUC</strong> – 
-                      Les points sont générés en cumulant les effectifs des niveaux du plus pathologique 
-                      au moins pathologique. L’AUC est calculée par la méthode des trapèzes.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Rapports de vraisemblance par niveau</strong> – 
-                      LR = (casᵢ / non‑casᵢ) / (total cas / total non‑cas). IC basé sur l’erreur‑type de log(LR) avec la formule de Katz.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Diagnostic odds ratio (DOR)</strong> – 
-                      (TP·TN)/(FP·FN). IC par transformation logarithmique.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Kappa de Cohen</strong> – 
-                      Mesure de l’accord au‑delà du hasard. IC = κ ± 1,96·SE(κ).
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Réduction d’entropie</strong> – 
-                      Pourcentage de réduction de l’incertitude (entropie de Shannon) après un test positif ou négatif.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Index de biais</strong> – 
-                      (TP + FP – FN – TN) / N. Reflète le déséquilibre global de classification.
-                    </p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('screening.helpRoc')}</strong> – {t('screening.helpRocDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('screening.helpLevelLR')}</strong> – {t('screening.helpLevelLRDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('screening.helpDor')}</strong> – {t('screening.helpDorDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('screening.helpKappaMethod')}</strong> – {t('screening.helpKappaMethodDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('screening.helpEntropyMethod')}</strong> – {t('screening.helpEntropyMethodDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('screening.helpBiasMethod')}</strong> – {t('screening.helpBiasMethodDesc')}</p>
                   </div>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      4
-                    </div>
-                    Exemple concret
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">4</div>
+                    {t('screening.helpExampleTitle')}
                   </h4>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-sm">
-                    <p className="mb-2">
-                      Supposons un test de glycémie pour diagnostiquer le diabète. On classe les patients en cinq niveaux de glycémie (1 = normale, 5 = très élevée). Les données saisies pourraient être :
-                    </p>
+                    <p className="mb-2">{t('screening.helpExampleText')}</p>
                     <pre className="bg-white dark:bg-slate-900 p-2 rounded text-xs overflow-x-auto">
-                      {`Niveau    Cas (diabétiques)   Non-cas
-                      1               1                 2
-                      2               2                 3
-                      3               4                 5
-                      4               7                 8
-                      5               9                10`}
+                      {t('screening.helpExampleTable')}
                     </pre>
-                    <p className="mt-2">
-                      L’analyse produit une courbe ROC, une AUC de 0,5326 (IC 95% : 0,3728 – 0,6925), et pour chaque seuil les sensibilités, spécificités, etc. On peut ainsi choisir le meilleur compromis.
-                    </p>
+                    <p className="mt-2">{t('screening.helpExampleInterpretation')}</p>
                   </div>
                 </section>
 
                 <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-400">
-                  <span className="font-bold">Ordre des niveaux</span> – Les niveaux doivent être saisis 
-                  du <strong>moins pathologique</strong> (première ligne) au <strong>plus pathologique</strong> 
-                  (dernière ligne). C’est essentiel pour une courbe ROC correcte.
+                  <span className="font-bold">{t('screening.helpOrderNote')}</span> {t('screening.helpOrderNoteText')}
                 </div>
 
                 <a
@@ -1397,7 +1354,7 @@ export default function ScreeningTest() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                 >
-                  Source officielle : OpenEpi – Dépistage
+                  {t('screening.helpSourceLink')}
                   <ArrowRight className="w-3 h-3 ml-1" />
                 </a>
               </div>
