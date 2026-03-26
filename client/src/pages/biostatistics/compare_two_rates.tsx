@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -33,6 +34,8 @@ import autoTable from 'jspdf-autotable';
  */
 
 export default function TwoRatesComparison() {
+  const { t } = useTranslation();
+
   // ----- State declarations -----
   const [events1, setEvents1] = useState<string>('');           // Cases in group 1
   const [personTime1, setPersonTime1] = useState<string>('');   // Person‑time in group 1
@@ -79,12 +82,12 @@ export default function TwoRatesComparison() {
 
     // Input validation
     if (N1 <= 0 || N2 <= 0) {
-      toast.error('Le temps-personne doit être positif.');
+      toast.error(t('twoRates.errorPersonTime'));
       setResults(null);
       return;
     }
     if (a === 0 && b === 0) {
-      toast.error('Au moins un groupe doit avoir des cas.');
+      toast.error(t('twoRates.errorNoCases'));
       setResults(null);
       return;
     }
@@ -394,7 +397,7 @@ export default function TwoRatesComparison() {
     setEvents2('');
     setPersonTime2('');
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('twoRates.clearMessage'));
   };
 
   // Load an example dataset (from OpenEpi typical demo)
@@ -403,46 +406,46 @@ export default function TwoRatesComparison() {
     setPersonTime1('1000');
     setEvents2('30');
     setPersonTime2('1200');
-    toast.success('Exemple chargé');
+    toast.success(t('twoRates.exampleLoaded'));
   };
 
   // Copy results to clipboard as formatted text
   const copyResults = async () => {
     if (!results) return;
-    const text = `Comparaison de deux taux – OpenEpi PersonTime2
-Taux 1 : ${results.rate1} pour 1000 (${results.a} / ${results.N1})
-Taux 2 : ${results.rate2} pour 1000 (${results.b} / ${results.N2})
-Différence : ${results.rateDiff} [${results.diffLower} – ${results.diffUpper}]
-Ratio de taux (RR) et IC ${results.confidenceLevel}% :
-Mid-P exact : ${results.rr} [${results.midp.lower} – ${results.midp.upper}]
-Fisher exact : ${results.rr} [${results.fisher.lower} – ${results.fisher.upper}]
-Approx. normale : ${results.rr} [${results.norm.lower} – ${results.norm.upper}]
-Byar approx. : ${results.rr} [${results.byar.lower} – ${results.byar.upper}]
-Rothman/Greenland : ${results.rr} [${results.rothman.lower} – ${results.rothman.upper}]
+    const text = `${t('twoRates.copyPrefix')}
+${t('twoRates.rate1Label')} : ${results.rate1} ${t('twoRates.perScale', { scale: results.scale })} (${results.a} / ${results.N1})
+${t('twoRates.rate2Label')} : ${results.rate2} ${t('twoRates.perScale', { scale: results.scale })} (${results.b} / ${results.N2})
+${t('twoRates.rateDiff')} : ${results.rateDiff} [${results.diffLower} – ${results.diffUpper}]
+${t('twoRates.rrLabel')} ${t('twoRates.ci', { level: results.confidenceLevel })} :
+${t('twoRates.midp')} : ${results.rr} [${results.midp.lower} – ${results.midp.upper}]
+${t('twoRates.fisher')} : ${results.rr} [${results.fisher.lower} – ${results.fisher.upper}]
+${t('twoRates.normal')} : ${results.rr} [${results.norm.lower} – ${results.norm.upper}]
+${t('twoRates.byar')} : ${results.rr} [${results.byar.lower} – ${results.byar.upper}]
+${t('twoRates.rothman')} : ${results.rr} [${results.rothman.lower} – ${results.rothman.upper}]
 z-score : ${results.zScore}
-p-value (1-tail z) : ${results.p1z}
-p-value (2-tail z) : ${results.p2z}
-Fisher exact p (1-tail) : ${results.p1fisher}
-Fisher exact p (2-tail) : ${results.p2fisher}
-Mid-P exact p (1-tail) : ${results.p1midp}
-Mid-P exact p (2-tail) : ${results.p2midp}
-Taux exposé IC : [${results.lowerRate1} – ${results.upperRate1}] Taylor
-Taux non exposé IC : [${results.lowerRate2} – ${results.upperRate2}] Taylor
-Taux overall IC : [${results.lowerOverall} – ${results.upperOverall}] Taylor
-Fraction étiologique exposée (EFe) : ${results.efe} [${results.efeLower} – ${results.efeUpper}]
-Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} – ${results.efpUpper}]`;
+${t('twoRates.p1z')} : ${results.p1z}
+${t('twoRates.p2z')} : ${results.p2z}
+${t('twoRates.p1fisher')} : ${results.p1fisher}
+${t('twoRates.p2fisher')} : ${results.p2fisher}
+${t('twoRates.p1midp')} : ${results.p1midp}
+${t('twoRates.p2midp')} : ${results.p2midp}
+${t('twoRates.rate1Ci')} : [${results.lowerRate1} – ${results.upperRate1}] Taylor
+${t('twoRates.rate2Ci')} : [${results.lowerRate2} – ${results.upperRate2}] Taylor
+${t('twoRates.overallCi')} : [${results.lowerOverall} – ${results.upperOverall}] Taylor
+${t('twoRates.efe')} : ${results.efe} [${results.efeLower} – ${results.efeUpper}]
+${t('twoRates.efp')} : ${results.efp} [${results.efpLower} – ${results.efpUpper}]`;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('twoRates.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('twoRates.copyError'));
     }
   };
 
   // Export a comprehensive PDF report (styled similarly to OpenEpi output)
   const exportPDF = () => {
     if (!results) {
-      toast.error('Veuillez d’abord effectuer un calcul');
+      toast.error(t('twoRates.exportNoData'));
       return;
     }
 
@@ -466,34 +469,34 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport de comparaison de deux taux", 20, 25);
+      doc.text(t('twoRates.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
+      doc.text(`${t('twoRates.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
       doc.text('TwoRates – OpenEpi PersonTime2', 190, 32, { align: 'right' });
 
       // ----- Input data summary -----
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Données analysées', 20, y);
+      doc.text(t('twoRates.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
       y += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.text(`Groupe 1 : ${results.a} cas / ${results.N1} personne‑temps`, 25, y); y += 6;
-      doc.text(`Taux 1 : ${results.rate1} pour ${results.scale}`, 25, y); y += 6;
-      doc.text(`Groupe 2 : ${results.b} cas / ${results.N2} personne‑temps`, 25, y); y += 6;
-      doc.text(`Taux 2 : ${results.rate2} pour ${results.scale}`, 25, y); y += 6;
-      doc.text(`Niveau de confiance : ${results.confidenceLevel} %`, 25, y); y += 12;
+      doc.text(`${t('twoRates.group1')} : ${results.a} ${t('twoRates.cases')} / ${results.N1} ${t('twoRates.personTime')}`, 25, y); y += 6;
+      doc.text(`${t('twoRates.rate1')} : ${results.rate1} ${t('twoRates.perScale', { scale: results.scale })}`, 25, y); y += 6;
+      doc.text(`${t('twoRates.group2')} : ${results.b} ${t('twoRates.cases')} / ${results.N2} ${t('twoRates.personTime')}`, 25, y); y += 6;
+      doc.text(`${t('twoRates.rate2')} : ${results.rate2} ${t('twoRates.perScale', { scale: results.scale })}`, 25, y); y += 6;
+      doc.text(`${t('twoRates.confidenceLevel')} : ${results.confidenceLevel} %`, 25, y); y += 12;
 
       // ----- Single Table Analysis (2×2 style) -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Analyse de tableau unique', 20, y);
+      doc.text(t('twoRates.singleTable'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
@@ -518,7 +521,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       // ----- z‑Score and exact p‑values -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('z-Score and Exact Measures of Association', 20, y);
+      doc.text(t('twoRates.zScoreTitle'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
@@ -550,7 +553,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.setTextColor(...textColor);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text('RATIO DE TAUX (RR)', 105, y + 8, { align: 'center' });
+      doc.text(t('twoRates.rrTitle'), 105, y + 8, { align: 'center' });
       doc.setFontSize(26);
       doc.text(results.rr.toString(), 105, y + 26, { align: 'center' });
       y += 45;
@@ -558,20 +561,20 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       // ----- Confidence intervals for RR (all methods) -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text(`Intervalles de confiance à ${results.confidenceLevel}% – Ratio de taux`, 20, y);
+      doc.text(t('twoRates.ciTableTitle', { level: results.confidenceLevel }), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
       const tableBody = [
-        ['Mid-P exact', results.midp.lower, results.rr, results.midp.upper],
-        ['Fisher exact', results.fisher.lower, results.rr, results.fisher.upper],
-        ['Approx. normale', results.norm.lower, results.rr, results.norm.upper],
-        ['Byar approx.', results.byar.lower, results.rr, results.byar.upper],
-        ['Rothman/Greenland', results.rothman.lower, results.rr, results.rothman.upper],
+        [t('twoRates.midp'), results.midp.lower, results.rr, results.midp.upper],
+        [t('twoRates.fisher'), results.fisher.lower, results.rr, results.fisher.upper],
+        [t('twoRates.normal'), results.norm.lower, results.rr, results.norm.upper],
+        [t('twoRates.byar'), results.byar.lower, results.rr, results.byar.upper],
+        [t('twoRates.rothman'), results.rothman.lower, results.rr, results.rothman.upper],
       ];
       autoTable(doc, {
         startY: y,
-        head: [['Méthode', 'CL bas', 'RR', 'CL haut']],
+        head: [[t('twoRates.method'), t('twoRates.lowerCL'), t('twoRates.rr'), t('twoRates.upperCL')]],
         body: tableBody,
         theme: 'striped',
         headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -590,17 +593,17 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       // ----- Rate‑based estimates with CIs -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text(`Estimations basées sur les taux et IC ${results.confidenceLevel}%`, 20, y);
+      doc.text(t('twoRates.rateBasedTitle', { level: results.confidenceLevel, scale: results.scale }), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
       const tableBodyRates = [
         ['Type', 'Valeur', 'Bas, Haut', 'Type'],
-        ['Taux chez les exposés', results.rate1, `${results.lowerRate1}, ${results.upperRate1}`, 'Taylor'],
-        ['Taux chez les  non exposés', results.rate2, `${results.lowerRate2}, ${results.upperRate2}`, 'Taylor'],
-        ['Taux général', results.overallRate, `${results.lowerOverall}, ${results.upperOverall}`, 'Taylor'],
-        ['Risque relatif', results.rr, `${results.byar.lower}, ${results.byar.upper}`, 'Byar'],
-        ['Difference des taux', results.rateDiff, `${results.diffLower}, ${results.diffUpper}`, 'Byar'],
+        [t('twoRates.exposedRate'), results.rate1, `${results.lowerRate1}, ${results.upperRate1}`, 'Taylor'],
+        [t('twoRates.unexposedRate'), results.rate2, `${results.lowerRate2}, ${results.upperRate2}`, 'Taylor'],
+        [t('twoRates.overallRate'), results.overallRate, `${results.lowerOverall}, ${results.upperOverall}`, 'Taylor'],
+        [t('twoRates.rr'), results.rr, `${results.byar.lower}, ${results.byar.upper}`, 'Byar'],
+        [t('twoRates.rateDiff'), results.rateDiff, `${results.diffLower}, ${results.diffUpper}`, 'Byar'],
       ];
       autoTable(doc, {
         startY: y,
@@ -616,14 +619,14 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       // ----- Attributable fractions -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Fractions attribuables : Étiologique ou Préventive', 20, y);
+      doc.text(t('twoRates.attributableTitle'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
       const tableBodyAF = [
         ['Type', 'Valeur', 'Bas, Haut', 'Type'],
-        ['Etiologic fraction in pop.(EFp)', results.efp, `${results.efpLower}, ${results.efpUpper}`, 'PEPI'],
-        ['Etiologic fraction in exposed(EFe)', results.efe, `${results.efeLower}, ${results.efeUpper}`, 'PEPI'],
+        [t('twoRates.efp'), results.efp, `${results.efpLower}, ${results.efpUpper}`, 'PEPI'],
+        [t('twoRates.efe'), results.efe, `${results.efeLower}, ${results.efeUpper}`, 'PEPI'],
       ];
       autoTable(doc, {
         startY: y,
@@ -657,10 +660,10 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
       doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
 
       doc.save(`TwoRates_${results.a}_${results.b}.pdf`);
-      toast.success('Rapport PDF exporté');
+      toast.success(t('twoRates.exportSuccess'));
     } catch (error) {
       console.error(error);
-      toast.error('Erreur PDF');
+      toast.error(t('twoRates.exportError'));
     }
   };
 
@@ -669,11 +672,11 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb navigation */}
-        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
+        <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label={t('common.breadcrumb')}>
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">TwoRates</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('twoRates.title')}</span></li>
           </ol>
         </nav>
 
@@ -684,9 +687,9 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
               <TrendingUp className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">TwoRates</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{t('twoRates.title')}</h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Comparaison de deux taux d'incidence – Ratio, différence, IC (PersonTime2, OpenEpi)
+                {t('twoRates.description')}
               </p>
             </div>
           </div>
@@ -703,18 +706,18 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('twoRates.parameters')}
               </h2>
               <div className="space-y-6">
                 {/* Group 1 inputs */}
                 <div className="space-y-4 p-4  rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-blue-500" /> Groupe 1
+                    <Activity className="w-4 h-4 text-blue-500" /> {t('twoRates.group1')}
                   </h3>
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        Nombre de cas
+                        {t('twoRates.casesLabel')}
                       </label>
                       <input
                         type="number"
@@ -723,12 +726,12 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         min="0"
                         step="1"
                         className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Ex: 50"
+                        placeholder={t('twoRates.casesPlaceholder')}
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        Personne‑temps
+                        {t('twoRates.personTimeLabel')}
                       </label>
                       <input
                         type="number"
@@ -737,7 +740,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         min="0.0001"
                         step="any"
                         className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Ex: 1000"
+                        placeholder={t('twoRates.personTimePlaceholder')}
                       />
                     </div>
                   </div>
@@ -746,12 +749,12 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                 {/* Group 2 inputs */}
                 <div className="space-y-4 p-4  rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-indigo-500" /> Groupe 2
+                    <Activity className="w-4 h-4 text-indigo-500" /> {t('twoRates.group2')}
                   </h3>
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        Nombre de cas
+                        {t('twoRates.casesLabel')}
                       </label>
                       <input
                         type="number"
@@ -760,12 +763,12 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         min="0"
                         step="1"
                         className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Ex: 30"
+                        placeholder={t('twoRates.casesPlaceholder')}
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        Personne‑temps
+                        {t('twoRates.personTimeLabel')}
                       </label>
                       <input
                         type="number"
@@ -774,7 +777,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         min="0.0001"
                         step="any"
                         className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Ex: 1200"
+                        placeholder={t('twoRates.personTimePlaceholder')}
                       />
                     </div>
                   </div>
@@ -783,7 +786,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                 {/* Confidence level dropdown */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Niveau de confiance
+                    {t('twoRates.confidenceLabel')}
                   </label>
                   <select
                     value={confidenceLevel}
@@ -791,7 +794,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
                     <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
+                    <option value="95">{t('twoRates.standard')} 95%</option>
                     <option value="99">99%</option>
                   </select>
                 </div>
@@ -803,7 +806,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('twoRates.example')}
                 </button>
                 <button
                   onClick={clear}
@@ -820,21 +823,21 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('twoRates.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier le tableau"
+                      title={t('twoRates.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('twoRates.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -847,7 +850,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                   // Placeholder when no results
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('twoRates.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">
                       0.00
                     </div>
@@ -864,7 +867,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                       }`}
                     >
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
-                        Ratio de taux (RR)
+                        {t('twoRates.rrTitle')}
                       </p>
                       <div
                         className={`text-4xl font-bold tracking-tight ${
@@ -874,28 +877,28 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         {results.rr}
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
-                        IC {results.confidenceLevel}%
+                        {t('twoRates.ci', { level: results.confidenceLevel })}
                       </p>
                     </div>
 
                     {/* Individual rate cards */}
                     <div className="grid grid-cols-3 gap-4">
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
-                        <p className="text-xs font-bold uppercase text-slate-400">Taux 1</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('twoRates.rate1')}</p>
                         <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{results.rate1}</p>
-                        <p className="text-xs text-slate-500">pour {results.scale}</p>
+                        <p className="text-xs text-slate-500">{t('twoRates.perScale', { scale: results.scale })}</p>
                         <p className="text-xs text-slate-400 mt-1">{results.a} / {results.N1}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
-                        <p className="text-xs font-bold uppercase text-slate-400">Taux 2</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('twoRates.rate2')}</p>
                         <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{results.rate2}</p>
-                        <p className="text-xs text-slate-500">pour {results.scale}</p>
+                        <p className="text-xs text-slate-500">{t('twoRates.perScale', { scale: results.scale })}</p>
                         <p className="text-xs text-slate-400 mt-1">{results.b} / {results.N2}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
-                        <p className="text-xs font-bold uppercase text-slate-400">Taux overall</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('twoRates.overallRate')}</p>
                         <p className="text-2xl font-bold text-green-600 dark:text-green-400">{results.overallRate}</p>
-                        <p className="text-xs text-slate-500">pour {results.scale}</p>
+                        <p className="text-xs text-slate-500">{t('twoRates.perScale', { scale: results.scale })}</p>
                       </div>
                     </div>
 
@@ -903,7 +906,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Analyse de tableau unique
+                          {t('twoRates.singleTable')}
                         </h3>
                       </div>
                       <div className="overflow-x-auto">
@@ -950,7 +953,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          z-Score and Exact Measures of Association
+                          {t('twoRates.zScoreTitle')}
                         </h3>
                       </div>
                       <div className="overflow-x-auto">
@@ -959,8 +962,8 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                             <tr>
                               <th className="px-6 py-3 text-left font-semibold">Test</th>
                               <th className="px-6 py-3 text-center font-semibold">Valeur</th>
-                              <th className="px-6 py-3 text-center font-semibold">valeur-p (unilatérale)</th>
-                              <th className="px-6 py-3 text-center font-semibold">valeur-p (bilatérale)</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('twoRates.p1')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('twoRates.p2')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -991,46 +994,46 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Intervalles de confiance du RR ({results.confidenceLevel}%)
+                          {t('twoRates.ciTableTitle', { level: results.confidenceLevel })}
                         </h3>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-slate-100 dark:bg-slate-700/50">
                             <tr>
-                              <th className="px-6 py-3 text-left font-semibold">Méthode</th>
-                              <th className="px-6 py-3 text-center font-semibold">CL bas</th>
-                              <th className="px-6 py-3 text-center font-semibold">RR</th>
-                              <th className="px-6 py-3 text-center font-semibold">CL haut</th>
+                              <th className="px-6 py-3 text-left font-semibold">{t('twoRates.method')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('twoRates.lowerCL')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('twoRates.rr')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('twoRates.upperCL')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             <tr>
-                              <td className="px-6 py-3 font-medium">Mid-P exact</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.midp')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.midp.lower}</td>
                               <td className="px-6 py-3 text-center font-mono bg-slate-50 dark:bg-slate-700/30 font-bold">{results.rr}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.midp.upper}</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Fisher exact</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.fisher')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.fisher.lower}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rr}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.fisher.upper}</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Approximation normale</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.normal')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.norm.lower}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rr}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.norm.upper}</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Approximation de Byar</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.byar')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.byar.lower}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rr}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.byar.upper}</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Rothman/Greenland</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.rothman')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rothman.lower}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rr}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rothman.upper}</td>
@@ -1044,7 +1047,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Estimations basées sur les taux et IC {results.confidenceLevel}% (pour {results.scale} unité-temps)
+                          {t('twoRates.rateBasedTitle', { level: results.confidenceLevel, scale: results.scale })}
                         </h3>
                       </div>
                       <div className="overflow-x-auto">
@@ -1059,31 +1062,31 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             <tr>
-                              <td className="px-6 py-3 font-medium">Taux chez les exposés</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.exposedRate')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rate1}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.lowerRate1}, {results.upperRate1}</td>
                               <td className="px-6 py-3 text-center">Taylor</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Taux chez les  non exposés</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.unexposedRate')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rate2}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.lowerRate2}, {results.upperRate2}</td>
                               <td className="px-6 py-3 text-center">Taylor</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Taux général</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.overallRate')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.overallRate}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.lowerOverall}, {results.upperOverall}</td>
                               <td className="px-6 py-3 text-center">Taylor</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Risque relatif</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.rr')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rr}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.byar.lower}, {results.byar.upper}</td>
                               <td className="px-6 py-3 text-center">Byar</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Difference des taux</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.rateDiff')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.rateDiff}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.diffLower}, {results.diffUpper}</td>
                               <td className="px-6 py-3 text-center">Byar</td>
@@ -1097,7 +1100,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Fractions attribuables : Étiologique ou Préventive
+                          {t('twoRates.attributableTitle')}
                         </h3>
                       </div>
                       <div className="overflow-x-auto">
@@ -1112,13 +1115,13 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             <tr>
-                              <td className="px-6 py-3 font-medium">Etiologic fraction in pop.(EFp)</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.efp')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.efp}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.efpLower}, {results.efpUpper}</td>
                               <td className="px-6 py-3 text-center">PEPI</td>
                             </tr>
                             <tr>
-                              <td className="px-6 py-3 font-medium">Etiologic fraction in exposed(EFe)</td>
+                              <td className="px-6 py-3 font-medium">{t('twoRates.efe')}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.efe}</td>
                               <td className="px-6 py-3 text-center font-mono">{results.efeLower}, {results.efeUpper}</td>
                               <td className="px-6 py-3 text-center">PEPI</td>
@@ -1134,18 +1137,22 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                         <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                         <div>
                           <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
-                            Interprétation
+                            {t('twoRates.interpretation')}
                           </h4>
                           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                             {results.rr > 1 ? (
-                              <>Le taux dans le groupe 1 est <strong>{((results.rr - 1) * 100).toFixed(0)}% plus élevé</strong> que dans le groupe 2.</>
+                              t('twoRates.interpretationHigher', { percent: ((results.rr - 1) * 100).toFixed(0) })
                             ) : (
-                              <>Le taux dans le groupe 1 est <strong>{((1 - results.rr) * 100).toFixed(0)}% plus faible</strong> que dans le groupe 2.</>
+                              t('twoRates.interpretationLower', { percent: ((1 - results.rr) * 100).toFixed(0) })
                             )}
-                            {' '}L'intervalle de confiance à {results.confidenceLevel}% (Mid‑P)
-                            {parseFloat(results.midp.lower) > 1 ? ' ne contient pas 1 → différence significative.' :
-                             parseFloat(results.midp.upper) < 1 ? ' ne contient pas 1 → différence significative.' :
-                             ' contient 1 → non significatif.'}
+                            {' '}{t('twoRates.interpretationCi', {
+                              level: results.confidenceLevel,
+                              lower: results.midp.lower,
+                              upper: results.midp.upper,
+                              significance: parseFloat(results.midp.lower) > 1 || parseFloat(results.midp.upper) < 1
+                                ? t('twoRates.significant')
+                                : t('twoRates.nonSignificant')
+                            })}
                           </p>
                         </div>
                       </div>
@@ -1167,7 +1174,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide : TwoRates (PersonTime2)
+                  {t('twoRates.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -1183,12 +1190,10 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       1
                     </div>
-                    Le principe
+                    {t('twoRates.helpPrinciple')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce module reproduit l'outil <strong>PersonTime2</strong> d'OpenEpi. Il compare deux taux d'incidence
-                    (cas / personne‑temps) en calculant le ratio de taux (RR), la différence de taux et leurs intervalles
-                    de confiance par plusieurs méthodes (exactes et approchées).
+                    {t('twoRates.helpPrincipleText')}
                   </p>
                 </section>
 
@@ -1197,13 +1202,13 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
                       RR &gt; 1
                     </div>
-                    <div className="text-xs text-slate-500">Excès de risque dans le groupe 1</div>
+                    <div className="text-xs text-slate-500">{t('twoRates.helpRrHigh')}</div>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                     RR &lt; 1
+                      RR &lt; 1
                     </div>
-                    <div className="text-xs text-slate-500">Effet protecteur dans le groupe 1</div>
+                    <div className="text-xs text-slate-500">{t('twoRates.helpRrLow')}</div>
                   </div>
                 </div>
 
@@ -1212,14 +1217,14 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       2
                     </div>
-                    Méthodes de calcul
+                    {t('twoRates.helpMethods')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p><strong className="text-slate-900 dark:text-white">Mid‑P exact</strong> – Miettinen (1974d) : correction de continuité du test exact, recommandé.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Fisher exact</strong> – Armitage (1971) : basé sur la distribution hypergéométrique conditionnelle.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Approximation normale</strong> – Woolf (log RR ± z·SE).</p>
-                    <p><strong className="text-slate-900 dark:text-white">Byar</strong> – Rothman & Boice (1979) : approximation de Poisson.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Rothman/Greenland</strong> – Méthode du score (Modern Epidemiology).</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoRates.midp')}</strong> – {t('twoRates.helpMidp')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoRates.fisher')}</strong> – {t('twoRates.helpFisher')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoRates.normal')}</strong> – {t('twoRates.helpNormal')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoRates.byar')}</strong> – {t('twoRates.helpByar')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoRates.rothman')}</strong> – {t('twoRates.helpRothman')}</p>
                   </div>
                   <a
                     href="https://www.openepi.com/RateRatio/RateRatio.htm"
@@ -1227,7 +1232,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Source : OpenEpi – RateRatio / PersonTime2 <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('twoRates.sourceLink')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
 
@@ -1236,12 +1241,12 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       3
                     </div>
-                    Ressources
+                    {t('twoRates.helpResources')}
                   </h4>
                   <div className="space-y-2 text-sm">
                     <p>
                       <a href="https://www.openepi.com/PDFDocs/RateRatioDoc.pdf" target="_blank" className="text-blue-600 hover:underline">
-                        Documentation officielle OpenEpi (PDF)
+                        {t('twoRates.openEpiPdf')}
                       </a>
                     </p>
                     <p>
