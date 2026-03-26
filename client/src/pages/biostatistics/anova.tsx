@@ -134,12 +134,11 @@ export default function OneWayANOVA() {
 
     // F statistic and p‑value
     let fStat = 0, pValue = 0;
-    if (isJStatReady && (window as any).jStat?.fft?.cdf) {
-      fStat = msb / msw;
-      pValue = 1 - (window as any).jStat.fft.cdf(fStat, dfBetween, dfWithin);
+    fStat = msb / msw;
+    if (isJStatReady && (window as any).jStat?.centralF?.cdf) {
+      pValue = 1 - (window as any).jStat.centralF.cdf(fStat, dfBetween, dfWithin);
     } else {
-      fStat = msb / msw;
-      pValue = 0.05; // fallback
+      pValue = 0.05;
     }
 
     // --- Bartlett's test for homogeneity of variances ---
@@ -311,7 +310,7 @@ export default function OneWayANOVA() {
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">OneWayANOVA</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">ANOVA</span></li>
           </ol>
         </nav>
 
