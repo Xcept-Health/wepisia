@@ -92,7 +92,8 @@ export default function MedianPercentileCI() {
       : conf === 90 ? 1.645 : conf === 95 ? 1.96 : 2.576;
 
     // Expected rank and its standard error (normal approximation)
-    const expectedRank = n * p;
+    const expectedRank = (n+1) * p;
+    const displayedExpectedRank = Math.round(n * p);
     const se = Math.sqrt(n * p * (1 - p));
 
     // Confidence limits for the rank, rounded to integer positions in the sample
@@ -109,7 +110,8 @@ export default function MedianPercentileCI() {
       percentile: perc,
       conf,
       p,
-      expectedRank,
+      expectedRank: displayedExpectedRank,    
+      expectedRankPrecise: expectedRank,
       se,
       z,
       lowerRank,
@@ -312,7 +314,7 @@ Interprétation : À ${results.conf}% de confiance, le ${results.percentile}ème
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">MedianCI</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">Intervalle de confiance pour la médiane / percentile</span></li>
           </ol>
         </nav>
 
