@@ -126,45 +126,63 @@ export default function TwoSampleTTest() {
     const ciEqualUpper = meanDiff + meEqual;
 
     // ----- Welch's t-test (unequal variances) -----
-    const seWelch = Math.sqrt(se1 * se1 + se2 * se2);
-    const tUnequal = meanDiff / seWelch;
-    // Satterthwaite degrees of freedom
-    const numerator = Math.pow(se1 * se1 + se2 * se2, 2);
-    const denominator = Math.pow(se1 * se1, 2) / (a_n - 1) + Math.pow(se2 * se2, 2) / (b_n - 1);
-    const dfUnequal = numerator / denominator;
+// ----- Welch's t-test (unequal variances) -----
+const seWelch = Math.sqrt(se1 * se1 + se2 * se2);
+const tUnequal = meanDiff / seWelch;
 
-    let pUnequal = 0;
-    let tCritUnequal = 0;
-    if (isJStatReady && (window as any).jStat?.studentt?.cdf) {
-      pUnequal = 2 * (1 - (window as any).jStat.studentt.cdf(Math.abs(tUnequal), dfUnequal));
-      tCritUnequal = (window as any).jStat.studentt.inv(1 - alpha / 2, dfUnequal);
-    } else {
-      pUnequal = 0.05;
-      tCritUnequal = tCritEqual;
-    }
+// Satterthwaite degrees of freedom
+const v1 = se1 * se1;
+const v2 = se2 * se2;
+const dfUnequal = Math.pow(v1 + v2, 2) /
+  (Math.pow(v1, 2) / (a_n - 1) + Math.pow(v2, 2) / (b_n - 1));
 
-    const meUnequal = tCritUnequal * seWelch;
-    const ciUnequalLower = meanDiff - meUnequal;
-    const ciUnequalUpper = meanDiff + meUnequal;
 
-    // ----- F-test for equality of variances (Hartley's F-max) -----
-    let fValue = 0, dfNum = 0, dfDen = 0, pF = 0;
-    if (a_sd > b_sd) {
-      fValue = (a_sd * a_sd) / (b_sd * b_sd);
-      dfNum = a_n - 1;
-      dfDen = b_n - 1;
-    } else {
-      fValue = (b_sd * b_sd) / (a_sd * a_sd);
-      dfNum = b_n - 1;
-      dfDen = a_n - 1;
-    }
+const dfUnequalInt = Math.round(dfUnequal);
 
-    if (isJStatReady && (window as any).jStat?.fft?.cdf) {
-      const pF_one = (window as any).jStat.fft.cdf(fValue, dfNum, dfDen);
-      pF = 2 * Math.min(pF_one, 1 - pF_one);
-    } else {
-      pF = 0.05;
-    }
+let pUnequal = 0;
+let tCritUnequal = 0;
+if (isJStatReady && (window as any).jStat?.studentt?.cdf) {
+  pUnequal    = 2 * (1 - (window as any).jStat.studentt.cdf(Math.abs(tUnequal), dfUnequalInt));
+  tCritUnequal = (window as any).jStat.studentt.inv(1 - alpha / 2, dfUnequalInt);
+} else {
+  pUnequal     = 0.05;
+  tCritUnequal = tCritEqual;
+}
+
+const meUnequal      = tCritUnequal * seWelch;
+const ciUnequalLower = meanDiff - meUnequal;
+const ciUnequalUpper = meanDiff + meUnequal;
+
+
+        // ----- F-test for equality of variances (Hartley's F-max / standard F-test) -----
+        let fValue = 0, dfNum = 0, dfDen = 0, pF = 0;
+
+        const var1 = a_sd * a_sd;
+        const var2 = b_sd * b_sd;
+    
+        if (var1 > var2) {
+          fValue = var1 / var2;
+          dfNum = a_n - 1;
+          dfDen = b_n - 1;
+        } else {
+          fValue = var2 / var1;
+          dfNum = b_n - 1;
+          dfDen = a_n - 1;
+        }
+    
+        if (isJStatReady && (window as any).jStat?.beta?.cdf) {
+          // Formule EXACTE correspondant à OpenEpi (distribution F via Beta)
+          const z = (dfNum * fValue) / (dfNum * fValue + dfDen);
+          const cdfF = (window as any).jStat.beta.cdf(
+            z,
+            dfNum / 2,
+            dfDen / 2
+          );
+          const upperTail = 1 - cdfF;
+          pF = 2 * upperTail;   // p-valeur bilatérale
+        } else {
+          pF = 0.05; // fallback
+        }
 
     // ----- Assemble results object -----
     setResults({
@@ -176,7 +194,7 @@ export default function TwoSampleTTest() {
       // Equal variance results
       tEqual, dfEqual, pEqual, ciEqualLower, ciEqualUpper,
       // Unequal variance results
-      tUnequal, dfUnequal, pUnequal, ciUnequalLower, ciUnequalUpper,
+      tUnequal, dfUnequal: dfUnequalInt, pUnequal, ciUnequalLower, ciUnequalUpper,
       // F-test results
       fValue, dfNum, dfDen, pF,
       isJStatReady
@@ -227,7 +245,7 @@ Variance égale :
   IC ${results.conf}% : [${formatNumber(results.ciEqualLower)} – ${formatNumber(results.ciEqualUpper)}]
 
 Variance inégale (Welch) :
-  t = ${formatNumber(results.tUnequal)}, ddl = ${formatNumber(results.dfUnequal, 2)}, p = ${formatNumber(results.pUnequal)}
+  t = ${formatNumber(results.tUnequal)}, ddl = ${results.dfUnequal}, p = ${formatNumber(results.pUnequal)}
   IC ${results.conf}% : [${formatNumber(results.ciUnequalLower)} – ${formatNumber(results.ciUnequalUpper)}]
 
 Test d’égalité des variances (F de Hartley) :
@@ -311,7 +329,7 @@ Test d’égalité des variances (F de Hartley) :
 
       const tTestBody = [
         ['Variance égale', formatNumber(results.tEqual), results.dfEqual.toString(), formatNumber(results.pEqual), formatNumber(results.meanDiff), formatNumber(results.ciEqualLower), formatNumber(results.ciEqualUpper)],
-        ['Variance inégale', formatNumber(results.tUnequal), formatNumber(results.dfUnequal, 2), formatNumber(results.pUnequal), formatNumber(results.meanDiff), formatNumber(results.ciUnequalLower), formatNumber(results.ciUnequalUpper)],
+        ['Variance inégale', formatNumber(results.tUnequal), results.dfUnequal.toString(), formatNumber(results.pUnequal), formatNumber(results.meanDiff), formatNumber(results.ciUnequalLower), formatNumber(results.ciUnequalUpper)],
       ];
 
       autoTable(doc, {
@@ -379,7 +397,7 @@ Test d’égalité des variances (F de Hartley) :
 
       let interpretation = `À ${results.conf}% de confiance, la différence des moyennes est de ${formatNumber(results.meanDiff)}.\n`;
       interpretation += `• Test de Student (variances égales) : t = ${formatNumber(results.tEqual)}, ddl = ${results.dfEqual}, p = ${formatNumber(results.pEqual)}. ${results.pEqual < 0.05 ? 'Différence significative.' : 'Non significatif.'}\n`;
-      interpretation += `• Test de Welch (variances inégales) : t = ${formatNumber(results.tUnequal)}, ddl = ${formatNumber(results.dfUnequal, 2)}, p = ${formatNumber(results.pUnequal)}. ${results.pUnequal < 0.05 ? 'Différence significative.' : 'Non significatif.'}\n`;
+      interpretation += `• Test de Welch (variances inégales) : t = ${formatNumber(results.tUnequal)}, ddl = ${results.dfUnequal}, p = ${formatNumber(results.pUnequal)}. ${results.pUnequal < 0.05 ? 'Différence significative.' : 'Non significatif.'}\n`;
       interpretation += `• Test d’égalité des variances : F = ${formatNumber(results.fValue)}, ddl = ${results.dfNum}, ${results.dfDen}, p = ${formatNumber(results.pF)}. ${results.pF < 0.05 ? 'Les variances sont significativement différentes.' : 'Les variances sont homogènes.'}`;
 
       const splitText = doc.splitTextToSize(interpretation, 170);
@@ -419,7 +437,7 @@ Test d’égalité des variances (F de Hartley) :
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">TwoSampleTTest</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">Test t de deux échantillons indépendants</span></li>
           </ol>
         </nav>
 
@@ -711,7 +729,7 @@ Test d’égalité des variances (F de Hartley) :
                             </tr>
                             <tr className="bg-slate-50/50 dark:bg-slate-700/20">
                               <td className="px-4 py-3 font-medium">Variance inégale</td>
-                              <td className="px-4 py-3 text-center font-mono">{formatNumber(results.tUnequal)}</td>
+                              <td className="px-4 py-3 text-center font-mono">{Number(formatNumber(results.tUnequal)).toFixed(4)}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.dfUnequal, 2)}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.pUnequal)}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.meanDiff)}</td>
