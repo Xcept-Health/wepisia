@@ -156,14 +156,17 @@ export default function ScreeningTest() {
       return;
     }
 
-    // --- Level‑specific likelihood ratios (method of Katz) ---
+    //  Level‑specific likelihood ratios (method of Katz) 
     const levelLRs: LevelLR[] = levels.map((l) => {
       const cases = l.cases;
       const nonCases = l.nonCases;
       let lr = 0, lrLower = 0, lrUpper = 0;
-      if (totalCases > 0 && totalNonCases > 0 && nonCases > 0) {
+      if (totalCases > 0 && totalNonCases > 0 && cases > 0 && nonCases > 0) {
         lr = (cases / nonCases) / (totalCases / totalNonCases);
-        const se = Math.sqrt(1 / cases + 1 / nonCases - 1 / totalCases - 1 / totalNonCases);
+        const se = Math.sqrt(
+          (1 - cases / totalCases) / cases +
+          (1 - nonCases / totalNonCases) / nonCases
+        );
         const lnLR = Math.log(lr);
         lrLower = Math.exp(lnLR - 1.96 * se);
         lrUpper = Math.exp(lnLR + 1.96 * se);
@@ -175,8 +178,7 @@ export default function ScreeningTest() {
         lrUpper: isFinite(lrUpper) ? lrUpper : 0,
       };
     });
-
-    // --- Prepare ROC points (from most pathological to least) ---
+    //  Prepare ROC points (from most pathological to least) 
     let rocPoints: { fpr: number; tpr: number }[] = [{ fpr: 0, tpr: 0 }];
     let cumCasesPositive = 0;
     let cumNonCasesPositive = 0;
@@ -193,7 +195,7 @@ export default function ScreeningTest() {
     // Sort by fpr ascending (just in case)
     rocPoints.sort((a, b) => a.fpr - b.fpr);
 
-    // --- AUC via trapezoidal rule ---
+    //  AUC via trapezoidal rule 
     let auc = 0;
     for (let i = 1; i < rocPoints.length; i++) {
       const prev = rocPoints[i - 1];
@@ -201,7 +203,7 @@ export default function ScreeningTest() {
       auc += (curr.fpr - prev.fpr) * (curr.tpr + prev.tpr) / 2;
     }
 
-    // --- AUC confidence interval (Hanley‑McNeil) ---
+    //  AUC confidence interval (Hanley‑McNeil) 
     const Q1 = auc / (2 - auc);
     const Q2 = 2 * auc * auc / (1 + auc);
     const seAuc = Math.sqrt(
@@ -213,7 +215,7 @@ export default function ScreeningTest() {
     const aucLower = Math.max(0, auc - 1.96 * seAuc);
     const aucUpper = Math.min(1, auc + 1.96 * seAuc);
 
-    // --- Cutoff‑specific calculations ---
+    //  Cutoff‑specific calculations 
     const cutoffs: CutoffResult[] = [];
     let cumCasesNegative = 0;
     let cumNonCasesNegative = 0;
@@ -244,7 +246,7 @@ export default function ScreeningTest() {
       let lrPos = 0, lrPosLower = 0, lrPosUpper = 0;
       if (tp > 0 && fp > 0) {
         lrPos = sens / (1 - spec); // equivalent to (tp/(tp+fn)) / (fp/(fp+tn))
-        const seLRPos = Math.sqrt(1 / tp - 1 / (tp + fn) + 1 / fp - 1 / (fp + tn));
+        const seLRPos = Math.sqrt((1-sens)/(sens*(tp+fn)) + spec/((1-spec)*(fp+tn)));
         const lnLRPos = Math.log(lrPos);
         lrPosLower = Math.exp(lnLRPos - 1.96 * seLRPos);
         lrPosUpper = Math.exp(lnLRPos + 1.96 * seLRPos);
@@ -282,19 +284,20 @@ export default function ScreeningTest() {
       // Entropy reduction (Shannon, natural log)
       const prev = totalCases / total;
       const hPre = prev > 0 && prev < 1
-        ? -prev * Math.log(prev) - (1 - prev) * Math.log(1 - prev)
+      ? -prev * Math.log2(prev) - (1 - prev) * Math.log2(1 - prev)
         : 0;
       const hPostPos = ppv > 0 && ppv < 1
-        ? -ppv * Math.log(ppv) - (1 - ppv) * Math.log(1 - ppv)
+        ? -ppv * Math.log2(ppv) - (1 - ppv) * Math.log2(1 - ppv)
         : 0;
-      const hPostNeg = npv > 0 && npv < 1
-        ? -npv * Math.log(npv) - (1 - npv) * Math.log(1 - npv)
+      const entropyPos = hPre > 0 ? 100 * (hPre - hPostPos) / hPre : 0; 
+      const pDiseaseGivenNeg = fn / (fn + tn);
+      const hPostNeg = pDiseaseGivenNeg > 0 && pDiseaseGivenNeg < 1
+        ? -pDiseaseGivenNeg * Math.log2(pDiseaseGivenNeg) - (1 - pDiseaseGivenNeg) * Math.log2(1 - pDiseaseGivenNeg)
         : 0;
-      const entropyPos = hPre > 0 ? 100 * (hPre - hPostPos) / hPre : 0;
       const entropyNeg = hPre > 0 ? 100 * (hPre - hPostNeg) / hPre : 0;
 
       // Bias index
-      const bias = (tp + fp - fn - tn) / total;
+      const bias = (tp + fp) / total - (tp + fn) / total;
 
       cutoffs.push({
         cutoff: `entre ${levels[cutoff].level} et ${levels[cutoff + 1].level}`,
@@ -368,8 +371,8 @@ export default function ScreeningTest() {
   const loadExample = () => {
     setRows([
       { id: '1', level: 'Niveau 1', cases: '1', nonCases: '2' },
-      { id: '2', level: 'Niveau 2', cases: '2', nonCases: '3' },
-      { id: '3', level: 'Niveau 3', cases: '4', nonCases: '5' },
+      { id: '2', level: 'Niveau 2', cases: '3', nonCases: '4' },
+      { id: '3', level: 'Niveau 3', cases: '5', nonCases: '6' },
       { id: '4', level: 'Niveau 4', cases: '7', nonCases: '8' },
       { id: '5', level: 'Niveau 5', cases: '9', nonCases: '10' },
     ]);
@@ -379,7 +382,7 @@ export default function ScreeningTest() {
   const copyResults = async () => {
     if (!results) return;
 
-    let text = `Résultats Screening Test\n\n`;
+    let text = `Résultats Dépistage\n\n`;
     results.cutoffs.forEach((c) => {
       text += `Point de coupure ${c.cutoff}\n`;
       text += `Sensibilité: ${c.sensitivity.toFixed(2)}% (${c.sensitivityLower.toFixed(2)} - ${c.sensitivityUpper.toFixed(2)})\n`;
@@ -436,12 +439,12 @@ export default function ScreeningTest() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'Analyse Screening Test", 20, 25);
+      doc.text("Rapport d'Analyse Dépistage", 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
       doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
-      doc.text('Screening Test – OpenEpi', 190, 32, { align: 'right' });
+      doc.text('Dépistage – OpenEpi', 190, 32, { align: 'right' });
 
       // Input data
       let y = 55;
@@ -598,7 +601,7 @@ export default function ScreeningTest() {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Screening Test – conforme OpenEpi', 20, footerY + 5);
+      doc.text('Dépistage – conforme OpenEpi', 20, footerY + 5);
       doc.text(`Page ${doc.getNumberOfPages()} / ${doc.getNumberOfPages()}`, 190, footerY + 5, { align: 'right' });
 
       doc.save('Rapport_Screening_Test.pdf');
@@ -629,7 +632,7 @@ export default function ScreeningTest() {
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Screening Test</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Dépistage</span></li>
           </ol>
         </nav>
 
@@ -640,7 +643,7 @@ export default function ScreeningTest() {
               <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Screening Test</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Dépistage</h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
                 Analyse des performances d'un test de dépistage à plusieurs niveaux.
               </p>
@@ -1047,15 +1050,23 @@ export default function ScreeningTest() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {results.levelLRs.map((l, idx) => (
-                              <tr key={idx}>
-                                <td className="px-4 py-2 font-medium">{l.level}</td>
-                                <td className="px-4 py-2 text-center font-mono">{l.lr.toFixed(4)}</td>
-                                <td className="px-4 py-2 text-center font-mono">
-                                  [{l.lrLower.toFixed(4)} – {l.lrUpper.toFixed(4)}]
-                                </td>
-                              </tr>
-                            ))}
+                          {results.levelLRs.map((l, idx) => (
+                                <tr key={idx}>
+                                  <td className="px-4 py-2 font-medium">{l.level}</td>
+                                  <td className="px-4 py-2 text-center font-mono">
+                                    {l.lr.toFixed(4)}
+                                    {l.lr > 0 && rows[idx] && parseInt(rows[idx].cases) < 5 && (
+                                      <span className="text-[10px] text-amber-500 ml-1">*</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2 text-center font-mono">
+                                    [{l.lrLower.toFixed(4)} – {l.lrUpper.toFixed(4)}]
+                                    {rows[idx] && parseInt(rows[idx].cases) < 5 && (
+                                      <span className="text-[10px] text-amber-500 ml-1">IC approx.</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
                           </tbody>
                         </table>
                       </div>
@@ -1231,7 +1242,7 @@ export default function ScreeningTest() {
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide : Screening Test
+                  Guide : Dépistage
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -1386,7 +1397,7 @@ export default function ScreeningTest() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                 >
-                  Source officielle : OpenEpi – Screening Test
+                  Source officielle : OpenEpi – Dépistage
                   <ArrowRight className="w-3 h-3 ml-1" />
                 </a>
               </div>
