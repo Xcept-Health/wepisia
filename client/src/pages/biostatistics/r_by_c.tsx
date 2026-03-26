@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -28,6 +29,8 @@ import autoTable from 'jspdf-autotable';
  */
 
 export default function RxcTable() {
+  const { t } = useTranslation();
+
   const [numRows, setNumRows] = useState<string>('2');
   const [numCols, setNumCols] = useState<string>('2');
   const [tableData, setTableData] = useState<TableData>({
@@ -153,11 +156,18 @@ export default function RxcTable() {
     const k = Math.min(rows, cols) - 1;
     const cramersV = Math.sqrt(chiSquare / (n * k));
 
+    // Build interpretation using translation
     let interpretation = '';
     if (pValue < 0.05) {
-      interpretation = `La valeur p de ${pValue.toFixed(6)} indique une association significative entre les variables (p < 0.05). Le V de Cramér de ${cramersV.toFixed(4)} mesure l'intensité de cette association.`;
+      interpretation = t('rByC.significantInterpretation', {
+        p: pValue.toFixed(6),
+        v: cramersV.toFixed(4)
+      });
     } else {
-      interpretation = `La valeur p de ${pValue.toFixed(6)} n'indique pas d'association significative entre les variables (p ≥ 0.05). Le V de Cramér de ${cramersV.toFixed(4)} suggère une association faible ou inexistante.`;
+      interpretation = t('rByC.nonSignificantInterpretation', {
+        p: pValue.toFixed(6),
+        v: cramersV.toFixed(4)
+      });
     }
 
     setResults({
@@ -175,7 +185,7 @@ export default function RxcTable() {
     if (hasData && hasJStat) {
       calculateChiSquare();
     } else if (!hasJStat) {
-      toast.error('jStat non disponible - les calculs sont désactivés');
+      toast.error(t('rByC.jStatError'));
     }
   }, [tableData.data, hasData, hasJStat]);
 
@@ -203,7 +213,10 @@ export default function RxcTable() {
   };
 
   const removeRow = () => {
-    if (tableData.rows <= 2) return;
+    if (tableData.rows <= 2) {
+      toast.warning(t('rByC.minRows'));
+      return;
+    }
     const newRows = tableData.rows - 1;
     setNumRows(newRows.toString());
     
@@ -232,7 +245,10 @@ export default function RxcTable() {
   };
 
   const removeColumn = () => {
-    if (tableData.cols <= 2) return;
+    if (tableData.cols <= 2) {
+      toast.warning(t('rByC.minCols'));
+      return;
+    }
     const newCols = tableData.cols - 1;
     setNumCols(newCols.toString());
     
@@ -251,7 +267,7 @@ export default function RxcTable() {
     setNumRows('2');
     setNumCols('2');
     generateTable();
-    toast.info('Champs réinitialisés');
+    toast.info(t('rByC.clearMessage'));
   };
 
   const loadExample = () => {
@@ -278,31 +294,31 @@ export default function RxcTable() {
       });
       
       setHasData(true);
-      toast.success('Exemple chargé');
+      toast.success(t('rByC.exampleLoaded'));
     }, 100);
   };
 
   const copyResults = async () => {
     if (!results) return;
     
-    const text = `Résultats de l'analyse R×C\n` +
-                 `Chi-carré de Pearson: ${results.chiSquare.toFixed(4)}\n` +
-                 `Degrés de liberté: ${results.degreesOfFreedom}\n` +
-                 `Valeur p: ${results.pValue.toFixed(6)}\n` +
-                 `V de Cramér: ${results.cramersV.toFixed(4)}\n\n` +
-                 `Interprétation:\n${results.interpretation}`;
+    const text = `${t('rByC.copyPrefix')}\n` +
+                 `${t('rByC.chiSquare')}: ${results.chiSquare.toFixed(4)}\n` +
+                 `${t('rByC.df')}: ${results.degreesOfFreedom}\n` +
+                 `${t('rByC.pValue')}: ${results.pValue.toExponential(6)}\n` +
+                 `${t('rByC.cramersV')}: ${results.cramersV.toFixed(4)}\n\n` +
+                 `${t('rByC.interpretation')}:\n${results.interpretation}`;
     
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('rByC.copySuccess'));
     } catch (err) {
-      toast.error('Échec de la copie');
+      toast.error(t('rByC.copyError'));
     }
   };
 
   const exportPDF = () => {
     if (!results) {
-      toast.error('Veuillez d\'abord effectuer un calcul');
+      toast.error(t('rByC.exportNoData'));
       return;
     }
 
@@ -328,25 +344,25 @@ export default function RxcTable() {
         doc.roundedRect(x, y, w, h, r, r, style);
       };
 
-      // ---------- Header ----------
+      // Header
       doc.setFillColor(...colorSlate[50]);
       roundedRect(0, 0, 210, 40, 0, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'Analyse Tableau R×C", 20, 25);
+      doc.text(t('rByC.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
-      doc.text('Calculateur R×C – OpenEpi', 190, 32, { align: 'right' });
+      doc.text(`${t('rByC.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')} ${t('rByC.at')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text(t('rByC.reportSubtitle'), 190, 32, { align: 'right' });
 
-      // ---------- Input summary ----------
+      // Input summary
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Configuration', 20, y);
+      doc.text(t('rByC.configuration'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
@@ -354,22 +370,22 @@ export default function RxcTable() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
-      doc.text(`Lignes: ${tableData.rows}`, 25, y); y += 6;
-      doc.text(`Colonnes: ${tableData.cols}`, 25, y); y += 6;
-      doc.text(`Effectif total: ${tableData.grandTotal}`, 25, y); y += 6;
-      doc.text(`Degrés de liberté: ${results.degreesOfFreedom}`, 25, y); y += 12;
+      doc.text(`${t('rByC.rows')}: ${tableData.rows}`, 25, y); y += 6;
+      doc.text(`${t('rByC.columns')}: ${tableData.cols}`, 25, y); y += 6;
+      doc.text(`${t('rByC.grandTotal')}: ${tableData.grandTotal}`, 25, y); y += 6;
+      doc.text(`${t('rByC.df')}: ${results.degreesOfFreedom}`, 25, y); y += 12;
 
-      // ---------- Observed frequencies ----------
+      // Observed frequencies
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Données observées', 20, y);
+      doc.text(t('rByC.observedData'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
 
       const observedData = [];
       for (let i = 0; i < tableData.rows; i++) {
-        const row = [`Ligne ${i + 1}`];
+        const row = [`${t('rByC.row')} ${i + 1}`];
         for (let j = 0; j < tableData.cols; j++) {
           row.push(tableData.data[i][j].toString());
         }
@@ -377,16 +393,16 @@ export default function RxcTable() {
         observedData.push(row);
       }
       
-      const colTotalRow = ['Total'];
+      const colTotalRow = [t('rByC.total')];
       for (let j = 0; j < tableData.cols; j++) {
         colTotalRow.push(tableData.colTotals[j].toString());
       }
       colTotalRow.push(tableData.grandTotal.toString());
       observedData.push(colTotalRow);
       
-      const head = ['Ligne/Col'];
-      for (let j = 1; j <= tableData.cols; j++) head.push(`Col ${j}`);
-      head.push('Total');
+      const head = [t('rByC.rowCol')];
+      for (let j = 1; j <= tableData.cols; j++) head.push(`${t('rByC.column')} ${j}`);
+      head.push(t('rByC.total'));
       
       autoTable(doc, {
         startY: y,
@@ -406,25 +422,25 @@ export default function RxcTable() {
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      // ---------- Expected frequencies ----------
+      // Expected frequencies
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Effectifs théoriques', 20, y);
+      doc.text(t('rByC.expectedFrequencies'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
 
       const expectedData = [];
       for (let i = 0; i < tableData.rows; i++) {
-        const row = [`Ligne ${i + 1}`];
+        const row = [`${t('rByC.row')} ${i + 1}`];
         for (let j = 0; j < tableData.cols; j++) {
           row.push(results.expected[i][j].toFixed(2));
         }
         expectedData.push(row);
       }
 
-      const expectedHead = ['Ligne/Col'];
-      for (let j = 1; j <= tableData.cols; j++) expectedHead.push(`Col ${j}`);
+      const expectedHead = [t('rByC.rowCol')];
+      for (let j = 1; j <= tableData.cols; j++) expectedHead.push(`${t('rByC.column')} ${j}`);
 
       autoTable(doc, {
         startY: y,
@@ -444,24 +460,24 @@ export default function RxcTable() {
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      // ---------- Statistical results ----------
+      // Statistical results
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Résultats', 20, y);
+      doc.text(t('rByC.statisticalResults'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
 
       const resultsTable = [
-        ['Chi-carré de Pearson', results.chiSquare.toFixed(4)],
-        ['Degrés de liberté', results.degreesOfFreedom.toString()],
-        ['Valeur p', results.pValue.toFixed(6)],
-        ['V de Cramér', results.cramersV.toFixed(4)]
+        [t('rByC.chiSquare'), results.chiSquare.toFixed(4)],
+        [t('rByC.df'), results.degreesOfFreedom.toString()],
+        [t('rByC.pValue'), results.pValue.toExponential(6)],
+        [t('rByC.cramersV'), results.cramersV.toFixed(4)]
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Statistique', 'Valeur']],
+        head: [[t('rByC.statistic'), t('rByC.value')]],
         body: resultsTable,
         theme: 'striped',
         headStyles: {
@@ -481,10 +497,10 @@ export default function RxcTable() {
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      // ---------- Interpretation ----------
+      // Interpretation
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Interprétation', 20, y);
+      doc.text(t('rByC.interpretation'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
@@ -495,34 +511,34 @@ export default function RxcTable() {
       const splitText = doc.splitTextToSize(results.interpretation, 170);
       doc.text(splitText, 20, y);
 
-      // ---------- Footer ----------
+      // Footer
       const footerY = 280;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, footerY, 190, footerY);
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Calculateur R×C – Fidèle à OpenEpi', 20, footerY + 5);
+      doc.text(t('rByC.reportFooter'), 20, footerY + 5);
       doc.text(`Page 1 / 1`, 190, footerY + 5, { align: 'right' });
 
       doc.save('Rapport_RxC.pdf');
-      toast.success('Rapport PDF exporté avec succès');
+      toast.success(t('rByC.exportSuccess'));
     } catch (error) {
-      console.error('Erreur PDF :', error);
-      toast.error('Erreur lors de la génération du PDF');
+      console.error('PDF error:', error);
+      toast.error(t('rByC.exportError'));
     }
   };
 
-  // render
+  // Render
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">Tableaux R×C</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('rByC.title')}</span></li>
           </ol>
         </nav>
 
@@ -533,8 +549,8 @@ export default function RxcTable() {
               <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Analyse de Tableaux R×C</h1>
-              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Test du chi-carré pour tableaux de contingence.</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{t('rByC.title')}</h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">{t('rByC.description')}</p>
             </div>
           </div>
           <button
@@ -548,44 +564,40 @@ export default function RxcTable() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Left column – input controls */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
-            <div className="bg-white dark:bg-slate-800 rounded-[32px] shadow-xl shadow-slate-200/60 dark:shadow-none border border-slate-100 dark:border-slate-700 overflow-hidden">
-              <div className="p-6 lg:p-8 pb-4">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center tracking-tight">
-                    <div className="p-2.5 bg-blue-500/10 dark:bg-blue-400/10 rounded-2xl mr-3">
-                      <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    Paramètres
-                  </h2>
-                  <div className="flex gap-2">
-                    <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-md text-slate-500 uppercase tracking-widest">
-                      {tableData.rows} Lignes
-                    </span>
-                    <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-md text-slate-500 uppercase tracking-widest">
-                      {tableData.cols} Cols
-                    </span>
-                  </div>
-                </div>
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('rByC.parameters')}
+              </h2>
 
-                {/* Row/Column steppers */}
-                <div className="grid grid-cols-2 gap-4 mb-6">
+              {/* Row/Column steppers */}
+              <div className="space-y-5 mb-6">
+                <div className="grid grid-cols-2 gap-4">
                   {[
-                    { label: 'Lignes', val: numRows, set: setNumRows, add: addRow, rem: removeRow, min: 2 },
-                    { label: 'Colonnes', val: numCols, set: setNumCols, add: addColumn, rem: removeColumn, min: 2 }
+                    { label: t('rByC.rows'), val: numRows, set: setNumRows, add: addRow, rem: removeRow, min: 2 },
+                    { label: t('rByC.columns'), val: numCols, set: setNumCols, add: addColumn, rem: removeColumn, min: 2 }
                   ].map((ctrl, i) => (
                     <div key={i} className="space-y-2">
-                      <label className="text-[11px] font-bold text-slate-400 uppercase ml-1 tracking-wide">{ctrl.label}</label>
-                      <div className="flex items-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-700 p-1 group focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
-                        <button onClick={ctrl.rem} disabled={ctrl.val <= ctrl.min} className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl disabled:opacity-20 transition-all">
+                      <label className="text-[11px] font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wide ml-1">
+                        {ctrl.label}
+                      </label>
+                      <div className="flex items-center border-b border-transparent hover:border-gray-200 dark:hover:border-slate-700 focus-within:border-blue-500 transition-all">
+                        <button
+                          onClick={ctrl.rem}
+                          disabled={ctrl.val <= ctrl.min}
+                          className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-20 transition-colors"
+                        >
                           <Minus className="w-4 h-4" />
                         </button>
-                        <input 
-                          type="number" 
-                          value={ctrl.val} 
+                        <input
+                          type="number"
+                          value={ctrl.val}
                           onChange={(e) => ctrl.set(e.target.value)}
-                          className="w-full bg-transparent text-center font-bold text-slate-700 dark:text-slate-200 border-none focus:ring-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full bg-transparent text-center font-semibold text-slate-700 dark:text-slate-200 border-none focus:ring-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none outline-none"
                         />
-                        <button onClick={ctrl.add} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all">
+                        <button
+                          onClick={ctrl.add}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                        >
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
@@ -593,51 +605,42 @@ export default function RxcTable() {
                   ))}
                 </div>
 
-                <button
-                  onClick={generateTable}
-                  className="w-full py-3.5 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-slate-200 dark:shadow-blue-900/20 active:scale-[0.98]"
-                >
-                  Mettre à jour la structure
-                </button>
-              </div>
-
-              {/* Contingency table input */}
-              <div className="relative group/table">
-                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white dark:from-slate-800 to-transparent z-10 pointer-events-none opacity-0 group-hover/table:opacity-100 transition-opacity" />
-                <div className="overflow-x-auto scrollbar-hide select-none">
-                  <table className="w-full border-separate border-spacing-0">
+                {/* Contingency table input */}
+                <div className="w-full overflow-x-auto">
+                  <table className="w-full border-collapse text-sm text-left">
                     <thead>
-                      <tr className="bg-slate-50/50 dark:bg-slate-900/20">
-                        <th className="sticky left-0 z-30 px-6 py-4 text-[11px] font-black text-slate-400 uppercase bg-white dark:bg-slate-800 border-b border-r border-slate-100 dark:border-slate-700">
-                          Ref.
-                        </th>
+                      <tr className="border-b border-gray-100 dark:border-slate-800">
+                        <th className="py-4 px-4 font-medium text-gray-400 dark:text-slate-500">{t('rByC.ref')}</th>
                         {Array.from({ length: tableData.cols }, (_, i) => (
-                          <th key={i} className="px-6 py-4 text-center text-[11px] font-black text-slate-400 uppercase border-b border-slate-100 dark:border-slate-700 min-w-[100px]">
-                            C{i + 1}
+                          <th key={i} className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">
+                            {t('rByC.column')} {i + 1}
                           </th>
                         ))}
-                        <th className="px-6 py-4 text-center text-[11px] font-black text-blue-600 dark:text-blue-400 uppercase border-b border-slate-100 dark:border-slate-700 bg-blue-50/30 dark:bg-blue-900/10">
-                          Total
+                        <th className="py-4 px-4 font-medium text-center text-blue-500 dark:text-blue-400">
+                          {t('rByC.total')}
                         </th>
-                      </tr>
+                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50 dark:divide-slate-700/50">
+                    <tbody className="divide-y divide-gray-50 dark:divide-slate-800/50">
                       {tableData.data.map((row, rowIndex) => (
-                        <tr key={rowIndex} className="group/row hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                          <td className="sticky left-0 z-20 px-6 py-4 text-[11px] font-bold text-slate-400 bg-white dark:bg-slate-800 border-r border-slate-100 dark:border-slate-700 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-700 transition-colors">
-                            L{rowIndex + 1}
+                        <tr
+                          key={rowIndex}
+                          className="group transition-colors hover:bg-gray-50/50 dark:hover:bg-slate-800/30"
+                        >
+                          <td className="py-5 px-4 text-[11px] font-medium text-gray-400 dark:text-slate-500">
+                            {t('rByC.row')} {rowIndex + 1}
                           </td>
                           {row.map((cell, colIndex) => (
-                            <td key={colIndex} className="p-1">
+                            <td key={colIndex} className="py-5 px-4 text-center">
                               <input
                                 type="number"
                                 value={cell}
                                 onChange={(e) => updateCellValue(rowIndex, colIndex, e.target.value)}
-                                className="w-full text-center py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-transparent rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+                                className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums font-semibold text-slate-600 dark:text-slate-300"
                               />
                             </td>
                           ))}
-                          <td className="px-6 py-4 text-center text-sm font-bold text-slate-900 dark:text-white bg-slate-50/30 dark:bg-slate-900/10">
+                          <td className="py-5 px-4 text-center text-sm font-semibold text-blue-600 dark:text-blue-400">
                             {tableData.rowTotals[rowIndex]}
                           </td>
                         </tr>
@@ -645,19 +648,26 @@ export default function RxcTable() {
                     </tbody>
                   </table>
                 </div>
+
+                <button
+                  onClick={generateTable}
+                  className="w-full inline-flex items-center justify-center px-4 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl shadow hover:shadow-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all gap-2"
+                >
+                  <Plus className="w-4 h-4" /> {t('rByC.updateStructure')}
+                </button>
               </div>
 
               {/* Footer actions */}
-              <div className="p-6 bg-slate-50/50 dark:bg-slate-900/20 border-t border-slate-100 dark:border-slate-700 flex gap-3">
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
                 <button
                   onClick={loadExample}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:shadow-sm transition-all active:scale-95"
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4 text-blue-500" /> Charger Exemple
+                  <Info className="w-4 h-4" /> {t('rByC.example')}
                 </button>
                 <button
                   onClick={clearForm}
-                  className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
                 >
                   <RotateCcw className="w-5 h-5" />
                 </button>
@@ -670,21 +680,21 @@ export default function RxcTable() {
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('rByC.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier le résultat principal"
+                      title={t('rByC.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('rByC.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -696,73 +706,68 @@ export default function RxcTable() {
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
-                    <div className="text-4xl font-bold mt-2">
-                      0.00
-                    </div>
+                    <p className="text-lg">{t('rByC.enterData')}</p>
+                    <div className="text-4xl font-bold mt-2">0.00</div>
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Main results cards */}
+                    {/* Main results card */}
                     <div className="bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30 p-6 rounded-3xl border">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Résultats statistiques
+                        {t('rByC.statisticalResults')}
                       </p>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
                             {results.chiSquare.toFixed(4)}
                           </div>
-                          <span className="text-xs">Chi-carré</span>
+                          <span className="text-xs">{t('rByC.chiSquare')}</span>
                         </div>
                         <div>
                           <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
-                            {results.pValue.toFixed(6)}
+                            {results.pValue.toExponential(6)}
                           </div>
-                          <span className="text-xs">p-value</span>
+                          <span className="text-xs">{t('rByC.pValue')}</span>
                         </div>
                         <div>
                           <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
                             {results.degreesOfFreedom}
                           </div>
-                          <span className="text-xs">Degrés de liberté</span>
+                          <span className="text-xs">{t('rByC.df')}</span>
                         </div>
                         <div>
                           <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
                             {results.cramersV.toFixed(4)}
                           </div>
-                          <span className="text-xs">V de Cramér</span>
+                          <span className="text-xs">{t('rByC.cramersV')}</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* expected frequencies */}
+                    {/* Expected frequencies table */}
                     <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-                     
-                  
-                        <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
-                          <table className="w-full text-xs sm:text-sm">
-                            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-                              <tr>
-                                <th className="px-3 py-2 text-left font-semibold">Ligne / Colonne</th>
-                                {Array.from({ length: tableData.cols }, (_, i) => (
-                                  <th key={i} className="px-3 py-2 text-center font-semibold">Col {i + 1}</th>
+                      <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                        <table className="w-full text-xs sm:text-sm">
+                          <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold">{t('rByC.rowCol')}</th>
+                              {Array.from({ length: tableData.cols }, (_, i) => (
+                                <th key={i} className="px-3 py-2 text-center font-semibold">{t('rByC.column')} {i + 1}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            {results.expected.map((row, rowIndex) => (
+                              <tr key={rowIndex}>
+                                <td className="px-3 py-2 font-medium">{t('rByC.row')} {rowIndex + 1}</td>
+                                {row.map((cell, colIndex) => (
+                                  <td key={colIndex} className="px-3 py-2 text-center font-mono">{cell.toFixed(2)}</td>
                                 ))}
                               </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                              {results.expected.map((row, rowIndex) => (
-                                <tr key={rowIndex}>
-                                  <td className="px-3 py-2 font-medium">Ligne {rowIndex + 1}</td>
-                                  {row.map((cell, colIndex) => (
-                                    <td key={colIndex} className="px-3 py-2 text-center font-mono">{cell.toFixed(2)}</td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-       
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
 
                     {/* Interpretation block */}
@@ -774,7 +779,7 @@ export default function RxcTable() {
                       }`}
                     >
                       <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-500" /> Interprétation
+                        <Info className="w-4 h-4 text-blue-500" /> {t('rByC.interpretation')}
                       </h3>
                       <p className="text-sm leading-relaxed">
                         {results.interpretation}
@@ -796,7 +801,7 @@ export default function RxcTable() {
             />
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide : Tableau R×C</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('rByC.helpTitle')}</h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
@@ -806,145 +811,97 @@ export default function RxcTable() {
               </div>
 
               <div className="p-6 md:p-8 space-y-8">
-                {/* Section 1  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      1
-                    </div>
-                    Principe du test du χ²
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">1</div>
+                    {t('rByC.principleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Le test du chi-carré (χ²) de Pearson est utilisé pour déterminer s'il existe une 
-                    <strong className="text-slate-900 dark:text-white"> association statistiquement significative</strong> entre deux variables catégorielles. 
-                    Il compare les fréquences observées dans un tableau de contingence R×C aux fréquences théoriques attendues sous l'hypothèse d'indépendance.
+                    {t('rByC.principleText')}
                   </p>
                   <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
                     <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <div className="font-bold text-slate-900 dark:text-white mb-1">H₀ : Indépendance</div>
-                      <div className="text-slate-500">Les deux variables ne sont pas liées.</div>
+                      <div className="font-bold text-slate-900 dark:text-white mb-1">H₀ : {t('rByC.independence')}</div>
+                      <div className="text-slate-500">{t('rByC.independenceDesc')}</div>
                     </div>
                     <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <div className="font-bold text-slate-900 dark:text-white mb-1">H₁ : Dépendance</div>
-                      <div className="text-slate-500">Il existe une association entre elles.</div>
+                      <div className="font-bold text-slate-900 dark:text-white mb-1">H₁ : {t('rByC.dependence')}</div>
+                      <div className="text-slate-500">{t('rByC.dependenceDesc')}</div>
                     </div>
                   </div>
                 </section>
 
-                {/* Section 2  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      2
-                    </div>
-                    Conditions de validité
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">2</div>
+                    {t('rByC.conditionsTitle')}
                   </h4>
                   <ul className="list-disc pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                    <li>
-                      <strong className="text-slate-900 dark:text-white">Échantillon indépendant</strong> – Les observations doivent être indépendantes.
-                    </li>
-                    <li>
-                      <strong className="text-slate-900 dark:text-white">Effectifs théoriques suffisants</strong> – Règle courante : 
-                      moins de 20 % des cellules doivent avoir un effectif attendu inférieur à 5, et aucun effectif attendu ne doit être inférieur à 1. 
-                      Si cette condition n'est pas remplie, envisagez un test exact (p. ex. test de Fisher pour les tableaux 2×2).
-                    </li>
-                    <li>
-                      <strong className="text-slate-900 dark:text-white">Données non appariées</strong> – Chaque sujet contribue à une seule cellule.
-                    </li>
+                    <li><strong className="text-slate-900 dark:text-white">{t('rByC.independentSample')}</strong> – {t('rByC.independentSampleDesc')}</li>
+                    <li><strong className="text-slate-900 dark:text-white">{t('rByC.expectedCounts')}</strong> – {t('rByC.expectedCountsDesc')}</li>
+                    <li><strong className="text-slate-900 dark:text-white">{t('rByC.unpairedData')}</strong> – {t('rByC.unpairedDataDesc')}</li>
                   </ul>
                 </section>
 
-                {/* Section 3  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      3
-                    </div>
-                    Statistiques calculées
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">3</div>
+                    {t('rByC.calculatedStatsTitle')}
                   </h4>
                   <div className="space-y-4 text-sm">
                     <div>
-                      <div className="font-bold text-slate-900 dark:text-white">Chi-carré (χ²)</div>
-                      <p className="text-slate-600 dark:text-slate-300">
-                        Somme des (observé – attendu)² / attendu. Plus la valeur est élevée, plus l'écart à l'indépendance est grand.
-                      </p>
+                      <div className="font-bold text-slate-900 dark:text-white">{t('rByC.chiSquare')}</div>
+                      <p className="text-slate-600 dark:text-slate-300">{t('rByC.chiSquareDesc')}</p>
                     </div>
                     <div>
-                      <div className="font-bold text-slate-900 dark:text-white">Degrés de liberté (ddl)</div>
-                      <p className="text-slate-600 dark:text-slate-300">
-                        (nombre de lignes – 1) × (nombre de colonnes – 1). Ils déterminent la forme de la distribution du χ² sous H₀.
-                      </p>
+                      <div className="font-bold text-slate-900 dark:text-white">{t('rByC.df')}</div>
+                      <p className="text-slate-600 dark:text-slate-300">{t('rByC.dfDesc')}</p>
                     </div>
                     <div>
-                      <div className="font-bold text-slate-900 dark:text-white">p-value</div>
-                      <p className="text-slate-600 dark:text-slate-300">
-                        Probabilité d'observer une valeur du χ² aussi extrême (ou plus) sous H₀. 
-                        Si p &lt; 0,05 (seuil usuel), on rejette H₀ au risque de 5 %.
-                      </p>
+                      <div className="font-bold text-slate-900 dark:text-white">{t('rByC.pValue')}</div>
+                      <p className="text-slate-600 dark:text-slate-300">{t('rByC.pValueDesc')}</p>
                     </div>
                     <div>
-                      <div className="font-bold text-slate-900 dark:text-white">V de Cramér</div>
-                      <p className="text-slate-600 dark:text-slate-300">
-                        Mesure de la force de l'association, variant de 0 (indépendance) à 1 (dépendance parfaite). 
-                        Interprétation usuelle :
-                      </p>
+                      <div className="font-bold text-slate-900 dark:text-white">{t('rByC.cramersV')}</div>
+                      <p className="text-slate-600 dark:text-slate-300">{t('rByC.cramersVDesc')}</p>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
-                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0 &lt; V ≤ 0.1 : très faible</div>
-                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.1 &lt; V ≤ 0.3 : faible</div>
-                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.3 &lt; V ≤ 0.5 : modéré</div>
-                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.5 &lt; V ≤ 0.7 : fort</div>
-                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.7 &lt; V ≤ 1.0 : très fort</div>
+                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0 &lt; V ≤ 0.1 : {t('rByC.veryWeak')}</div>
+                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.1 &lt; V ≤ 0.3 : {t('rByC.weak')}</div>
+                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.3 &lt; V ≤ 0.5 : {t('rByC.moderate')}</div>
+                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.5 &lt; V ≤ 0.7 : {t('rByC.strong')}</div>
+                        <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded">0.7 &lt; V ≤ 1.0 : {t('rByC.veryStrong')}</div>
                       </div>
                     </div>
                   </div>
                 </section>
 
-                {/* Section 4  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      4
-                    </div>
-                    Méthodes complémentaires
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">4</div>
+                    {t('rByC.complementaryMethodsTitle')}
                   </h4>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                    Pour les tableaux 2×2, d'autres tests peuvent être plus appropriés :
-                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">{t('rByC.complementaryMethodsDesc')}</p>
                   <ul className="list-disc pl-5 space-y-1 text-sm text-slate-600 dark:text-slate-300">
-                    <li>
-                      <strong className="text-slate-900 dark:text-white">Test exact de Fisher</strong> – Recommandé lorsque les effectifs théoriques sont faibles (attendu &lt; 5).
-                    </li>
-                    <li>
-                      <strong className="text-slate-900 dark:text-white">Correction de continuité de Yates</strong> – Parfois appliquée au χ² pour les tableaux 2×2, elle rend le test plus conservateur.
-                    </li>
+                    <li><strong className="text-slate-900 dark:text-white">{t('rByC.fisherExact')}</strong> – {t('rByC.fisherExactDesc')}</li>
+                    <li><strong className="text-slate-900 dark:text-white">{t('rByC.yatesCorrection')}</strong> – {t('rByC.yatesCorrectionDesc')}</li>
                   </ul>
-                  <p className="mt-3 text-sm text-slate-500 italic">
-                    Ce calculateur utilise la bibliothèque jStat pour obtenir des p‑values exactes à partir de la distribution du χ².
-                  </p>
+                  <p className="mt-3 text-sm text-slate-500 italic">{t('rByC.jStatNote')}</p>
                 </section>
 
-                {/* Section 5  */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      5
-                    </div>
-                    Exemple concret
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">5</div>
+                    {t('rByC.exampleTitle')}
                   </h4>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-sm">
-                    <p className="mb-2">
-                      Supposons que l'on étudie la relation entre le tabagisme (fumeur / non‑fumeur) et la survenue d'un cancer du poumon (oui / non). 
-                      Un tableau 2×2 pourrait être :
-                    </p>
+                    <p className="mb-2">{t('rByC.exampleText')}</p>
                     <pre className="bg-white dark:bg-slate-900 p-2 rounded text-xs overflow-x-auto">
-                      {`            Cancer oui  Cancer non  Total
-        Fumeur          30          20        50
-        Non‑fumeur      10          40        50
-        Total           40          60       100`}
+{`            ${t('rByC.cancerYes')}  ${t('rByC.cancerNo')}  ${t('rByC.total')}
+                    ${t('rByC.smoker')}          30          20        50
+                    ${t('rByC.nonSmoker')}      10          40        50
+                    ${t('rByC.total')}           40          60       100`}
                     </pre>
-                    <p className="mt-2">
-                      Le test du χ² donnerait une p-value &lt; 0,001, indiquant une association significative. Le V de Cramér serait d'environ 0,45, soit une force modérée.
-                    </p>
+                    <p className="mt-2">{t('rByC.exampleInterpretation')}</p>
                   </div>
                   <a
                     href="https://www.openepi.com/Proportion/Proportion.htm"
@@ -952,11 +909,9 @@ export default function RxcTable() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Voir sur OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('rByC.sourceLink')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
-
-              
               </div>
             </div>
           </div>
