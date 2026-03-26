@@ -52,6 +52,18 @@ interface CalculationResults {
   chi2YatesP: number;
   fisherOneTail: number | null;
   fisherTwoTail: number | null;
+  midPOneTail: number | null;
+  midPTwoTail: number | null;
+  riskExposedCI: ConfidenceInterval | null;
+  riskUnexposedCI: ConfidenceInterval | null;
+  riskTotalCI: ConfidenceInterval | null;
+  riskDifference: number | null;
+  riskDifferenceCI: ConfidenceInterval | null;
+  attrFracExp: number | null;       // FEe = (RR-1)/RR
+  attrFracExpCI: ConfidenceInterval | null;
+  attrFracPop: number | null;       // FEp = pe*(RR-1)/(pe*(RR-1)+1)
+  attrFracPopCI: ConfidenceInterval | null
+
 }
 
 export default function TwoByTwo() {
@@ -68,6 +80,19 @@ export default function TwoByTwo() {
 
   // jStat is available via ES import – we rely on it for exact computations.
   const hasJStat = true; // jStat is imported
+
+
+  const formatPValue = (p: number | null | undefined): string => {
+    if (p === null || p === undefined || isNaN(p)) return 'N/A';
+    if (p <= 0) return '< 0.0000001';
+    if (p >= 0.001) return p.toFixed(4);
+    // Assez de décimales pour afficher 4 chiffres significatifs
+    const mag = Math.floor(Math.log10(p));
+    return p.toFixed(Math.min(-mag + 3, 10));
+  };
+  
+  const formatPct = (v: number, decimals = 2): string =>
+    (v * 100).toFixed(decimals) + '%';
 
   // Custom hypergeometric PDF using jStat.combination
   const hypergeometricPdf = (k: number, n: number, K: number, N: number): number => {
@@ -210,6 +235,94 @@ export default function TwoByTwo() {
       fisherOneTail = oneTail;
       fisherTwoTail = twoTail;
     }
+    //  Mid-P exact 
+let midPOneTail: number | null = null;
+let midPTwoTail: number | null = null;
+if (fisherOneTail !== null && fisherTwoTail !== null) {
+  const obsP = hypergeometricPdf(aVal, r1, c1, n);
+  midPOneTail = Math.max(0, fisherOneTail - 0.5 * obsP);
+  midPTwoTail = Math.max(0, fisherTwoTail - obsP);
+}
+
+//  IC des risques individuels (Taylor) 
+const propCI = (prop: number, total: number): ConfidenceInterval => {
+  const se = Math.sqrt(prop * (1 - prop) / total);
+  return {
+    lower: Math.max(0, prop - 1.96 * se),
+    upper: Math.min(1, prop + 1.96 * se),
+  };
+};
+const riskExposedCI = r1 > 0 ? propCI(incExposed, r1) : null;
+const riskUnexposedCI = r2 > 0 ? propCI(incUnexposed, r2) : null;
+const riskTotalCI = propCI(incTotal, n);
+
+//  Différence de risque (Taylor) 
+let riskDifference: number | null = null;
+let riskDifferenceCI: ConfidenceInterval | null = null;
+if (r1 > 0 && r2 > 0) {
+  riskDifference = incExposed - incUnexposed;
+  const seRD = Math.sqrt(
+    incExposed * (1 - incExposed) / r1 +
+    incUnexposed * (1 - incUnexposed) / r2
+  );
+  riskDifferenceCI = {
+    lower: riskDifference - 1.96 * seRD,
+    upper: riskDifference + 1.96 * seRD,
+  };
+}
+
+//  Fractions étiologiques (base risque) 
+let attrFracExp: number | null = null;
+let attrFracExpCI: ConfidenceInterval | null = null;
+let attrFracPop: number | null = null;
+let attrFracPopCI: ConfidenceInterval | null = null;
+
+if (relativeRisk !== null && relativeRisk > 0 && relativeRiskCI !== null) {
+  // FEe = (RR-1)/RR ; CI dérivé directement du CI de RR
+  attrFracExp = (relativeRisk - 1) / relativeRisk;
+  attrFracExpCI = {
+    lower: (relativeRiskCI.lower - 1) / relativeRiskCI.lower,
+    upper: (relativeRiskCI.upper - 1) / relativeRiskCI.upper,
+  };
+
+  // FEp = pe*(RR-1)/(pe*(RR-1)+1) — méthode de Levin
+  const pe = r1 / n;
+  const numFEp = pe * (relativeRisk - 1);
+  if (numFEp + 1 > 0) {
+    attrFracPop = numFEp / (numFEp + 1);
+    const fePopFromRR = (rr: number) => {
+      const num = pe * (rr - 1);
+      return Math.max(0, num / (num + 1));
+    };
+    attrFracPopCI = {
+      lower: fePopFromRR(relativeRiskCI.lower),
+      upper: fePopFromRR(relativeRiskCI.upper),
+    };
+  }
+}
+
+//  Fractions étiologiques (base OR) 
+let attrFracExpOR: number | null = null;
+let attrFracExpORCI: ConfidenceInterval | null = null;
+let attrFracPopOR: number | null = null;
+let attrFracPopORCI: ConfidenceInterval | null = null;
+
+if (oddsRatio !== null && oddsRatio > 0 && oddsRatioCI !== null) {
+  // FEe|OR = (OR-1)/OR
+  attrFracExpOR = (oddsRatio - 1) / oddsRatio;
+  attrFracExpORCI = {
+    lower: (oddsRatioCI.lower - 1) / oddsRatioCI.lower,
+    upper: (oddsRatioCI.upper - 1) / oddsRatioCI.upper,
+  };
+
+  // FEp|OR = (a/c1) * (OR-1)/OR
+  const pc = c1 > 0 ? aVal / c1 : 0;
+  attrFracPopOR = pc * attrFracExpOR;
+  attrFracPopORCI = {
+    lower: pc * attrFracExpORCI.lower,
+    upper: pc * attrFracExpORCI.upper,
+  };
+}
 
     setResults({
       a: aVal,
@@ -239,6 +352,21 @@ export default function TwoByTwo() {
       chi2YatesP,
       fisherOneTail,
       fisherTwoTail,
+      midPOneTail,
+      midPTwoTail,
+      riskExposedCI,
+      riskUnexposedCI,
+      riskTotalCI,
+      riskDifference,
+      riskDifferenceCI,
+      attrFracExp,
+      attrFracExpCI,
+      attrFracPop,
+      attrFracPopCI,
+      attrFracExpOR,
+      attrFracExpORCI,
+      attrFracPopOR,
+      attrFracPopORCI,
     });
   };
 
@@ -293,13 +421,13 @@ Odds Ratio (OR): ${orText} (95% CI: ${orCI})
 Risque Relatif (RR): ${rrText} (95% CI: ${rrCI})
 
 Tests du χ²:
-  Non corrigé: χ² = ${results.chi2Uncorrected.toFixed(3)}, p = ${results.chi2UncorrectedP.toFixed(4)}
-  Mantel‑Haenszel: χ² = ${results.chi2MantelHaenszel.toFixed(3)}, p = ${results.chi2MantelHaenszelP.toFixed(4)}
-  Yates: χ² = ${results.chi2Yates.toFixed(3)}, p = ${results.chi2YatesP.toFixed(4)}
+  Non corrigé: χ² = ${results.chi2Uncorrected.toFixed(3)}, p = ${formatPValue(results.chi2UncorrectedP)}
+  Mantel‑Haenszel: χ² = ${results.chi2MantelHaenszel.toFixed(3)}, p = ${results.chi2MantelHaenszelP.toFixed(8)}
+  Yates: χ² = ${results.chi2Yates.toFixed(3)}, p = ${results.chi2YatesP.toFixed(8)}
 
 Test exact de Fisher:
-  1‑queue: p = ${results.fisherOneTail?.toFixed(4) ?? 'N/A'}
-  2‑queues: p = ${results.fisherTwoTail?.toFixed(4) ?? 'N/A'}`;
+  1‑queue: p = ${results.fisherOneTail?.toFixed(8) ?? 'N/A'}
+  2‑queues: p = ${results.fisherTwoTail?.toFixed(8) ?? 'N/A'}`;
 
     try {
       await navigator.clipboard.writeText(text);
@@ -468,11 +596,11 @@ Test exact de Fisher:
       y += 8;
 
       const testsBody = [
-        ['χ² non corrigé', results.chi2Uncorrected.toFixed(3), results.chi2UncorrectedP.toFixed(4)],
-        ['χ² Mantel‑Haenszel', results.chi2MantelHaenszel.toFixed(3), results.chi2MantelHaenszelP.toFixed(4)],
-        ['χ² corrigé (Yates)', results.chi2Yates.toFixed(3), results.chi2YatesP.toFixed(4)],
-        ['Fisher exact 1‑queue', '—', results.fisherOneTail?.toFixed(4) ?? 'N/A'],
-        ['Fisher exact 2‑queues', '—', results.fisherTwoTail?.toFixed(4) ?? 'N/A'],
+        ['χ² non corrigé', results.chi2Uncorrected.toFixed(3), results.chi2UncorrectedP.toFixed(8)],
+        ['χ² Mantel‑Haenszel', results.chi2MantelHaenszel.toFixed(3), results.chi2MantelHaenszelP.toFixed(8)],
+        ['χ² corrigé (Yates)', results.chi2Yates.toFixed(3), results.chi2YatesP.toFixed(8)],
+        ['Fisher exact 1‑queue', '—', results.fisherOneTail?.toFixed(8) ?? 'N/A'],
+        ['Fisher exact 2‑queues', '—', results.fisherTwoTail?.toFixed(8) ?? 'N/A'],
       ];
 
       autoTable(doc, {
@@ -831,11 +959,6 @@ Test exact de Fisher:
                     {/* Statistical tests table */}
                     <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
                       <div className="mt-4 overflow-x-auto animate-in slide-in-from-top-2 duration-300">
-                        {!hasJStat && (
-                          <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
-                            jStat non disponible – les p‑values exactes ne sont pas calculées.
-                          </div>
-                        )}
                         <table className="w-full text-xs sm:text-sm">
                           <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
                             <tr>
@@ -851,7 +974,7 @@ Test exact de Fisher:
                                 {results.chi2Uncorrected.toFixed(3)}
                               </td>
                               <td className="px-3 py-2 text-center font-mono">
-                                {results.chi2UncorrectedP.toFixed(4)}
+                                {results.chi2UncorrectedP.toFixed(8)}
                               </td>
                             </tr>
                             <tr>
@@ -860,7 +983,7 @@ Test exact de Fisher:
                                 {results.chi2MantelHaenszel.toFixed(3)}
                               </td>
                               <td className="px-3 py-2 text-center font-mono">
-                                {results.chi2MantelHaenszelP.toFixed(4)}
+                                {results.chi2MantelHaenszelP.toFixed(8)}
                               </td>
                             </tr>
                             <tr>
@@ -869,23 +992,38 @@ Test exact de Fisher:
                                 {results.chi2Yates.toFixed(3)}
                               </td>
                               <td className="px-3 py-2 text-center font-mono">
-                                {results.chi2YatesP.toFixed(4)}
+                                {results.chi2YatesP.toFixed(8)}
                               </td>
                             </tr>
-                            <tr>
-                              <td className="px-3 py-2 font-medium">Fisher exact 1‑queue</td>
-                              <td className="px-3 py-2 text-center font-mono">—</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.fisherOneTail?.toFixed(4) ?? 'N/A'}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="px-3 py-2 font-medium">Fisher exact 2‑queues</td>
-                              <td className="px-3 py-2 text-center font-mono">—</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {results.fisherTwoTail?.toFixed(4) ?? 'N/A'}
-                              </td>
-                            </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Fisher exact 1‑queue</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {formatPValue(results.fisherOneTail)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Fisher exact 2‑queues</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {formatPValue(results.fisherTwoTail)}
+                                </td>
+                              </tr>
+                              {/* ── Nouvelle ligne Mid-P ── */}
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Mid-P exact 1‑queue</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {formatPValue(results.midPOneTail)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="px-3 py-2 font-medium">Mid-P exact 2‑queues</td>
+                                <td className="px-3 py-2 text-center font-mono">—</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {formatPValue(results.midPTwoTail)}
+                                </td>
+                              </tr>
                           </tbody>
                         </table>
                         <p className="text-sm text-slate-400 mt-3 italic">
@@ -893,6 +1031,142 @@ Test exact de Fisher:
                         </p>
                       </div>
                     </div>
+                    {/* ── Estimations basées sur le risque ── */}
+<div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+  <p className="text-xs font-bold  tracking-widest text-slate-400 mb-3">
+    Estimations basées sur le risque
+    <span className="ml-2 text-slate-300 font-normal normal-case">(non valable études cas-témoins)</span>
+  </p>
+  <table className="w-full text-xs sm:text-sm">
+    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+      <tr>
+        <th className="px-3 py-2 text-left font-semibold">Type</th>
+        <th className="px-3 py-2 text-center font-semibold">Valeur</th>
+        <th className="px-3 py-2 text-center font-semibold">IC 95% inférieur</th>
+        <th className="px-3 py-2 text-center font-semibold">IC 95% supérieur</th>
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+      {[
+        {
+          label: 'Risque exposés',
+          value: formatPct(results.incidenceExposed),
+          ci: results.riskExposedCI,
+        },
+        {
+          label: 'Risque non-exposés',
+          value: formatPct(results.incidenceUnexposed),
+          ci: results.riskUnexposedCI,
+        },
+        {
+          label: 'Risque global',
+          value: formatPct(results.incidenceTotal),
+          ci: results.riskTotalCI,
+        },
+        {
+          label: 'Rapport de risque (RR)',
+          value: results.relativeRisk?.toFixed(3) ?? 'N/A',
+          ci: results.relativeRiskCI,
+          isRatio: true,
+        },
+        {
+          label: 'Différence de risque',
+          value: results.riskDifference !== null ? formatPct(results.riskDifference) : 'N/A',
+          ci: results.riskDifferenceCI,
+          isPct: true,
+        },
+        {
+          label: 'FEp (fraction étiol. pop.)',
+          value: results.attrFracPop !== null ? formatPct(results.attrFracPop) : 'N/A',
+          ci: results.attrFracPopCI,
+          isPct: true,
+        },
+        {
+          label: 'FEe (fraction étiol. exposés)',
+          value: results.attrFracExp !== null ? formatPct(results.attrFracExp) : 'N/A',
+          ci: results.attrFracExpCI,
+          isPct: true,
+        },
+      ].map(({ label, value, ci, isRatio, isPct }) => (
+        <tr key={label}>
+          <td className="px-3 py-2 font-medium">{label}</td>
+          <td className="px-3 py-2 text-center font-mono">{value}</td>
+          <td className="px-3 py-2 text-center font-mono">
+            {ci
+              ? isRatio
+                ? ci.lower.toFixed(3)
+                : isPct
+                ? formatPct(ci.lower)
+                : formatPct(ci.lower)
+              : '—'}
+          </td>
+          <td className="px-3 py-2 text-center font-mono">
+            {ci
+              ? isRatio
+                ? ci.upper.toFixed(3)
+                : isPct
+                ? formatPct(ci.upper)
+                : formatPct(ci.upper)
+              : '—'}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+{/* ── Estimations basées sur l'OR ── */}
+<div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+  <p className="text-xs font-bold tracking-widest text-slate-400 mb-3">
+    Estimations basées sur les rapports de cotes
+  </p>
+  <table className="w-full text-xs sm:text-sm">
+    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+      <tr>
+        <th className="px-3 py-2 text-left font-semibold">Type</th>
+        <th className="px-3 py-2 text-center font-semibold">Valeur</th>
+        <th className="px-3 py-2 text-center font-semibold">IC 95% inférieur</th>
+        <th className="px-3 py-2 text-center font-semibold">IC 95% supérieur</th>
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+      {[
+        {
+          label: 'Odds Ratio (OR) Taylor',
+          value: results.oddsRatio?.toFixed(3) ?? 'N/A',
+          ci: results.oddsRatioCI,
+          isRatio: true,
+        },
+        {
+          label: 'FEp|OR (fraction étiol. pop.)',
+          value: results.attrFracPopOR !== null ? formatPct(results.attrFracPopOR) : 'N/A',
+          ci: results.attrFracPopORCI,
+          isPct: true,
+        },
+        {
+          label: 'FEe|OR (fraction étiol. exposés)',
+          value: results.attrFracExpOR !== null ? formatPct(results.attrFracExpOR) : 'N/A',
+          ci: results.attrFracExpORCI,
+          isPct: true,
+        },
+      ].map(({ label, value, ci, isRatio, isPct }) => (
+        <tr key={label}>
+          <td className="px-3 py-2 font-medium">{label}</td>
+          <td className="px-3 py-2 text-center font-mono">{value}</td>
+          <td className="px-3 py-2 text-center font-mono">
+            {ci ? (isRatio ? ci.lower.toFixed(3) : formatPct(ci.lower)) : '—'}
+          </td>
+          <td className="px-3 py-2 text-center font-mono">
+            {ci ? (isRatio ? ci.upper.toFixed(3) : formatPct(ci.upper)) : '—'}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+  <p className="text-xs text-slate-400 mt-2 italic">
+    * IC calculés par séries de Taylor (méthode de Woolf). FEp|OR = (a/c₁)·(OR−1)/OR.
+  </p>
+</div>
 
                     {/* Interpretation block */}
                     <div
