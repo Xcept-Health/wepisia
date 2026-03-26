@@ -1,235 +1,497 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Blocks,
-  ChevronRight,
-  Calculator,
-  Presentation,
-  Copy,
-  FileDown,
-  HelpCircle,
-  X,
-  Info,
-  RotateCcw,
-  ArrowRight,
+  Blocks, ChevronRight, Calculator, Presentation,
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import jStat from 'jstat';
 
-/**
- * Sample Size for Unmatched Case-Control Studies (SSUnmatched)
- * 
- * This component replicates the functionality of OpenEpi's SSCC module for
- * calculating the required sample size in an unmatched case-control study.
- * It provides estimates using three methods: Kelsey, Fleiss (uncorrected),
- * and Fleiss with continuity correction. The user can input either the
- * exposure proportion among controls and cases, or the exposure proportion
- * among controls and the odds ratio (OR). The calculation uses standard
- * formulas based on the normal distribution, with optional ratio of
- * controls to cases.
- * 
- * All calculations are automatic: any change to the input fields triggers
- * a recalculation. The jStat library is used to obtain exact z‑values for
- * the specified confidence level and power; if jStat is not available,
- * fixed values (1.645, 1.96, 2.576 for confidence, and 0.842, 1.282, 1.645
- * for power) are used as fallbacks.
- */
-
+// ============================================================
 // Types
-interface MethodResult {
+// ============================================================
+
+interface SampleSizeResult {
+  method: 'Kelsey' | 'Fleiss' | 'FleissCC';
   cases: number;
   controls: number;
   total: number;
 }
 
-interface SampleSizeResults {
-  confidenceLevel: string;
-  power: string;
-  ratio: number;
-  controlsExposed: number; // as percentage
-  casesExposed: number;    // as percentage
-  oddsRatio: number;
-  kelsey: MethodResult;
-  fleiss: MethodResult;
-  fleiss_cc: MethodResult;
+interface InputValues {
+  alpha: number;      // two-sided significance level (e.g., 0.05)
+  power: number;      // e.g., 0.8
+  ratio: number;      // controls per case (r)
+  p0: number;         // proportion of controls exposed (0..1)
+  p1: number;         // proportion of cases exposed (0..1)
+  or: number;         // odds ratio
 }
 
-// Helper: get z-scores from jStat or fallback
-const getZValues = (
-  confidenceLevel: string,
-  power: string,
-  hasJStat: boolean
-): { zAlpha: number; zBeta: number } => {
-  if (hasJStat) {
-    const alpha = 1 - parseFloat(confidenceLevel) / 100;
-    const beta = 1 - parseFloat(power) / 100;
-    return {
-      zAlpha: jStat.normal.inv(1 - alpha / 2, 0, 1),
-      zBeta: jStat.normal.inv(1 - beta, 0, 1),
-    };
-  } else {
-    // Fallback for common values
-    const zAlpha =
-      confidenceLevel === '90' ? 1.645 :
-      confidenceLevel === '95' ? 1.96 :
-      2.576;
-    const zBeta =
-      power === '80' ? 0.842 :
-      power === '90' ? 1.282 :
-      1.645;
-    return { zAlpha, zBeta };
+// ============================================================
+// Pure calculation helpers
+// ============================================================
+
+/** Two-tailed z-score for a given alpha (significance level) */
+function zAlpha(alpha: number): number {
+  return jStat.normal.inv(1 - alpha / 2, 0, 1);
+}
+
+/** One-tailed z-score for power (beta = 1 - power) */
+function zBeta(power: number): number {
+  return jStat.normal.inv(power, 0, 1);
+}
+
+/**
+ * Compute p1 from p0 and odds ratio.
+ */
+function computeP1(p0: number, or: number): number {
+  if (or === 1) return p0;
+  return (or * p0) / (1 + p0 * (or - 1));
+}
+
+/**
+ * Compute odds ratio from p0 and p1.
+ */
+function computeOR(p0: number, p1: number): number {
+  if (p0 === 0 || p0 === 1 || p1 === 0 || p1 === 1) return 1;
+  return (p1 / (1 - p1)) / (p0 / (1 - p0));
+}
+
+/**
+ * Kelsey method (normal approximation, pooled variance)
+ * Returns rounded integer cases and controls.
+ */
+function kelseySampleSize(alpha: number, power: number, ratio: number, p0: number, p1: number): { cases: number; controls: number } {
+  const z_alpha = zAlpha(alpha);
+  const z_beta = zBeta(power);
+  const p_bar = (p1 + ratio * p0) / (ratio + 1);
+  const numerator = (ratio + 1) / ratio * p_bar * (1 - p_bar) * Math.pow(z_alpha + z_beta, 2);
+  const denominator = Math.pow(p1 - p0, 2);
+  let cases = numerator / denominator;
+  cases = Math.ceil(cases);
+  const controls = Math.ceil(ratio * cases);
+  return { cases, controls };
+}
+
+/**
+ * Fleiss method (different variance assumption)
+ * Returns the floating-point (unrounded) sample size for cases, and the rounded integer.
+ */
+function fleissSampleSizeFloat(alpha: number, power: number, ratio: number, p0: number, p1: number): { casesFloat: number; cases: number; controls: number } {
+  const z_alpha = zAlpha(alpha);
+  const z_beta = zBeta(power);
+  const p_bar = (p1 + ratio * p0) / (ratio + 1);
+  const term1 = z_alpha * Math.sqrt((ratio + 1) * p_bar * (1 - p_bar));
+  const term2 = z_beta * Math.sqrt(ratio * p0 * (1 - p0) + p1 * (1 - p1));
+  const numerator = Math.pow(term1 + term2, 2);
+  const denominator = ratio * Math.pow(p1 - p0, 2);
+  const casesFloat = numerator / denominator;
+  const cases = Math.ceil(casesFloat);
+  const controls = Math.ceil(ratio * cases);
+  return { casesFloat, cases, controls };
+}
+
+/**
+ * Fleiss with continuity correction (Fleiss CC)
+ * Uses the unrounded Fleiss sample size (casesFloat) in the correction formula.
+ */
+function fleissCCSampleSize(alpha: number, power: number, ratio: number, p0: number, p1: number): { cases: number; controls: number } {
+  const { casesFloat } = fleissSampleSizeFloat(alpha, power, ratio, p0, p1);
+  const r = ratio;
+  const delta = Math.abs(p1 - p0);
+  if (casesFloat <= 0 || delta === 0) {
+    // Fallback: use rounded Fleiss
+    const { cases, controls } = fleissSampleSizeFloat(alpha, power, ratio, p0, p1);
+    return { cases, controls };
   }
+  const n = casesFloat; // unrounded
+  const correction = (n / 4) * Math.pow(1 + Math.sqrt(1 + (2 * (r + 1)) / (n * r * delta)), 2);
+  let cases = Math.ceil(correction);
+  const controls = Math.ceil(r * cases);
+  return { cases, controls };
+}
+
+/**
+ * Compute all three methods
+ */
+function computeAllSampleSizes(
+  alpha: number,
+  power: number,
+  ratio: number,
+  p0: number,
+  p1: number
+): SampleSizeResult[] {
+  const kelsey = kelseySampleSize(alpha, power, ratio, p0, p1);
+  const fleiss = fleissSampleSizeFloat(alpha, power, ratio, p0, p1);
+  const fleissCC = fleissCCSampleSize(alpha, power, ratio, p0, p1);
+
+  return [
+    { method: 'Kelsey', cases: kelsey.cases, controls: kelsey.controls, total: kelsey.cases + kelsey.controls },
+    { method: 'Fleiss', cases: fleiss.cases, controls: fleiss.controls, total: fleiss.cases + fleiss.controls },
+    { method: 'FleissCC', cases: fleissCC.cases, controls: fleissCC.controls, total: fleissCC.cases + fleissCC.controls },
+  ];
+}
+
+// ============================================================
+// PDF Export (unchanged, same as before)
+// ============================================================
+
+type RGB = [number, number, number];
+
+const P = {
+  white:    [255, 255, 255] as RGB,
+  slate50:  [248, 250, 252] as RGB,
+  slate100: [241, 245, 249] as RGB,
+  slate200: [226, 232, 240] as RGB,
+  slate300: [203, 213, 225] as RGB,
+  slate400: [148, 163, 184] as RGB,
+  slate500: [100, 116, 139] as RGB,
+  slate600: [ 71,  85, 105] as RGB,
+  slate700: [ 51,  65,  85] as RGB,
+  slate800: [ 30,  41,  59] as RGB,
+  slate900: [ 15,  23,  42] as RGB,
+  blue50:   [239, 246, 255] as RGB,
+  blue100:  [219, 234, 254] as RGB,
+  blue200:  [191, 219, 254] as RGB,
+  blue500:  [ 59, 130, 246] as RGB,
+  blue600:  [ 37,  99, 235] as RGB,
+  blue700:  [ 29,  78, 216] as RGB,
+  green600: [  5, 150, 105] as RGB,
+  red400:   [248, 113, 113] as RGB,
 };
 
-export default function SampleSizeUnmatched() {
-  // State
-  const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
-  const [power, setPower] = useState<string>('80');
-  const [ratio, setRatio] = useState<string>('1');
-  const [controlsExposed, setControlsExposed] = useState<string>('');
-  const [casesExposed, setCasesExposed] = useState<string>('');
-  const [oddsRatio, setOddsRatio] = useState<string>('');
-  const [results, setResults] = useState<SampleSizeResults | null>(null);
-  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
-  const resultsRef = useRef<HTMLDivElement>(null);
+function exportCaseControlPdf(
+  results: SampleSizeResult[],
+  inputs: { alpha: number; power: number; ratio: number; p0: number; p1: number; or: number },
+  t: (key: string, fallback?: string) => string,
+  lang: string
+) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210, M = 16, CW = W - M * 2;
 
-  const hasJStat = typeof jStat !== 'undefined' && !!jStat.normal;
+  const fill = (c: RGB) => doc.setFillColor(...c);
+  const draw = (c: RGB) => doc.setDrawColor(...c);
+  const color = (c: RGB) => doc.setTextColor(...c);
+  const ln = (x1: number, y1: number, x2: number, y2: number, lw = 0.25) => {
+    doc.setLineWidth(lw);
+    doc.line(x1, y1, x2, y2);
+  };
 
-  // Compute preview OR from exposure percentages
-  const previewOr = useMemo(() => {
-    const p2 = parseFloat(controlsExposed) / 100 || 0;
-    const p1 = parseFloat(casesExposed) / 100 || 0;
-    if (p2 > 0 && p1 > 0 && p1 < 1 && p2 < 1) {
-      return ((p1 / (1 - p1)) / (p2 / (1 - p2))).toFixed(2);
-    }
-    return '-';
-  }, [casesExposed, controlsExposed]);
+  // Header
+  fill(P.blue50);
+  doc.rect(0, 0, W, 38, 'F');
+  fill(P.blue500);
+  doc.rect(0, 0, W, 1.5, 'F');
+  fill(P.blue100);
+  doc.rect(M, 8, 0.8, 22, 'F');
 
-  // Main calculation
-  const calculate = useMemo(() => {
-    // Parse inputs
-    const conf = parseFloat(confidenceLevel) / 100;
-    const pow = parseFloat(power) / 100;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  color(P.slate800);
+  doc.text(t('unmatchedCaseControl.reportTitle', 'Sample Size – Unmatched Case-Control Study'), M + 5, 20);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  color(P.slate500);
+  doc.text(t('unmatchedCaseControl.reportSubtitle', 'OpenEpi style calculator'), M + 5, 28);
+
+  const dateStr = new Date().toLocaleDateString(lang, { year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = new Date().toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
+  doc.text(
+    t('unmatchedCaseControl.reportGenerated', 'Generated on {date} at {time}', { date: dateStr, time: timeStr }),
+    W - M, 28,
+    { align: 'right' }
+  );
+
+  draw(P.blue200);
+  ln(0, 38, W, 38, 0.3);
+
+  let y = 48;
+
+  // Input summary (as cards)
+  const gap = 3;
+  const cardW = (CW - gap * 3) / 4;
+  const cardH = 22;
+  const inputsData = [
+    { label: t('unmatchedCaseControl.confidenceLabel', 'Confidence level (1-α)'), value: `${(1 - inputs.alpha) * 100} %` },
+    { label: t('unmatchedCaseControl.powerLabel', 'Power'), value: `${inputs.power * 100} %` },
+    { label: t('unmatchedCaseControl.ratioLabel', 'Controls : Cases'), value: inputs.ratio.toFixed(1) },
+    { label: t('unmatchedCaseControl.p0Label', '% controls exposed'), value: `${(inputs.p0 * 100).toFixed(2)} %` },
+  ];
+  inputsData.forEach((item, i) => {
+    const x = M + i * (cardW + gap);
+    doc.setFillColor(...P.white);
+    doc.setDrawColor(...P.slate200);
+    doc.roundedRect(x, y, cardW, cardH, 2.5, 2.5, 'FD');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    color(P.slate400);
+    doc.text(item.label.toUpperCase(), x + cardW / 2, y + 6.5, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    color(P.slate700);
+    doc.text(item.value, x + cardW / 2, y + 16.5, { align: 'center' });
+  });
+  y += cardH + 8;
+
+  // Additional derived inputs
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  color(P.slate500);
+  doc.text(
+    `${t('unmatchedCaseControl.p1Label', '% cases exposed')} : ${(inputs.p1 * 100).toFixed(2)} %   |   ${t('unmatchedCaseControl.orLabel', 'Odds Ratio')} : ${inputs.or.toFixed(2)}`,
+    M, y
+  );
+  y += 8;
+
+  // Results table
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  color(P.slate700);
+  doc.text(t('unmatchedCaseControl.resultsTitle', 'Sample size estimates').toUpperCase(), M, y);
+  y += 2;
+  draw(P.slate200);
+  ln(M, y, M + CW, y, 0.3);
+  y += 6;
+
+  const tableRows = results.map((r) => [
+    r.method === 'FleissCC' ? 'Fleiss (CC)' : r.method,
+    r.cases.toLocaleString(),
+    r.controls.toLocaleString(),
+    r.total.toLocaleString(),
+  ]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [[
+      t('unmatchedCaseControl.tableHeaderMethod', 'Method'),
+      t('unmatchedCaseControl.tableHeaderCases', 'Cases'),
+      t('unmatchedCaseControl.tableHeaderControls', 'Controls'),
+      t('unmatchedCaseControl.tableHeaderTotal', 'Total'),
+    ]],
+    body: tableRows,
+    theme: 'plain',
+    headStyles: {
+      fillColor: P.slate100,
+      textColor: P.slate600,
+      fontStyle: 'bold',
+      halign: 'center',
+      fontSize: 7.5,
+      cellPadding: 2.5,
+    },
+    columnStyles: {
+      0: { cellWidth: 45, halign: 'center', textColor: P.slate700, fontStyle: 'bold' },
+      1: { cellWidth: 30, halign: 'center', textColor: P.slate700 },
+      2: { cellWidth: 30, halign: 'center', textColor: P.slate700 },
+      3: { cellWidth: 30, halign: 'center', textColor: P.slate700, fontStyle: 'bold' },
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2.5,
+      lineColor: P.slate200,
+      lineWidth: 0.15,
+    },
+    alternateRowStyles: { fillColor: P.slate50 },
+    margin: { left: M, right: M },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 8;
+
+  // References and notes
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  color(P.slate600);
+  doc.text(t('unmatchedCaseControl.referencesTitle', 'References'), M, y);
+  y += 4;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  color(P.slate500);
+  const refs = t(
+    'unmatchedCaseControl.references',
+    'Kelsey et al., Methods in Observational Epidemiology 2nd Ed., Table 12-15\nFleiss, Statistical Methods for Rates and Proportions, formulas 3.18 & 3.19'
+  );
+  const refLines = doc.splitTextToSize(refs, CW);
+  doc.text(refLines, M, y);
+  y += refLines.length * 4 + 4;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  color(P.slate400);
+  const note = t(
+    'unmatchedCaseControl.footnote',
+    'CC = continuity correction. Results are rounded up to the nearest integer. The Fleiss with continuity correction formula uses the unrounded Fleiss sample size as a base.'
+  );
+  const noteLines = doc.splitTextToSize(note, CW);
+  doc.text(noteLines, M, y);
+
+  // Footer
+  const fY = 284;
+  draw(P.slate200);
+  ln(M, fY, W - M, fY, 0.3);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.5);
+  color(P.slate400);
+  doc.text(t('unmatchedCaseControl.reportFooter', 'OpenEpi style sample size calculator · jStat · autoTable'), M, fY + 4.5);
+  doc.setFont('helvetica', 'bold');
+  color(P.slate500);
+  doc.text('1 / 1', W - M, fY + 6.5, { align: 'right' });
+
+  doc.save(`CaseControl_${inputs.ratio}_${inputs.p0}_OR${inputs.or}.pdf`);
+}
+
+// ============================================================
+// Main Component
+// ============================================================
+
+export default function UnmatchedCaseControl() {
+  const { t, i18n } = useTranslation();
+
+  // Input states (as strings for easy binding)
+  const [confidence, setConfidence] = useState('95');
+  const [power, setPower] = useState('80');
+  const [ratio, setRatio] = useState('1');
+  const [p0, setP0] = useState('40');           // percent exposed among controls
+  const [inputMode, setInputMode] = useState<'or' | 'p1'>('or');
+  const [orValue, setOrValue] = useState('2.0');
+  const [p1Value, setP1Value] = useState('');   // percent exposed among cases
+
+  const [results, setResults] = useState<SampleSizeResult[]>([]);
+  const [showHelp, setShowHelp] = useState(false);
+
+  // Compute derived values and sample sizes
+  useEffect(() => {
+    const alpha = (100 - parseFloat(confidence)) / 100;
+    const powerVal = parseFloat(power) / 100;
     const r = parseFloat(ratio);
-    let p2 = parseFloat(controlsExposed) / 100;
-    const orInput = parseFloat(oddsRatio);
+    const p0_frac = parseFloat(p0) / 100;
 
-    // Validate basic numeric inputs
-    if (
-      isNaN(conf) || conf <= 0 || conf >= 1 ||
-      isNaN(pow) || pow <= 0 || pow >= 1 ||
-      isNaN(r) || r <= 0 ||
-      isNaN(p2) || p2 <= 0 || p2 >= 1
-    ) {
-      return null;
+    if (isNaN(alpha) || isNaN(powerVal) || isNaN(r) || isNaN(p0_frac)) {
+      setResults([]);
+      return;
+    }
+    if (r <= 0 || p0_frac <= 0 || p0_frac >= 1) {
+      setResults([]);
+      return;
     }
 
-    // Determine p1 (exposure among cases)
-    let p1: number;
-    if (!isNaN(orInput) && orInput > 0) {
-      p1 = (orInput * p2) / (1 + p2 * (orInput - 1));
+    let p1_frac: number;
+    let or: number;
+
+    if (inputMode === 'or') {
+      const or_num = parseFloat(orValue);
+      if (isNaN(or_num) || or_num <= 0) {
+        setResults([]);
+        return;
+      }
+      or = or_num;
+      p1_frac = computeP1(p0_frac, or);
     } else {
-      p1 = parseFloat(casesExposed) / 100;
-      if (isNaN(p1) || p1 <= 0 || p1 >= 1) {
-        return null;
+      const p1_val = parseFloat(p1Value);
+      if (isNaN(p1_val) || p1_val <= 0 || p1_val >= 100) {
+        setResults([]);
+        return;
+      }
+      p1_frac = p1_val / 100;
+      or = computeOR(p0_frac, p1_frac);
+    }
+
+    // Guard against invalid p1 (e.g., >1 or <0)
+    if (p1_frac <= 0 || p1_frac >= 1 || Math.abs(p1_frac - p0_frac) < 1e-6) {
+      setResults([]);
+      return;
+    }
+
+    const computed = computeAllSampleSizes(alpha, powerVal, r, p0_frac, p1_frac);
+    setResults(computed);
+  }, [confidence, power, ratio, p0, inputMode, orValue, p1Value]);
+
+  // Sync OR and p1 when mode changes or one is edited
+  useEffect(() => {
+    if (inputMode === 'or') {
+      const or = parseFloat(orValue);
+      if (!isNaN(or) && or > 0) {
+        const p0_frac = parseFloat(p0) / 100;
+        const p1_frac = computeP1(p0_frac, or);
+        if (!isNaN(p1_frac) && p1_frac > 0 && p1_frac < 1) {
+          setP1Value((p1_frac * 100).toFixed(2));
+        }
+      }
+    } else {
+      const p1_frac = parseFloat(p1Value) / 100;
+      if (!isNaN(p1_frac) && p1_frac > 0 && p1_frac < 1) {
+        const p0_frac = parseFloat(p0) / 100;
+        const or = computeOR(p0_frac, p1_frac);
+        if (!isNaN(or) && or > 0) {
+          setOrValue(or.toFixed(2));
+        }
       }
     }
-
-    // Z-scores
-    const { zAlpha, zBeta } = getZValues(confidenceLevel, power, hasJStat);
-
-    const q1 = 1 - p1;
-    const q2 = 1 - p2;
-    const delta = Math.abs(p1 - p2);
-    const pbar = (p1 + r * p2) / (1 + r);
-    const qbar = 1 - pbar;
-
-    // Kelsey method (with +1 adjustment to match OpenEpi examples)
-    const first_k = zAlpha * Math.sqrt((1 + 1 / r) * pbar * qbar);
-    const second_k = zBeta * Math.sqrt(p1 * q1 + (p2 * q2) / r);
-    let n1_kelsey = Math.pow(first_k + second_k, 2) / Math.pow(delta, 2) + 1;
-    const cases_kelsey = Math.ceil(n1_kelsey);
-    const controls_kelsey = Math.ceil(r * n1_kelsey);
-
-    // Fleiss uncorrected
-    const first_f = zAlpha * Math.sqrt(((r + 1) * pbar * qbar) / r);
-    const second_f = zBeta * Math.sqrt((p1 * q1) / r + p2 * q2);
-    const n1_fleiss = Math.pow(first_f + second_f, 2) / Math.pow(delta, 2);
-    const cases_fleiss = Math.ceil(n1_fleiss);
-    const controls_fleiss = Math.ceil(r * n1_fleiss);
-
-    // Fleiss with continuity correction
-    const correctionFactor = 1 + Math.sqrt(1 + (2 * (r + 1)) / (n1_fleiss * r * delta));
-    const n1_cc = (n1_fleiss / 4) * Math.pow(correctionFactor, 2);
-    const cases_cc = Math.ceil(n1_cc);
-    const controls_cc = Math.ceil(r * n1_cc);
-
-    const finalOR = !isNaN(orInput) && orInput > 0
-      ? orInput
-      : (p1 / (1 - p1)) / (p2 / (1 - p2));
-
-    return {
-      confidenceLevel,
-      power,
-      ratio: r,
-      controlsExposed: p2 * 100,
-      casesExposed: p1 * 100,
-      oddsRatio: finalOR,
-      kelsey: {
-        cases: cases_kelsey,
-        controls: controls_kelsey,
-        total: cases_kelsey + controls_kelsey,
-      },
-      fleiss: {
-        cases: cases_fleiss,
-        controls: controls_fleiss,
-        total: cases_fleiss + controls_fleiss,
-      },
-      fleiss_cc: {
-        cases: cases_cc,
-        controls: controls_cc,
-        total: cases_cc + controls_cc,
-      },
-    };
-  }, [confidenceLevel, power, ratio, controlsExposed, casesExposed, oddsRatio, hasJStat]);
-
-  // Update results whenever calculation changes
-  useEffect(() => {
-    setResults(calculate);
-  }, [calculate]);
+  }, [inputMode, orValue, p1Value, p0]);
 
   // Handlers
-  const clear = () => {
-    setControlsExposed('');
-    setCasesExposed('');
-    setOddsRatio('');
-    setResults(null);
-    toast.info('Champs réinitialisés');
+  const handleClear = () => {
+    setConfidence('95');
+    setPower('80');
+    setRatio('1');
+    setP0('40');
+    setInputMode('or');
+    setOrValue('2.0');
+    setP1Value('');
+    setResults([]);
+    toast.info(t('unmatchedCaseControl.clearMessage', 'Inputs cleared'));
   };
 
-  const loadExample = () => {
-    setControlsExposed('40');
-    setOddsRatio('2');
-    setCasesExposed('');
-    toast.success('Exemple chargé');
+  const handleExample = () => {
+    setConfidence('95');
+    setPower('80');
+    setRatio('1');
+    setP0('40');
+    setInputMode('or');
+    setOrValue('2.0');
+    toast.success(t('unmatchedCaseControl.exampleLoaded', 'Example data loaded (OR=2.0, p0=40%)'));
   };
 
-  const copyResults = async () => {
-    if (!results) return;
+  const handleCopy = async () => {
+    if (results.length === 0) return;
+    const lines = results.map(r => `${r.method}: Cases ${r.cases}, Controls ${r.controls}, Total ${r.total}`);
+    const text = `Sample sizes:\n${lines.join('\n')}`;
     try {
-      const text = `Taille d'échantillon (Kelsey) : ${results.kelsey.cases} cas, ${results.kelsey.controls} Temoins`;
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('unmatchedCaseControl.copySuccess', 'Results copied'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('unmatchedCaseControl.copyError', 'Copy failed'));
     }
   };
 
-  const exportPDF = () => {
-    if (!results) return;
-    // PDF generation logic (can be moved to a separate module)
-    // ... (simplified here for brevity, but same as original)
+  const handleExport = () => {
+    if (results.length === 0) return;
+    const alpha = (100 - parseFloat(confidence)) / 100;
+    const powerVal = parseFloat(power) / 100;
+    const r = parseFloat(ratio);
+    const p0_frac = parseFloat(p0) / 100;
+    let p1_frac: number;
+    let or: number;
+    if (inputMode === 'or') {
+      or = parseFloat(orValue);
+      p1_frac = computeP1(p0_frac, or);
+    } else {
+      p1_frac = parseFloat(p1Value) / 100;
+      or = computeOR(p0_frac, p1_frac);
+    }
+    try {
+      exportCaseControlPdf(results, { alpha, power: powerVal, ratio: r, p0: p0_frac, p1: p1_frac, or }, t, i18n.language);
+      toast.success(t('unmatchedCaseControl.exportSuccess', 'PDF exported'));
+    } catch (err) {
+      console.error(err);
+      toast.error(t('unmatchedCaseControl.exportError', 'Export failed'));
+    }
   };
+
+  // UI helpers
+  const showResults = results.length > 0 && parseFloat(ratio) > 0 && parseFloat(p0) > 0 && parseFloat(p0) < 100;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans">
@@ -237,9 +499,19 @@ export default function SampleSizeUnmatched() {
         {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
-            <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">Taille Échantillon Cas-Témoins</span></li>
+            <li>
+              <Link href="/" className="hover:text-blue-500 transition-colors">
+                {t('common.home', 'Home')}
+              </Link>
+            </li>
+            <li>
+              <ChevronRight className="w-3 h-3" />
+            </li>
+            <li>
+              <span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">
+                {t('unmatchedCaseControl.title', 'Unmatched Case-Control')}
+              </span>
+            </li>
           </ol>
         </nav>
 
@@ -251,16 +523,19 @@ export default function SampleSizeUnmatched() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Calculateur Taille d'Échantillon
+                {t('unmatchedCaseControl.title', 'Sample Size – Unmatched Case-Control')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Étude cas-témoins non appariée.
+                {t(
+                  'unmatchedCaseControl.subtitle',
+                  'Calculate sample size for unmatched case-control studies (Kelsey, Fleiss, Fleiss with CC)'
+                )}
               </p>
             </div>
           </div>
           <button
-            onClick={() => setShowHelpModal(true)}
-            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+            onClick={() => setShowHelp(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
           >
             <HelpCircle className="w-4 h-4" />
           </button>
@@ -268,49 +543,55 @@ export default function SampleSizeUnmatched() {
 
         {/* Main grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-          {/* Left column - inputs */}
-          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+          {/* Left: Inputs */}
+          <div className="lg:col-span-5 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" />
+                {t('unmatchedCaseControl.parameters', 'Parameters')}
               </h2>
+
               <div className="space-y-5">
-                {/* Confidence Level */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Niveau de confiance
+                    {t('unmatchedCaseControl.confidenceLabel', 'Confidence level (two-sided)')}
                   </label>
                   <select
-                    value={confidenceLevel}
-                    onChange={(e) => setConfidenceLevel(e.target.value)}
+                    value={confidence}
+                    onChange={(e) => setConfidence(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
-                    <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
-                    <option value="99">99%</option>
+                    <option value="90">90 %</option>
+                    <option value="95">95 % ({t('unmatchedCaseControl.standard', 'standard')})</option>
+                    <option value="99">99 %</option>
                   </select>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('unmatchedCaseControl.confidenceNote', 'Usually 95%')}
+                  </p>
                 </div>
 
-                {/* Power */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Puissance
+                    {t('unmatchedCaseControl.powerLabel', 'Power (%)')}
                   </label>
                   <select
                     value={power}
                     onChange={(e) => setPower(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
-                    <option value="80">80% (Standard)</option>
-                    <option value="90">90%</option>
-                    <option value="95">95%</option>
+                    <option value="80">80 %</option>
+                    <option value="85">85 %</option>
+                    <option value="90">90 %</option>
+                    <option value="95">95 %</option>
                   </select>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('unmatchedCaseControl.powerNote', 'Usually 80%')}
+                  </p>
                 </div>
 
-                {/* Ratio */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Ratio Temoins / cas
+                    {t('unmatchedCaseControl.ratioLabel', 'Controls per case (r)')}
                   </label>
                   <input
                     type="number"
@@ -319,72 +600,91 @@ export default function SampleSizeUnmatched() {
                     value={ratio}
                     onChange={(e) => setRatio(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 1"
                   />
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('unmatchedCaseControl.ratioNote', 'Use 1.0 for equal groups')}
+                  </p>
                 </div>
 
-                {/* Controls exposed % */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    % Temoins exposés
+                    {t('unmatchedCaseControl.p0Label', '% of controls exposed')}
                   </label>
                   <input
                     type="number"
-                    min="0.1"
-                    max="99.9"
+                    min="0"
+                    max="100"
                     step="0.1"
-                    value={controlsExposed}
-                    onChange={(e) => setControlsExposed(e.target.value)}
+                    value={p0}
+                    onChange={(e) => setP0(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 40"
                   />
                 </div>
 
-                {/* Cases exposed % */}
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    % cas exposés (ou laissez vide si OR)
-                  </label>
-                  <input
-                    type="number"
-                    min="0.1"
-                    max="99.9"
-                    step="0.1"
-                    value={casesExposed}
-                    onChange={(e) => setCasesExposed(e.target.value)}
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 57.14"
-                  />
-                </div>
-
-                {/* Odds Ratio */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Rapport des cotes (OR) (alternative)
-                  </label>
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={oddsRatio}
-                    onChange={(e) => setOddsRatio(e.target.value)}
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 2"
-                  />
+                  <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 pb-1">
+                    <button
+                      onClick={() => setInputMode('or')}
+                      className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
+                        inputMode === 'or'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                          : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >
+                      Odds Ratio
+                    </button>
+                    <button
+                      onClick={() => setInputMode('p1')}
+                      className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
+                        inputMode === 'p1'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                          : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >
+                      % cases exposed
+                    </button>
+                  </div>
+                  <div className="mt-2">
+                    {inputMode === 'or' ? (
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={orValue}
+                        onChange={(e) => setOrValue(e.target.value)}
+                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+                        placeholder="Odds ratio to detect"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={p1Value}
+                        onChange={(e) => setP1Value(e.target.value)}
+                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+                        placeholder="% cases exposed"
+                      />
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('unmatchedCaseControl.orNote', 'Provide either odds ratio or percent of cases exposed; the other will be calculated automatically.')}
+                  </p>
                 </div>
               </div>
 
-              {/* Action buttons */}
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
                 <button
-                  onClick={loadExample}
+                  onClick={handleExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('unmatchedCaseControl.btnExample', 'Example')}
                 </button>
                 <button
-                  onClick={clear}
-                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                  onClick={handleClear}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl"
+                  aria-label="Clear"
                 >
                   <RotateCcw className="w-5 h-5" />
                 </button>
@@ -392,26 +692,27 @@ export default function SampleSizeUnmatched() {
             </div>
           </div>
 
-          {/* Right column - results */}
+          {/* Right: Results */}
           <div className="lg:col-span-7">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
-              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" />
+                  {t('unmatchedCaseControl.resultsTitle', 'Sample size estimates')}
                 </h2>
-                {results && (
+                {showResults && (
                   <div className="flex gap-2">
                     <button
-                      onClick={copyResults}
+                      onClick={handleCopy}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier le résultat principal"
+                      title={t('unmatchedCaseControl.btnCopy', 'Copy results')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={exportPDF}
+                      onClick={handleExport}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('unmatchedCaseControl.btnExport', 'Export PDF')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -419,84 +720,104 @@ export default function SampleSizeUnmatched() {
                 )}
               </div>
 
-              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
-                {!results ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+              <div className="p-4 lg:p-8 bg-slate-50/30 dark:bg-slate-900/10">
+                {!showResults ? (
+                  <div className="flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
-                    <div className="text-4xl font-bold mt-2">{previewOr}</div>
+                    <p className="text-lg">
+                      {t('unmatchedCaseControl.enterData', 'Enter valid parameters to see results')}
+                    </p>
+                    <p className="text-sm mt-2 text-slate-400">
+                      {t('unmatchedCaseControl.enterDataHint', 'Check that controls exposed % is between 0 and 100, ratio >0, and odds ratio >0 or case exposure % between 0 and 100.')}
+                    </p>
                   </div>
                 ) : (
-                  <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* OR Card */}
-                    <div className="p-8 rounded-3xl text-center border bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30">
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Rapport des Cotes
-                      </p>
-                      <div className="text-5xl font-bold tracking-tight mb-2 text-emerald-600">
-                        {results.oddsRatio.toFixed(2)}
-                      </div>
-                      <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
-                        {results.casesExposed.toFixed(1)}% cas / {results.controlsExposed.toFixed(1)}% Temoins
-                      </span>
-                    </div>
-
-                    {/* Results Table */}
-                    <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-                      {!hasJStat && (
-                        <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
-                          Librairie jStat non détectée – les valeurs Z sont approximées. Pour des calculs précis, incluez jStat.
+                  <div className="space-y-6">
+                    {/* Derived values summary */}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-xl">
+                        <span className="text-slate-500">{t('unmatchedCaseControl.p1Label', '% cases exposed')}</span>
+                        <div className="font-bold text-lg text-slate-800 dark:text-slate-200">
+                          {inputMode === 'or' ? (
+                            (() => {
+                              const p0_frac = parseFloat(p0) / 100;
+                              const or = parseFloat(orValue);
+                              const p1_frac = computeP1(p0_frac, or);
+                              return isNaN(p1_frac) ? '—' : (p1_frac * 100).toFixed(2);
+                            })()
+                          ) : (
+                            p1Value || '—'
+                          )} %
                         </div>
-                      )}
-                      <div className="mt-4 overflow-x-auto">
-                        <table className="w-full text-xs sm:text-sm">
-                          <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-                            <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Méthode</th>
-                              <th className="px-3 py-2 text-center font-semibold">Cas</th>
-                              <th className="px-3 py-2 text-center font-semibold">Temoins</th>
-                              <th className="px-3 py-2 text-center font-semibold">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                            <tr>
-                              <td className="px-3 py-2 font-medium">Kelsey</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.kelsey.cases}</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.kelsey.controls}</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.kelsey.total}</td>
-                            </tr>
-                            <tr>
-                              <td className="px-3 py-2 font-medium">Fleiss</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.fleiss.cases}</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.fleiss.controls}</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.fleiss.total}</td>
-                            </tr>
-                            <tr>
-                              <td className="px-3 py-2 font-medium">Fleiss (correction)</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.fleiss_cc.cases}</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.fleiss_cc.controls}</td>
-                              <td className="px-3 py-2 text-center font-mono">{results.fleiss_cc.total}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                        <p className="text-sm text-slate-400 mt-3 italic">
-                          * Les tailles sont arrondies à l'entier supérieur. Privilégiez Fleiss avec correction pour petits échantillons.
-                        </p>
+                      </div>
+                      <div className="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-xl">
+                        <span className="text-slate-500">{t('unmatchedCaseControl.orLabel', 'Odds Ratio')}</span>
+                        <div className="font-bold text-lg text-slate-800 dark:text-slate-200">
+                          {inputMode === 'or' ? (
+                            orValue || '—'
+                          ) : (
+                            (() => {
+                              const p0_frac = parseFloat(p0) / 100;
+                              const p1_frac = parseFloat(p1Value) / 100;
+                              const or = computeOR(p0_frac, p1_frac);
+                              return isNaN(or) ? '—' : or.toFixed(2);
+                            })()
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Interpretation */}
-                    <div className="p-6 rounded-2xl bg-slate-100 border-slate-400 dark:bg-slate-800">
-                      <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-500" /> Interprétation
-                      </h3>
-                      <p className="text-sm leading-relaxed">
-                        Taille minimale requise pour détecter un OR de <strong>{results.oddsRatio.toFixed(2)}</strong> avec une puissance de <strong>{results.power}%</strong>.
-                        <br />
-                        L'écart d'exposition est de <strong>{(results.casesExposed - results.controlsExposed).toFixed(1)}%</strong>.
-                        <span className="text-slate-500 mt-2 block">
-                          Utilisez la méthode Kelsey pour une estimation conservatrice.
-                        </span>
+                    {/* Results table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-700">
+                            <th className="px-4 py-3 text-left font-semibold text-slate-500">
+                              {t('unmatchedCaseControl.tableHeaderMethod', 'Method')}
+                            </th>
+                            <th className="px-4 py-3 text-right font-semibold text-slate-500">
+                              {t('unmatchedCaseControl.tableHeaderCases', 'Cases')}
+                            </th>
+                            <th className="px-4 py-3 text-right font-semibold text-slate-500">
+                              {t('unmatchedCaseControl.tableHeaderControls', 'Controls')}
+                            </th>
+                            <th className="px-4 py-3 text-right font-semibold text-slate-500">
+                              {t('unmatchedCaseControl.tableHeaderTotal', 'Total')}
+                            </th>
+                           </tr>
+                        </thead>
+                        <tbody>
+                          {results.map((r) => (
+                            <tr key={r.method} className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                              <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                                {r.method === 'FleissCC' ? 'Fleiss (CC)' : r.method}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {r.cases.toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {r.controls.toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                                {r.total.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* References */}
+                    <div className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl">
+                      <div className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        {t('unmatchedCaseControl.referencesTitle', 'References')}
+                      </div>
+                      <ul className="list-disc list-inside space-y-0.5">
+                        <li>Kelsey et al., Methods in Observational Epidemiology 2nd Ed., Table 12-15</li>
+                        <li>Fleiss, Statistical Methods for Rates and Proportions, formulas 3.18 & 3.19</li>
+                      </ul>
+                      <p className="mt-2 italic">
+                        {t('unmatchedCaseControl.footnote', 'CC = continuity correction. Results are rounded up to the nearest integer.')}
                       </p>
                     </div>
                   </div>
@@ -506,173 +827,98 @@ export default function SampleSizeUnmatched() {
           </div>
         </div>
 
-
         {/* Help Modal */}
-        {showHelpModal && (
+        {showHelp && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop */}
             <div
               className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
-              onClick={() => setShowHelpModal(false)}
+              onClick={() => setShowHelp(false)}
             />
-            
-            {/* Modal content */}
-            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-              {/* Sticky header */}
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide Rapide – Taille d'échantillon (Cas-Témoins)
+                  {t('unmatchedCaseControl.helpTitle', 'Help & Methods')}
                 </h3>
                 <button
-                  onClick={() => setShowHelpModal(false)}
+                  onClick={() => setShowHelp(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-                  aria-label="Fermer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
-              {/* Body */}
-              <div className="p-6 md:p-8 space-y-8">
-                {/* Section 1*/}
+              <div className="p-6 md:p-8 space-y-6">
                 <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       1
                     </div>
-                    Le Principe
+                    {t('unmatchedCaseControl.helpPrincipleTitle', 'Purpose')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce calculateur estime le nombre minimal de sujets nécessaire pour une étude cas-témoins non appariée. 
-                    L'objectif est de détecter une association entre une exposition et une maladie, exprimée par un rapport 
-                    des cotes (Odds Ratio, OR), avec une puissance et un niveau de confiance donnés.
-                  </p>
-                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mt-2">
-                    Les calculs sont basés sur la distribution normale et les formules standards de Kelsey et Fleiss. 
-                    Ils nécessiter la connaissance de la proportion de sujets exposés dans le groupe contrôle, ainsi que 
-                    soit la proportion de cas exposés, soit directement l'OR attendu.
+                    {t(
+                      'unmatchedCaseControl.helpPrinciple',
+                      'This calculator estimates the required sample size for an unmatched case-control study. You specify the expected proportion of exposure among controls (p0), the desired odds ratio (or the proportion of exposure among cases), the control-to-case ratio (r), and the desired confidence level and power. The sample sizes are computed using three common methods: Kelsey (normal approximation), Fleiss (exact variance), and Fleiss with continuity correction.'
+                    )}
                   </p>
                 </section>
 
-                {/* Section 2*/}
                 <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       2
                     </div>
-                    Les Paramètres
+                    {t('unmatchedCaseControl.helpFormulasTitle', 'Formulas')}
                   </h4>
-                  <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Niveau de confiance (1‑α)</strong> – Probabilité que 
-                      l'intervalle de confiance de l'OR contienne la vraie valeur. Typiquement 95 %.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Puissance (1‑β)</strong> – Probabilité de détecter 
-                      un effet (OR ≠ 1) s'il existe réellement. Souvent fixée à 80 % ou 90 %.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Ratio contrôles / cas</strong> – Nombre de témoins 
-                      pour chaque cas. Un ratio de 1 est équilibré ; un ratio &gt; 1 augmente la puissance.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">% contrôles exposés</strong> – Proportion attendue 
-                      d'exposition chez les témoins (doit être comprise entre 0 et 100 %).
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">% cas exposés</strong> – Proportion attendue 
-                      d'exposition chez les cas. Si vous préférez, vous pouvez entrer directement l'OR dans le champ 
-                      prévu à cet effet.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Rapport des cotes (OR)</strong> – Mesure d'association. 
-                      Saisissez‑le à la place du pourcentage de cas exposés si vous le connaissez.
-                    </p>
+                  <div className="space-y-4 text-sm">
+                    <div>
+                      <div className="font-mono font-bold">Kelsey:</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        n_cases = (r+1)/r × p̄(1-p̄) × (z<sub>α/2</sub> + z<sub>β</sub>)² / (p₁ - p₀)²,  p̄ = (p₁ + r·p₀)/(r+1)
+                      </div>
+                    </div>
+                    <div>
+                      <div className="font-mono font-bold">Fleiss:</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        n_cases = [ z<sub>α/2</sub>√((r+1)p̄(1-p̄)) + z<sub>β</sub>√(r·p₀(1-p₀) + p₁(1-p₁)) ]² / [ r·(p₁-p₀)² ]
+                      </div>
+                    </div>
+                    <div>
+                      <div className="font-mono font-bold">Fleiss with CC:</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        n_cc = n_fleiss / 4 × (1 + √(1 + 2(r+1)/(n_fleiss·r·|p₁-p₀|)))²
+                        <br />
+                        where n_fleiss is the <strong>unrounded</strong> Fleiss sample size (cases).
+                      </div>
+                    </div>
                   </div>
                 </section>
 
-                {/* Section 3 */}
                 <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       3
                     </div>
-                    Méthodes de calcul
+                    {t('unmatchedCaseControl.helpUsageTitle', 'Usage')}
                   </h4>
-                  <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Kelsey</strong> – Méthode classique pour les études 
-                      cas‑témoins (Rothman & Boice, 1979). Elle utilise la moyenne pondérée des variances et inclut un 
-                      ajustement (+1) pour se rapprocher des résultats d'OpenEpi.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Fleiss</strong> – Approximation sans correction de 
-                      continuité, recommandée pour les grands échantillons.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Fleiss avec correction</strong> – Intègre une 
-                      correction de continuité pour mieux approcher le test du χ², particulièrement utile quand les 
-                      effectifs sont faibles.
-                    </p>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-3 italic">
-                    Les valeurs critiques (z) sont calculées via la librairie <code>jStat</code> si elle est chargée ; 
-                    sinon, des valeurs fixes standard sont utilisées (1,645 pour 90 %, 1,96 pour 95 %, 2,576 pour 99 % 
-                    et 0,842 pour 80 %, 1,282 pour 90 %, 1,645 pour 95 % de puissance).
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {t(
+                      'unmatchedCaseControl.helpUsage',
+                      'Enter the confidence level (usually 95%), power (80% is typical), the ratio of controls to cases (1 for equal groups), the anticipated percent of controls exposed (based on literature or prior knowledge), and either the odds ratio you wish to detect or the percent of cases exposed. The sample sizes will update automatically. Use the "Example" button to load typical values. You can copy the results to the clipboard or export them as a PDF report.'
+                    )}
                   </p>
                 </section>
 
-                {/* Section 4: Interprétation */}
-                <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      4
-                    </div>
-                    Interprétation des résultats
-                  </h4>
-                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Le tableau donne le nombre de cas et de contrôles nécessaires selon chaque méthode. Les tailles sont 
-                    arrondies à l'entier supérieur pour garantir la puissance. En pratique, on choisit souvent la méthode 
-                    de Kelsey pour une estimation conservatrice, ou Fleiss avec correction si l'on suspecte des effectifs 
-                    faibles. La ligne « Total » correspond à la somme cas + contrôles.
-                  </p>
-                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mt-2">
-                    <strong className="text-slate-900 dark:text-white">Exemple</strong> : avec 40 % de contrôles exposés, 
-                    un OR de 2, une puissance de 80 % et un niveau de confiance de 95 %, Kelsey donne environ 93 cas et 
-                    93 contrôles (total 186).
-                  </p>
-                </section>
-
-                {/* Section 5: Référence */}
-                <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      5
-                    </div>
-                    Source & Référence
-                  </h4>
-                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Cet outil est calqué sur le module « Sample Size for Unmatched Case-Control Studies » d'
-                    <a
-                      href="https://www.openepi.com/SampleSize/SSCC.htm"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:text-blue-700 underline font-medium"
-                    >OpenEpi</a>. Les formules implémentées sont celles décrites dans :
-                  </p>
-                  <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-300 mt-2 space-y-1">
-                    <li>Kelsey JL, Thompson WD, Evans AS (1986). <em>Methods in Observational Epidemiology</em>.</li>
-                    <li>Fleiss JL (1981). <em>Statistical Methods for Rates and Proportions</em>.</li>
-                  </ul>
+                <div className="text-right">
                   <a
                     href="https://www.openepi.com/SampleSize/SSCC.htm"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
+                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700"
                   >
-                    Voir sur OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('unmatchedCaseControl.helpSource', 'OpenEpi reference')}
+                    <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
-                </section>
+                </div>
               </div>
             </div>
           </div>
