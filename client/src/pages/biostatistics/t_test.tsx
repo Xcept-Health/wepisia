@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -39,6 +40,8 @@ import autoTable from 'jspdf-autotable';
  */
 
 export default function TwoSampleTTest() {
+  const { t } = useTranslation();
+
   // ----- State declarations -----
   // Group 1
   const [n1, setN1] = useState<string>('');           // Sample size group 1
@@ -126,63 +129,60 @@ export default function TwoSampleTTest() {
     const ciEqualUpper = meanDiff + meEqual;
 
     // ----- Welch's t-test (unequal variances) -----
-// ----- Welch's t-test (unequal variances) -----
-const seWelch = Math.sqrt(se1 * se1 + se2 * se2);
-const tUnequal = meanDiff / seWelch;
+    const seWelch = Math.sqrt(se1 * se1 + se2 * se2);
+    const tUnequal = meanDiff / seWelch;
 
-// Satterthwaite degrees of freedom
-const v1 = se1 * se1;
-const v2 = se2 * se2;
-const dfUnequal = Math.pow(v1 + v2, 2) /
-  (Math.pow(v1, 2) / (a_n - 1) + Math.pow(v2, 2) / (b_n - 1));
+    // Satterthwaite degrees of freedom
+    const v1 = se1 * se1;
+    const v2 = se2 * se2;
+    const dfUnequal = Math.pow(v1 + v2, 2) /
+      (Math.pow(v1, 2) / (a_n - 1) + Math.pow(v2, 2) / (b_n - 1));
 
+    const dfUnequalInt = Math.round(dfUnequal);
 
-const dfUnequalInt = Math.round(dfUnequal);
+    let pUnequal = 0;
+    let tCritUnequal = 0;
+    if (isJStatReady && (window as any).jStat?.studentt?.cdf) {
+      pUnequal    = 2 * (1 - (window as any).jStat.studentt.cdf(Math.abs(tUnequal), dfUnequalInt));
+      tCritUnequal = (window as any).jStat.studentt.inv(1 - alpha / 2, dfUnequalInt);
+    } else {
+      pUnequal     = 0.05;
+      tCritUnequal = tCritEqual;
+    }
 
-let pUnequal = 0;
-let tCritUnequal = 0;
-if (isJStatReady && (window as any).jStat?.studentt?.cdf) {
-  pUnequal    = 2 * (1 - (window as any).jStat.studentt.cdf(Math.abs(tUnequal), dfUnequalInt));
-  tCritUnequal = (window as any).jStat.studentt.inv(1 - alpha / 2, dfUnequalInt);
-} else {
-  pUnequal     = 0.05;
-  tCritUnequal = tCritEqual;
-}
+    const meUnequal      = tCritUnequal * seWelch;
+    const ciUnequalLower = meanDiff - meUnequal;
+    const ciUnequalUpper = meanDiff + meUnequal;
 
-const meUnequal      = tCritUnequal * seWelch;
-const ciUnequalLower = meanDiff - meUnequal;
-const ciUnequalUpper = meanDiff + meUnequal;
+    // ----- F-test for equality of variances (Hartley's F-max / standard F-test) -----
+    let fValue = 0, dfNum = 0, dfDen = 0, pF = 0;
 
+    const var1 = a_sd * a_sd;
+    const var2 = b_sd * b_sd;
 
-        // ----- F-test for equality of variances (Hartley's F-max / standard F-test) -----
-        let fValue = 0, dfNum = 0, dfDen = 0, pF = 0;
+    if (var1 > var2) {
+      fValue = var1 / var2;
+      dfNum = a_n - 1;
+      dfDen = b_n - 1;
+    } else {
+      fValue = var2 / var1;
+      dfNum = b_n - 1;
+      dfDen = a_n - 1;
+    }
 
-        const var1 = a_sd * a_sd;
-        const var2 = b_sd * b_sd;
-    
-        if (var1 > var2) {
-          fValue = var1 / var2;
-          dfNum = a_n - 1;
-          dfDen = b_n - 1;
-        } else {
-          fValue = var2 / var1;
-          dfNum = b_n - 1;
-          dfDen = a_n - 1;
-        }
-    
-        if (isJStatReady && (window as any).jStat?.beta?.cdf) {
-          // Formule EXACTE correspondant à OpenEpi (distribution F via Beta)
-          const z = (dfNum * fValue) / (dfNum * fValue + dfDen);
-          const cdfF = (window as any).jStat.beta.cdf(
-            z,
-            dfNum / 2,
-            dfDen / 2
-          );
-          const upperTail = 1 - cdfF;
-          pF = 2 * upperTail;   // p-valeur bilatérale
-        } else {
-          pF = 0.05; // fallback
-        }
+    if (isJStatReady && (window as any).jStat?.beta?.cdf) {
+      // Exact formula matching OpenEpi (F via Beta)
+      const z = (dfNum * fValue) / (dfNum * fValue + dfDen);
+      const cdfF = (window as any).jStat.beta.cdf(
+        z,
+        dfNum / 2,
+        dfDen / 2
+      );
+      const upperTail = 1 - cdfF;
+      pF = 2 * upperTail;   // two-tailed p-value
+    } else {
+      pF = 0.05; // fallback
+    }
 
     // ----- Assemble results object -----
     setResults({
@@ -218,7 +218,7 @@ const ciUnequalUpper = meanDiff + meUnequal;
     setSd2('');
     setConfidenceLevel('95');
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('twoSampleTTest.clearMessage'));
   };
 
   // Load an example dataset (from OpenEpi typical demo)
@@ -229,39 +229,39 @@ const ciUnequalUpper = meanDiff + meUnequal;
     setN2('18');
     setMean2('7.44');
     setSd2('3.698');
-    toast.success('Exemple chargé');
+    toast.success(t('twoSampleTTest.exampleLoaded'));
   };
 
   // Copy results to clipboard as formatted text
   const copyResults = async () => {
     if (!results) return;
-    const text = `Test t de deux échantillons indépendants
-Groupe 1 : n=${results.n1}, moyenne=${formatNumber(results.mean1)}, écart-type=${formatNumber(results.sd1)}
-Groupe 2 : n=${results.n2}, moyenne=${formatNumber(results.mean2)}, écart-type=${formatNumber(results.sd2)}
-Différence des moyennes : ${formatNumber(results.meanDiff)}
+    const text = `${t('twoSampleTTest.copyPrefix')}
+${t('twoSampleTTest.group1')} : n=${results.n1}, ${t('twoSampleTTest.mean')}=${formatNumber(results.mean1)}, ${t('twoSampleTTest.sd')}=${formatNumber(results.sd1)}
+${t('twoSampleTTest.group2')} : n=${results.n2}, ${t('twoSampleTTest.mean')}=${formatNumber(results.mean2)}, ${t('twoSampleTTest.sd')}=${formatNumber(results.sd2)}
+${t('twoSampleTTest.meanDiff')} : ${formatNumber(results.meanDiff)}
 
-Variance égale :
+${t('twoSampleTTest.equalVariance')} :
   t = ${formatNumber(results.tEqual)}, ddl = ${results.dfEqual}, p = ${formatNumber(results.pEqual)}
-  IC ${results.conf}% : [${formatNumber(results.ciEqualLower)} – ${formatNumber(results.ciEqualUpper)}]
+  ${t('twoSampleTTest.ci', { level: results.conf })} : [${formatNumber(results.ciEqualLower)} – ${formatNumber(results.ciEqualUpper)}]
 
-Variance inégale (Welch) :
+${t('twoSampleTTest.unequalVariance')} (Welch) :
   t = ${formatNumber(results.tUnequal)}, ddl = ${results.dfUnequal}, p = ${formatNumber(results.pUnequal)}
-  IC ${results.conf}% : [${formatNumber(results.ciUnequalLower)} – ${formatNumber(results.ciUnequalUpper)}]
+  ${t('twoSampleTTest.ci', { level: results.conf })} : [${formatNumber(results.ciUnequalLower)} – ${formatNumber(results.ciUnequalUpper)}]
 
-Test d’égalité des variances (F de Hartley) :
+${t('twoSampleTTest.fTestTitle')} (Hartley) :
   F = ${formatNumber(results.fValue)}, ddl = ${results.dfNum}, ${results.dfDen}, p = ${formatNumber(results.pF)}`;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('twoSampleTTest.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('twoSampleTTest.copyError'));
     }
   };
 
   // Export a comprehensive PDF report
   const exportPDF = () => {
     if (!results) {
-      toast.error('Veuillez d’abord effectuer un calcul');
+      toast.error(t('twoSampleTTest.exportNoData'));
       return;
     }
 
@@ -285,27 +285,27 @@ Test d’égalité des variances (F de Hartley) :
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport du test t de deux échantillons", 20, 25);
+      doc.text(t('twoSampleTTest.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
+      doc.text(`${t('twoSampleTTest.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
       doc.text('TwoSampleTTest', 190, 32, { align: 'right' });
 
       // ----- Input data summary -----
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Données analysées', 20, y);
+      doc.text(t('twoSampleTTest.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
       y += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.text(`Groupe 1 : n = ${results.n1}, moyenne = ${formatNumber(results.mean1)}, écart-type = ${formatNumber(results.sd1)}`, 25, y); y += 6;
-      doc.text(`Groupe 2 : n = ${results.n2}, moyenne = ${formatNumber(results.mean2)}, écart-type = ${formatNumber(results.sd2)}`, 25, y); y += 6;
-      doc.text(`Niveau de confiance : ${results.conf}%`, 25, y); y += 12;
+      doc.text(`${t('twoSampleTTest.group1')} : n = ${results.n1}, ${t('twoSampleTTest.mean')} = ${formatNumber(results.mean1)}, ${t('twoSampleTTest.sd')} = ${formatNumber(results.sd1)}`, 25, y); y += 6;
+      doc.text(`${t('twoSampleTTest.group2')} : n = ${results.n2}, ${t('twoSampleTTest.mean')} = ${formatNumber(results.mean2)}, ${t('twoSampleTTest.sd')} = ${formatNumber(results.sd2)}`, 25, y); y += 6;
+      doc.text(`${t('twoSampleTTest.confidenceLevel')} : ${results.conf}%`, 25, y); y += 12;
 
       // ----- Mean difference card -----
       doc.setFillColor(236, 253, 245);
@@ -314,7 +314,7 @@ Test d’égalité des variances (F de Hartley) :
       doc.setTextColor(5, 150, 105);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text('DIFFÉRENCE DES MOYENNES', 105, y + 8, { align: 'center' });
+      doc.text(t('twoSampleTTest.meanDiffCard'), 105, y + 8, { align: 'center' });
       doc.setFontSize(22);
       doc.text(formatNumber(results.meanDiff), 105, y + 24, { align: 'center' });
       y += 45;
@@ -322,19 +322,19 @@ Test d’égalité des variances (F de Hartley) :
       // ----- Main t-test results table -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text(`Résultats du test t – IC ${results.conf}%`, 20, y);
+      doc.text(t('twoSampleTTest.tTestTitle', { level: results.conf }), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
 
       const tTestBody = [
-        ['Variance égale', formatNumber(results.tEqual), results.dfEqual.toString(), formatNumber(results.pEqual), formatNumber(results.meanDiff), formatNumber(results.ciEqualLower), formatNumber(results.ciEqualUpper)],
-        ['Variance inégale', formatNumber(results.tUnequal), results.dfUnequal.toString(), formatNumber(results.pUnequal), formatNumber(results.meanDiff), formatNumber(results.ciUnequalLower), formatNumber(results.ciUnequalUpper)],
+        [t('twoSampleTTest.equalVariance'), formatNumber(results.tEqual), results.dfEqual.toString(), formatNumber(results.pEqual), formatNumber(results.meanDiff), formatNumber(results.ciEqualLower), formatNumber(results.ciEqualUpper)],
+        [t('twoSampleTTest.unequalVariance'), formatNumber(results.tUnequal), results.dfUnequal.toString(), formatNumber(results.pUnequal), formatNumber(results.meanDiff), formatNumber(results.ciUnequalLower), formatNumber(results.ciUnequalUpper)],
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Méthode', 'Statistique t', 'ddl', 'valeur-p', 'Différence', 'Limite inf.', 'Limite sup.']],
+        head: [[t('twoSampleTTest.method'), t('twoSampleTTest.tStat'), t('twoSampleTTest.df'), t('twoSampleTTest.pValue'), t('twoSampleTTest.meanDiff'), t('twoSampleTTest.lowerCI'), t('twoSampleTTest.upperCI')]],
         body: tTestBody,
         theme: 'striped',
         headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -357,7 +357,7 @@ Test d’égalité des variances (F de Hartley) :
       // ----- F-test for equality of variances -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text("Test d'égalité des variances (F de Hartley)", 20, y);
+      doc.text(t('twoSampleTTest.fTestTitle'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
@@ -368,7 +368,7 @@ Test d’égalité des variances (F de Hartley) :
 
       autoTable(doc, {
         startY: y,
-        head: [['Statistique F', 'ddl (num., dénom.)', 'valeur-p']],
+        head: [[t('twoSampleTTest.fStat'), t('twoSampleTTest.fDf'), t('twoSampleTTest.pValue')]],
         body: fTestBody,
         theme: 'striped',
         headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -387,7 +387,7 @@ Test d’égalité des variances (F de Hartley) :
       // ----- Interpretation -----
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Interprétation', 20, y);
+      doc.text(t('twoSampleTTest.interpretation'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
@@ -395,10 +395,10 @@ Test d’égalité des variances (F de Hartley) :
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
 
-      let interpretation = `À ${results.conf}% de confiance, la différence des moyennes est de ${formatNumber(results.meanDiff)}.\n`;
-      interpretation += `• Test de Student (variances égales) : t = ${formatNumber(results.tEqual)}, ddl = ${results.dfEqual}, p = ${formatNumber(results.pEqual)}. ${results.pEqual < 0.05 ? 'Différence significative.' : 'Non significatif.'}\n`;
-      interpretation += `• Test de Welch (variances inégales) : t = ${formatNumber(results.tUnequal)}, ddl = ${results.dfUnequal}, p = ${formatNumber(results.pUnequal)}. ${results.pUnequal < 0.05 ? 'Différence significative.' : 'Non significatif.'}\n`;
-      interpretation += `• Test d’égalité des variances : F = ${formatNumber(results.fValue)}, ddl = ${results.dfNum}, ${results.dfDen}, p = ${formatNumber(results.pF)}. ${results.pF < 0.05 ? 'Les variances sont significativement différentes.' : 'Les variances sont homogènes.'}`;
+      let interpretation = `${t('twoSampleTTest.interpretationText', { level: results.conf, diff: formatNumber(results.meanDiff) })}\n`;
+      interpretation += `• ${t('twoSampleTTest.equalVariance')} : t = ${formatNumber(results.tEqual)}, ddl = ${results.dfEqual}, p = ${formatNumber(results.pEqual)}. ${results.pEqual < 0.05 ? t('twoSampleTTest.significant') : t('twoSampleTTest.nonSignificant')}\n`;
+      interpretation += `• ${t('twoSampleTTest.unequalVariance')} : t = ${formatNumber(results.tUnequal)}, ddl = ${results.dfUnequal}, p = ${formatNumber(results.pUnequal)}. ${results.pUnequal < 0.05 ? t('twoSampleTTest.significant') : t('twoSampleTTest.nonSignificant')}\n`;
+      interpretation += `• ${t('twoSampleTTest.fTestTitle')} : F = ${formatNumber(results.fValue)}, ddl = ${results.dfNum}, ${results.dfDen}, p = ${formatNumber(results.pF)}. ${results.pF < 0.05 ? t('twoSampleTTest.variancesDifferent') : t('twoSampleTTest.variancesHomogeneous')}`;
 
       const splitText = doc.splitTextToSize(interpretation, 170);
       doc.text(splitText, 20, y);
@@ -408,8 +408,8 @@ Test d’égalité des variances (F de Hartley) :
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Test t de Student (égalité des variances) et test t de Welch (Satterthwaite).', 20, y); y += 4;
-      doc.text("Test d'égalité des variances : F de Hartley (ratio des variances).", 20, y); y += 4;
+      doc.text(t('twoSampleTTest.references'), 20, y); y += 4;
+      doc.text(t('twoSampleTTest.fTestRef'), 20, y); y += 4;
 
       // ----- Footer -----
       const footerY = 280;
@@ -418,13 +418,13 @@ Test d’égalité des variances (F de Hartley) :
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
+      doc.text(t('twoSampleTTest.footer'), 190, footerY + 5, { align: 'right' });
 
       doc.save(`TwoSampleTTest_n1_${results.n1}_n2_${results.n2}.pdf`);
-      toast.success('Rapport PDF exporté');
+      toast.success(t('twoSampleTTest.exportSuccess'));
     } catch (error) {
       console.error(error);
-      toast.error('Erreur PDF');
+      toast.error(t('twoSampleTTest.exportError'));
     }
   };
 
@@ -435,9 +435,9 @@ Test d’égalité des variances (F de Hartley) :
         {/* Breadcrumb navigation */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">Test t de deux échantillons indépendants</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('twoSampleTTest.title')}</span></li>
           </ol>
         </nav>
 
@@ -449,10 +449,10 @@ Test d’égalité des variances (F de Hartley) :
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Test t de deux échantillons indépendants
+                {t('twoSampleTTest.title')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Comparaison de deux moyennes – Test t de Student, test de Welch, test d’égalité des variances
+                {t('twoSampleTTest.description')}
               </p>
             </div>
           </div>
@@ -469,17 +469,17 @@ Test d’égalité des variances (F de Hartley) :
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('twoSampleTTest.parameters')}
               </h2>
               <div className="space-y-6">
                 {/* Group 1 inputs */}
                 <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-blue-500" /> Groupe 1
+                    <TrendingUp className="w-4 h-4 text-blue-500" /> {t('twoSampleTTest.group1')}
                   </h3>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Taille (n₁)</label>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('twoSampleTTest.sampleSize')}</label>
                       <input
                         type="number"
                         value={n1}
@@ -491,7 +491,7 @@ Test d’égalité des variances (F de Hartley) :
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Moyenne</label>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('twoSampleTTest.mean')}</label>
                       <input
                         type="number"
                         value={mean1}
@@ -502,7 +502,7 @@ Test d’égalité des variances (F de Hartley) :
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Écart-type</label>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('twoSampleTTest.sd')}</label>
                       <input
                         type="number"
                         value={sd1}
@@ -519,11 +519,11 @@ Test d’égalité des variances (F de Hartley) :
                 {/* Group 2 inputs */}
                 <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-indigo-500" /> Groupe 2
+                    <TrendingUp className="w-4 h-4 text-indigo-500" /> {t('twoSampleTTest.group2')}
                   </h3>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Taille (n₂)</label>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('twoSampleTTest.sampleSize')}</label>
                       <input
                         type="number"
                         value={n2}
@@ -535,7 +535,7 @@ Test d’égalité des variances (F de Hartley) :
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Moyenne</label>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('twoSampleTTest.mean')}</label>
                       <input
                         type="number"
                         value={mean2}
@@ -546,7 +546,7 @@ Test d’égalité des variances (F de Hartley) :
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Écart-type</label>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('twoSampleTTest.sd')}</label>
                       <input
                         type="number"
                         value={sd2}
@@ -562,7 +562,7 @@ Test d’égalité des variances (F de Hartley) :
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Intervalle de confiance bilatéral
+                    {t('twoSampleTTest.confidenceLabel')}
                   </label>
                   <select
                     value={confidenceLevel}
@@ -570,7 +570,7 @@ Test d’égalité des variances (F de Hartley) :
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
                     <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
+                    <option value="95">{t('twoSampleTTest.standard')} 95%</option>
                     <option value="99">99%</option>
                   </select>
                 </div>
@@ -581,7 +581,7 @@ Test d’égalité des variances (F de Hartley) :
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('twoSampleTTest.example')}
                 </button>
                 <button
                   onClick={clear}
@@ -591,7 +591,6 @@ Test d’égalité des variances (F de Hartley) :
                 </button>
               </div>
             </div>
-
           </div>
 
           {/* Right column – results display */}
@@ -599,21 +598,21 @@ Test d’égalité des variances (F de Hartley) :
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('twoSampleTTest.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier les résultats"
+                      title={t('twoSampleTTest.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('twoSampleTTest.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -625,7 +624,7 @@ Test d’égalité des variances (F de Hartley) :
                   // Placeholder when no results
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('twoSampleTTest.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">
                       0.00
                     </div>
@@ -636,56 +635,56 @@ Test d’égalité des variances (F de Hartley) :
                     {/* Mean difference card */}
                     <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-5 text-center">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
-                        Différence des moyennes (groupe 1 – groupe 2)
+                        {t('twoSampleTTest.meanDiffCard')}
                       </p>
                       <div className="text-3xl md:text-4xl font-bold text-emerald-600 dark:text-emerald-400 mb-1">
                         {formatNumber(results.meanDiff)}
                       </div>
                       <p className="text-xs text-slate-500">
-                        IC {results.conf}% (var. égale) : [{formatNumber(results.ciEqualLower)} – {formatNumber(results.ciEqualUpper)}]
+                        {t('twoSampleTTest.ci', { level: results.conf })} ({t('twoSampleTTest.equalVariance')}) : [{formatNumber(results.ciEqualLower)} – {formatNumber(results.ciEqualUpper)}]
                       </p>
                     </div>
 
                     {/* Descriptive statistics cards */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400 mb-2">Groupe 1</p>
+                        <p className="text-xs font-bold uppercase text-slate-400 mb-2">{t('twoSampleTTest.group1')}</p>
                         <div className="space-y-1 text-sm">
                           <div className="flex justify-between">
                             <span className="text-slate-500">n</span>
                             <span className="font-mono font-medium">{results.n1}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-slate-500">Moyenne</span>
+                            <span className="text-slate-500">{t('twoSampleTTest.mean')}</span>
                             <span className="font-mono font-medium">{formatNumber(results.mean1)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-slate-500">Écart-type</span>
+                            <span className="text-slate-500">{t('twoSampleTTest.sd')}</span>
                             <span className="font-mono font-medium">{formatNumber(results.sd1)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-slate-500">Erreur-type</span>
+                            <span className="text-slate-500">{t('twoSampleTTest.se')}</span>
                             <span className="font-mono font-medium">{formatNumber(results.se1)}</span>
                           </div>
                         </div>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400 mb-2">Groupe 2</p>
+                        <p className="text-xs font-bold uppercase text-slate-400 mb-2">{t('twoSampleTTest.group2')}</p>
                         <div className="space-y-1 text-sm">
                           <div className="flex justify-between">
                             <span className="text-slate-500">n</span>
                             <span className="font-mono font-medium">{results.n2}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-slate-500">Moyenne</span>
+                            <span className="text-slate-500">{t('twoSampleTTest.mean')}</span>
                             <span className="font-mono font-medium">{formatNumber(results.mean2)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-slate-500">Écart-type</span>
+                            <span className="text-slate-500">{t('twoSampleTTest.sd')}</span>
                             <span className="font-mono font-medium">{formatNumber(results.sd2)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-slate-500">Erreur-type</span>
+                            <span className="text-slate-500">{t('twoSampleTTest.se')}</span>
                             <span className="font-mono font-medium">{formatNumber(results.se2)}</span>
                           </div>
                         </div>
@@ -696,11 +695,11 @@ Test d’égalité des variances (F de Hartley) :
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Test t – IC {results.conf}%
+                          {t('twoSampleTTest.tTestTitle', { level: results.conf })}
                         </h3>
                         {!results.isJStatReady && (
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
-                            Approximation (jStat non chargé)
+                            {t('twoSampleTTest.approxWarning')}
                           </span>
                         )}
                       </div>
@@ -708,18 +707,18 @@ Test d’égalité des variances (F de Hartley) :
                         <table className="w-full text-sm">
                           <thead className="bg-slate-100 dark:bg-slate-700/50">
                             <tr>
-                              <th className="px-4 py-3 text-left">Méthode</th>
-                              <th className="px-4 py-3 text-center">Statistique t</th>
-                              <th className="px-4 py-3 text-center">ddl</th>
-                              <th className="px-4 py-3 text-center">valeur-p</th>
-                              <th className="px-4 py-3 text-center">Différence</th>
-                              <th className="px-4 py-3 text-center">Limite inf.</th>
-                              <th className="px-4 py-3 text-center">Limite sup.</th>
+                              <th className="px-4 py-3 text-left">{t('twoSampleTTest.method')}</th>
+                              <th className="px-4 py-3 text-center">{t('twoSampleTTest.tStat')}</th>
+                              <th className="px-4 py-3 text-center">{t('twoSampleTTest.df')}</th>
+                              <th className="px-4 py-3 text-center">{t('twoSampleTTest.pValue')}</th>
+                              <th className="px-4 py-3 text-center">{t('twoSampleTTest.meanDiff')}</th>
+                              <th className="px-4 py-3 text-center">{t('twoSampleTTest.lowerCI')}</th>
+                              <th className="px-4 py-3 text-center">{t('twoSampleTTest.upperCI')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             <tr>
-                              <td className="px-4 py-3 font-medium">Variance égale</td>
+                              <td className="px-4 py-3 font-medium">{t('twoSampleTTest.equalVariance')}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.tEqual)}</td>
                               <td className="px-4 py-3 text-center font-mono">{results.dfEqual}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.pEqual)}</td>
@@ -728,7 +727,7 @@ Test d’égalité des variances (F de Hartley) :
                               <td className="px-4 py-3 text-center font-mono text-red-600 dark:text-red-400">{formatNumber(results.ciEqualUpper)}</td>
                             </tr>
                             <tr className="bg-slate-50/50 dark:bg-slate-700/20">
-                              <td className="px-4 py-3 font-medium">Variance inégale</td>
+                              <td className="px-4 py-3 font-medium">{t('twoSampleTTest.unequalVariance')}</td>
                               <td className="px-4 py-3 text-center font-mono">{Number(formatNumber(results.tUnequal)).toFixed(4)}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.dfUnequal, 2)}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.pUnequal)}</td>
@@ -745,29 +744,28 @@ Test d’égalité des variances (F de Hartley) :
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
                       <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
                         <Sigma className="w-4 h-4 text-blue-500" />
-                        Test d'égalité des variances (F de Hartley)
+                        {t('twoSampleTTest.fTestTitle')}
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
-                          <p className="text-xs text-slate-500">Statistique F</p>
+                          <p className="text-xs text-slate-500">{t('twoSampleTTest.fStat')}</p>
                           <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.fValue)}</p>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
-                          <p className="text-xs text-slate-500">ddl (num., dénom.)</p>
+                          <p className="text-xs text-slate-500">{t('twoSampleTTest.fDf')}</p>
                           <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{results.dfNum}, {results.dfDen}</p>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
-                          <p className="text-xs text-slate-500">valeur-p</p>
+                          <p className="text-xs text-slate-500">{t('twoSampleTTest.pValue')}</p>
                           <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.pF)}</p>
                         </div>
                       </div>
                       <p className="text-xs text-slate-600 dark:text-slate-400 mt-3">
                         {results.pF < 0.05
-                          ? '→ Les variances sont significativement différentes (p < 0.05). Privilégiez le test de Welch.'
-                          : '→ Les variances ne sont pas significativement différentes (p >= 0.05). Le test de Student est approprié.'}
+                          ? t('twoSampleTTest.variancesDifferentAdvice')
+                          : t('twoSampleTTest.variancesHomogeneousAdvice')}
                       </p>
                     </div>
-
                   </div>
                 )}
               </div>
@@ -785,7 +783,7 @@ Test d’égalité des variances (F de Hartley) :
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide – TwoSampleTTest (Test t indépendant)
+                  {t('twoSampleTTest.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -798,42 +796,38 @@ Test d’égalité des variances (F de Hartley) :
               <div className="p-6 md:p-8 space-y-8">
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      1
-                    </div>
-                    Le principe
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">1</div>
+                    {t('twoSampleTTest.helpPrincipleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce module reproduit l’outil <strong>Two Sample T-Test</strong> d’OpenEpi. Il compare les moyennes de deux groupes indépendants à partir de leurs tailles, moyennes et écarts-types. Deux versions du test t sont fournies : avec ou sans hypothèse d’égalité des variances. Le test d’égalité des variances (F de Hartley) permet de choisir la méthode appropriée.
+                    {t('twoSampleTTest.helpPrincipleText')}
                   </p>
                 </section>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                      Student
+                      {t('twoSampleTTest.studentTitle')}
                     </div>
-                    <div className="text-xs text-slate-500">Var. égales, ddl = n₁+n₂‑2</div>
+                    <div className="text-xs text-slate-500">{t('twoSampleTTest.studentDesc')}</div>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                      Welch
+                      {t('twoSampleTTest.welchTitle')}
                     </div>
-                    <div className="text-xs text-slate-500">Var. inégales, ddl de Satterthwaite</div>
+                    <div className="text-xs text-slate-500">{t('twoSampleTTest.welchDesc')}</div>
                   </div>
                 </div>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      2
-                    </div>
-                    Méthodes de calcul
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">2</div>
+                    {t('twoSampleTTest.helpMethodsTitle')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p><strong className="text-slate-900 dark:text-white">Variance égale</strong> – variance commune pondérée, intervalle de confiance basé sur la distribution t avec n₁+n₂‑2 ddl.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Variance inégale (Welch)</strong> – erreur-type de Welch, ddl de Satterthwaite, intervalle de confiance correspondant.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Test F (Hartley)</strong> – F = s₁²/s₂² (le plus grand au numérateur). p-value bilatérale.</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoSampleTTest.studentTitle')}</strong> – {t('twoSampleTTest.studentMethodDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoSampleTTest.welchTitle')}</strong> – {t('twoSampleTTest.welchMethodDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoSampleTTest.fTestTitle')}</strong> – {t('twoSampleTTest.fMethodDesc')}</p>
                   </div>
                   <a
                     href="https://www.openepi.com/TwosampleTTest/TwosampleTTest.htm"
@@ -841,21 +835,19 @@ Test d’égalité des variances (F de Hartley) :
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Source : OpenEpi – Two Sample T-Test <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('twoSampleTTest.sourceLink')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      3
-                    </div>
-                    Ressources
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">3</div>
+                    {t('twoSampleTTest.helpResourcesTitle')}
                   </h4>
                   <div className="space-y-2 text-sm">
                     <p>
                       <a href="https://www.openepi.com/PDFDocs/TwoSampleTTestDoc.pdf" target="_blank" className="text-blue-600 hover:underline">
-                        Documentation officielle OpenEpi (PDF)
+                        {t('twoSampleTTest.openEpiPdf')}
                       </a>
                     </p>
                     <p>
