@@ -686,7 +686,7 @@ ${t('twoByTwo.fisherExact')}:
               <ChevronRight className="w-3 h-3" />
             </li>
             <li>
-              <span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">
+              <span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">
                 {t('twoByTwo.title')}
               </span>
             </li>
