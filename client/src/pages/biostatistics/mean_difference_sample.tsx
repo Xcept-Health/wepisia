@@ -1,161 +1,407 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Blocks, ChevronRight, Calculator, Presentation,
-  Copy, FileDown, HelpCircle, X, Info, RotateCcw,
-  ArrowRight
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
-
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import jStat from 'jstat'; 
+import jStat from 'jstat';
 
-/**
- * Sample Size for Comparing Two Means (SSMeanDiff)
- *
- * This component replicates the functionality of OpenEpi's SSMean module for
- * calculating the required sample size to detect a difference between two
- * independent group means. The user provides the expected means and standard
- * deviations for both groups, the desired confidence level (two‑sided),
- * statistical power, and the allocation ratio (group2 / group1).
- *
- * The calculation uses the standard formula based on the normal distribution,
- * with exact quantiles obtained from the jStat library. The result gives the
- * minimum number of subjects needed in each group and the total, rounded up
- * to ensure the specified power.
- *
- * All calculations are automatic: any change to the input fields triggers
- * a recalculation.
- */
+// ============================================================
+// Types
+// ============================================================
 
-interface SampleSizeResults {
-  mean1: number;
-  mean2: number;
-  sd1: number;
-  sd2: number;
-  difference: number;
-  pooledVariance: number;
-  confidenceLevel: number;
-  power: number;
-  ratio: number;
+interface SampleSizeResult {
   n1: number;
   n2: number;
-  totalN: number;
+  total: number;
+  difference: number;
+  pooledSD: number;
 }
 
-export default function SampleSizeMeanDifference() {
-  const [mean1, setMean1] = useState<string>('');
-  const [mean2, setMean2] = useState<string>('');
-  const [sd1, setSd1] = useState<string>('');
-  const [sd2, setSd2] = useState<string>('');
-  const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
-  const [power, setPower] = useState<string>('80');
-  const [ratio, setRatio] = useState<string>('1');
-  const [results, setResults] = useState<SampleSizeResults | null>(null);
-  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
-  const resultsRef = useRef<HTMLDivElement>(null);
+// ============================================================
+// Pure calculation helpers
+// ============================================================
 
+/** Two-tailed z-score for a given confidence level (in percent) */
+function zAlpha(confidence: number): number {
+  const alpha = 1 - confidence / 100;
+  return jStat.normal.inv(1 - alpha / 2, 0, 1);
+}
+
+/** One-tailed z-score for power (in percent) */
+function zBeta(power: number): number {
+  return jStat.normal.inv(power / 100, 0, 1);
+}
+
+/**
+ * Compute sample sizes for two independent means.
+ * Formula: n1 = ( (z_α/2 + z_β)^2 * (σ1² + σ2² / r) ) / δ²
+ * where δ = μ1 - μ2, r = n2 / n1.
+ */
+function computeSampleSizes(
+  mean1: number,
+  mean2: number,
+  sd1: number,
+  sd2: number,
+  confidence: number,
+  power: number,
+  ratio: number
+): SampleSizeResult | null {
+  const delta = Math.abs(mean1 - mean2);
+  if (delta === 0) return null;
+
+  const z_alpha = zAlpha(confidence);
+  const z_beta = zBeta(power);
+  const var1 = sd1 * sd1;
+  const var2 = sd2 * sd2;
+
+  // n1 = ( (z_α/2 + z_β)² * (σ1² + σ2² / r) ) / δ²
+  const numerator = Math.pow(z_alpha + z_beta, 2) * (var1 + var2 / ratio);
+  const n1_float = numerator / (delta * delta);
+  const n1 = Math.ceil(n1_float);
+  const n2 = Math.ceil(ratio * n1);
+  const total = n1 + n2;
+
+  // Pooled standard deviation (for display)
+  const pooledVar = ((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2);
+  const pooledSD = Math.sqrt(pooledVar);
+
+  return { n1, n2, total, difference: delta, pooledSD };
+}
+
+// ============================================================
+// PDF Export
+// ============================================================
+
+type RGB = [number, number, number];
+
+const P = {
+  white:    [255, 255, 255] as RGB,
+  slate50:  [248, 250, 252] as RGB,
+  slate100: [241, 245, 249] as RGB,
+  slate200: [226, 232, 240] as RGB,
+  slate300: [203, 213, 225] as RGB,
+  slate400: [148, 163, 184] as RGB,
+  slate500: [100, 116, 139] as RGB,
+  slate600: [ 71,  85, 105] as RGB,
+  slate700: [ 51,  65,  85] as RGB,
+  slate800: [ 30,  41,  59] as RGB,
+  slate900: [ 15,  23,  42] as RGB,
+  blue50:   [239, 246, 255] as RGB,
+  blue100:  [219, 234, 254] as RGB,
+  blue200:  [191, 219, 254] as RGB,
+  blue500:  [ 59, 130, 246] as RGB,
+  blue600:  [ 37,  99, 235] as RGB,
+  blue700:  [ 29,  78, 216] as RGB,
+  green600: [  5, 150, 105] as RGB,
+  red400:   [248, 113, 113] as RGB,
+};
+
+function exportMeanDifferencePdf(
+  result: SampleSizeResult,
+  inputs: {
+    mean1: number; mean2: number;
+    sd1: number; sd2: number;
+    confidence: number; power: number; ratio: number;
+  },
+  t: (key: string, fallback?: string) => string,
+  lang: string
+) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210, M = 16, CW = W - M * 2;
+
+  const fill = (c: RGB) => doc.setFillColor(...c);
+  const draw = (c: RGB) => doc.setDrawColor(...c);
+  const color = (c: RGB) => doc.setTextColor(...c);
+  const ln = (x1: number, y1: number, x2: number, y2: number, lw = 0.25) => {
+    doc.setLineWidth(lw);
+    doc.line(x1, y1, x2, y2);
+  };
+
+  // Header
+  fill(P.blue50);
+  doc.rect(0, 0, W, 38, 'F');
+  fill(P.blue500);
+  doc.rect(0, 0, W, 1.5, 'F');
+  fill(P.blue100);
+  doc.rect(M, 8, 0.8, 22, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  color(P.slate800);
+  doc.text(t('meanDifference.reportTitle', 'Sample Size – Difference of Means'), M + 5, 20);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  color(P.slate500);
+  doc.text(t('meanDifference.reportSubtitle', 'OpenEpi style calculator'), M + 5, 28);
+
+  const dateStr = new Date().toLocaleDateString(lang, { year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = new Date().toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
+  doc.text(
+    t('meanDifference.reportGenerated', 'Generated on {date} at {time}', { date: dateStr, time: timeStr }),
+    W - M, 28,
+    { align: 'right' }
+  );
+
+  draw(P.blue200);
+  ln(0, 38, W, 38, 0.3);
+
+  let y = 48;
+
+  // Input summary (as cards)
+  const gap = 3;
+  const cardW = (CW - gap * 3) / 4;
+  const cardH = 22;
+  const inputsData = [
+    { label: t('meanDifference.confidenceLabel', 'Confidence level'), value: `${inputs.confidence} %` },
+    { label: t('meanDifference.powerLabel', 'Power'), value: `${inputs.power} %` },
+    { label: t('meanDifference.ratioLabel', 'Ratio (n₂/n₁)'), value: inputs.ratio.toFixed(2) },
+  ];
+  inputsData.forEach((item, i) => {
+    const x = M + i * (cardW + gap);
+    doc.setFillColor(...P.white);
+    doc.setDrawColor(...P.slate200);
+    doc.roundedRect(x, y, cardW, cardH, 2.5, 2.5, 'FD');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    color(P.slate400);
+    doc.text(item.label.toUpperCase(), x + cardW / 2, y + 6.5, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    color(P.slate700);
+    doc.text(item.value, x + cardW / 2, y + 16.5, { align: 'center' });
+  });
+  y += cardH + 8;
+
+  // Means and SDs
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  color(P.slate500);
+  doc.text(
+    `${t('meanDifference.mean1Label', 'Mean 1')}: ${inputs.mean1.toFixed(2)}   |   ${t('meanDifference.sd1Label', 'SD 1')}: ${inputs.sd1.toFixed(2)}`,
+    M, y
+  );
+  y += 5;
+  doc.text(
+    `${t('meanDifference.mean2Label', 'Mean 2')}: ${inputs.mean2.toFixed(2)}   |   ${t('meanDifference.sd2Label', 'SD 2')}: ${inputs.sd2.toFixed(2)}`,
+    M, y
+  );
+  y += 10;
+
+  // Results table
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  color(P.slate700);
+  doc.text(t('meanDifference.resultsTitle', 'Sample size estimates').toUpperCase(), M, y);
+  y += 2;
+  draw(P.slate200);
+  ln(M, y, M + CW, y, 0.3);
+  y += 6;
+
+  const tableRows = [
+    [t('meanDifference.tableGroup1', 'Group 1'), result.n1.toLocaleString()],
+    [t('meanDifference.tableGroup2', 'Group 2'), result.n2.toLocaleString()],
+    [t('meanDifference.tableTotal', 'Total'), result.total.toLocaleString()],
+    [t('meanDifference.tableDifference', 'Difference (Δ)'), result.difference.toFixed(3)],
+    [t('meanDifference.tablePooledSD', 'Pooled SD'), result.pooledSD.toFixed(3)],
+  ];
+
+  autoTable(doc, {
+    startY: y,
+    head: [[
+      t('meanDifference.tableHeaderParameter', 'Parameter'),
+      t('meanDifference.tableHeaderValue', 'Value'),
+    ]],
+    body: tableRows,
+    theme: 'plain',
+    headStyles: {
+      fillColor: P.slate100,
+      textColor: P.slate600,
+      fontStyle: 'bold',
+      halign: 'center',
+      fontSize: 7.5,
+      cellPadding: 2.5,
+    },
+    columnStyles: {
+      0: { cellWidth: 70, textColor: P.slate700, fontStyle: 'bold' },
+      1: { cellWidth: 50, halign: 'center', textColor: P.slate700 },
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2.5,
+      lineColor: P.slate200,
+      lineWidth: 0.15,
+    },
+    alternateRowStyles: { fillColor: P.slate50 },
+    margin: { left: M, right: M },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 8;
+
+  // Formula
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  color(P.slate600);
+  doc.text(t('meanDifference.formulaTitle', 'Formula'), M, y);
+  y += 4;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  color(P.slate500);
+  const formula = t(
+    'meanDifference.formula',
+    'n₁ = (z_α/₂ + z_β)² × (σ₁² + σ₂² / r) / Δ²\nn₂ = r × n₁\nwhere Δ = |μ₁ - μ₂|, r = n₂/n₁'
+  );
+  const formulaLines = doc.splitTextToSize(formula, CW);
+  doc.text(formulaLines, M, y);
+  y += formulaLines.length * 4 + 4;
+
+  // Footnote
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  color(P.slate400);
+  const note = t(
+    'meanDifference.footnote',
+    'Results are rounded up to the nearest integer. Pooled standard deviation is computed using the estimated sample sizes.'
+  );
+  const noteLines = doc.splitTextToSize(note, CW);
+  doc.text(noteLines, M, y);
+
+  // Footer
+  const fY = 284;
+  draw(P.slate200);
+  ln(M, fY, W - M, fY, 0.3);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.5);
+  color(P.slate400);
+  doc.text(t('meanDifference.reportFooter', 'OpenEpi style sample size calculator · jStat · autoTable'), M, fY + 4.5);
+  doc.setFont('helvetica', 'bold');
+  color(P.slate500);
+  doc.text('1 / 1', W - M, fY + 6.5, { align: 'right' });
+
+  doc.save(`MeanDifference_${inputs.mean1}_${inputs.mean2}.pdf`);
+}
+
+// ============================================================
+// Main Component
+// ============================================================
+
+export default function MeanDifference() {
+  const { t, i18n } = useTranslation();
+
+  // Input states
+  const [mean1, setMean1] = useState('132.86');
+  const [mean2, setMean2] = useState('127.44');
+  const [sd1, setSd1] = useState('15.34');
+  const [sd2, setSd2] = useState('18.23');
+  const [confidence, setConfidence] = useState('95');
+  const [power, setPower] = useState('80');
+  const [ratio, setRatio] = useState('1');
+
+  const [result, setResult] = useState<SampleSizeResult | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
+
+  // Recompute on any input change
   useEffect(() => {
-    calculate();
-  }, [mean1, mean2, sd1, sd2, confidenceLevel, power, ratio]);
-
-  const calculate = () => {
     const m1 = parseFloat(mean1);
     const m2 = parseFloat(mean2);
     const s1 = parseFloat(sd1);
     const s2 = parseFloat(sd2);
-    const conf = parseInt(confidenceLevel);
-    const pow = parseInt(power) / 100;
-    const rat = parseFloat(ratio) || 1;
+    const conf = parseFloat(confidence);
+    const pow = parseFloat(power);
+    const r = parseFloat(ratio);
 
-    if (isNaN(m1) || isNaN(m2) || isNaN(s1) || isNaN(s2) || s1 <= 0 || s2 <= 0 || rat <= 0) {
-      setResults(null);
+    if (isNaN(m1) || isNaN(m2) || isNaN(s1) || isNaN(s2) || isNaN(conf) || isNaN(pow) || isNaN(r)) {
+      setResult(null);
+      return;
+    }
+    if (s1 <= 0 || s2 <= 0 || r <= 0) {
+      setResult(null);
       return;
     }
 
-    const diff = Math.abs(m1 - m2);
-    const alpha = 1 - conf / 100;
-    const beta = 1 - pow;
+    const res = computeSampleSizes(m1, m2, s1, s2, conf, pow, r);
+    setResult(res);
+  }, [mean1, mean2, sd1, sd2, confidence, power, ratio]);
 
-    // Quantiles exacts de la loi normale via jStat
-    const zAlpha = jStat.normal.inv(1 - alpha / 2, 0, 1);
-    const zBeta = jStat.normal.inv(1 - beta, 0, 1);
-
-    // Variance poolée (pour information)
-    const pooledVar = (s1 ** 2 + s2 ** 2 * rat) / (1 + rat);
-
-    // Taille d'échantillon pour le groupe 2 (formule standard)
-    let n2 = ((zAlpha + zBeta) ** 2 * (s1 ** 2 / rat + s2 ** 2)) / diff ** 2;
-
-    // Arrondi à l'entier supérieur pour garantir la puissance
-    n2 = Math.ceil(n2);
-    const n1 = Math.ceil(n2 * rat);
-    const totalN = n1 + n2;
-
-    setResults({
-      mean1: m1,
-      mean2: m2,
-      sd1: s1,
-      sd2: s2,
-      difference: diff,
-      pooledVariance: pooledVar,
-      confidenceLevel: conf,
-      power: pow * 100,
-      ratio: rat,
-      n1,
-      n2,
-      totalN
-    });
+  // Handlers
+  const handleClear = () => {
+    setMean1('');
+    setMean2('');
+    setSd1('');
+    setSd2('');
+    setConfidence('95');
+    setPower('80');
+    setRatio('1');
+    setResult(null);
+    toast.info(t('meanDifference.clearMessage', 'Inputs cleared'));
   };
 
-  const clearForm = () => {
-    setMean1(''); setMean2(''); setSd1(''); setSd2('');
-    setConfidenceLevel('95'); setPower('80'); setRatio('1');
-    setResults(null);
-    toast.info('Champs réinitialisés');
+  const handleExample = () => {
+    setMean1('132.86');
+    setMean2('127.44');
+    setSd1('15.34');
+    setSd2('18.23');
+    setConfidence('95');
+    setPower('80');
+    setRatio('1');
+    toast.success(t('meanDifference.exampleLoaded', 'Example data loaded'));
   };
 
-  const loadExample = () => {
-    setMean1('132.86'); setMean2('127.44');
-    setSd1('15.34'); setSd2('18.23');
-    setConfidenceLevel('95'); setPower('80'); setRatio('1');
-    toast.success('Exemple chargé');
-  };
-
-  const copyResults = async () => {
-    if (!results) return;
-    const text = `Taille d’échantillon pour comparaison de deux moyennes\n\n` +
-                 `Groupe 1 → Moyenne: ${results.mean1} | Écart-type: ${results.sd1}\n` +
-                 `Groupe 2 → Moyenne: ${results.mean2} | Écart-type: ${results.sd2}\n` +
-                 `Différence: ${results.difference.toFixed(2)}\n` +
-                 `IC: ${results.confidenceLevel}% | Puissance: ${results.power}%\n` +
-                 `Ratio: ${results.ratio}\n\n` +
-                 `Taille échantillon Groupe 1: ${results.n1}\n` +
-                 `Taille échantillon Groupe 2: ${results.n2}\n` +
-                 `Taille totale: ${results.totalN}`;
+  const handleCopy = async () => {
+    if (!result) return;
+    const text = `Sample sizes:\nGroup 1: ${result.n1}\nGroup 2: ${result.n2}\nTotal: ${result.total}\nDifference: ${result.difference.toFixed(3)}\nPooled SD: ${result.pooledSD.toFixed(3)}`;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('meanDifference.copySuccess', 'Results copied'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('meanDifference.copyError', 'Copy failed'));
     }
   };
 
-  const exportPDF = () => {
-    if (!results) return;
-    toast.info('Export PDF bientôt disponible');
+  const handleExport = () => {
+    if (!result) return;
+    const m1 = parseFloat(mean1);
+    const m2 = parseFloat(mean2);
+    const s1 = parseFloat(sd1);
+    const s2 = parseFloat(sd2);
+    const conf = parseFloat(confidence);
+    const pow = parseFloat(power);
+    const r = parseFloat(ratio);
+    try {
+      exportMeanDifferencePdf(result, { mean1: m1, mean2: m2, sd1: s1, sd2: s2, confidence: conf, power: pow, ratio: r }, t, i18n.language);
+      toast.success(t('meanDifference.exportSuccess', 'PDF exported'));
+    } catch (err) {
+      console.error(err);
+      toast.error(t('meanDifference.exportError', 'Export failed'));
+    }
   };
 
+  const showResults = result !== null;
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
-            <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">Taille d’Échantillon - Différence de Moyennes</span></li>
+            <li>
+              <Link href="/" className="hover:text-blue-500 transition-colors">
+                {t('common.home', 'Home')}
+              </Link>
+            </li>
+            <li>
+              <ChevronRight className="w-3 h-3" />
+            </li>
+            <li>
+              <span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">
+                {t('meanDifference.title', 'Sample Size – Difference of Means')}
+              </span>
+            </li>
           </ol>
         </nav>
 
@@ -166,274 +412,448 @@ export default function SampleSizeMeanDifference() {
               <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Taille d’Échantillon - Différence de Moyennes</h1>
-              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Calcul de la taille d’échantillon requise pour détecter une différence entre deux moyennes.</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                {t('meanDifference.title', 'Sample Size – Difference of Means')}
+              </h1>
+              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+                {t(
+                  'meanDifference.subtitle',
+                  'Calculate required sample size to detect a difference between two independent means'
+                )}
+              </p>
             </div>
           </div>
-          <button onClick={() => setShowHelpModal(true)} className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm">
+          <button
+            onClick={() => setShowHelp(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
             <HelpCircle className="w-4 h-4" />
           </button>
         </div>
 
         {/* Main grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-          {/* Left column - inputs */}
-          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+          {/* Left: Inputs */}
+          <div className="lg:col-span-5 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" />
+                {t('meanDifference.parameters', 'Parameters')}
               </h2>
+
               <div className="space-y-5">
-                {/* Means */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">Moyenne Groupe 1</label>
-                    <input type="number" value={mean1} onChange={(e) => setMean1(e.target.value)} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium" placeholder="Ex: 132.86" />
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                      {t('meanDifference.mean1Label', 'Mean – Group 1')}
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={mean1}
+                      onChange={(e) => setMean1(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border-none rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">Moyenne Groupe 2</label>
-                    <input type="number" value={mean2} onChange={(e) => setMean2(e.target.value)} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium" placeholder="Ex: 127.44" />
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                      {t('meanDifference.mean2Label', 'Mean – Group 2')}
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={mean2}
+                      onChange={(e) => setMean2(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border-none rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    />
                   </div>
                 </div>
-                {/* Standard deviations */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">Écart-type Groupe 1</label>
-                    <input type="number" value={sd1} onChange={(e) => setSd1(e.target.value)} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium" placeholder="Ex: 15.34" />
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                      {t('meanDifference.sd1Label', 'SD – Group 1')}
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.001"
+                      value={sd1}
+                      onChange={(e) => setSd1(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border-none rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">Écart-type Groupe 2</label>
-                    <input type="number" value={sd2} onChange={(e) => setSd2(e.target.value)} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium" placeholder="Ex: 18.23" />
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                      {t('meanDifference.sd2Label', 'SD – Group 2')}
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.001"
+                      value={sd2}
+                      onChange={(e) => setSd2(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border-none rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    />
                   </div>
                 </div>
-                {/* Confidence, power, ratio */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">IC bilatéral</label>
-                    <select value={confidenceLevel} onChange={(e) => setConfidenceLevel(e.target.value)} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium">
-                      <option value="90">90%</option>
-                      <option value="95">95%</option>
-                      <option value="99">99%</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">Puissance</label>
-                    <select value={power} onChange={(e) => setPower(e.target.value)} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium">
-                      <option value="80">80%</option>
-                      <option value="90">90%</option>
-                      <option value="95">95%</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">Ratio (G2/G1)</label>
-                    <input type="number" value={ratio} onChange={(e) => setRatio(e.target.value)} className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium" placeholder="1" />
-                  </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    {t('meanDifference.confidenceLabel', 'Confidence level (two-sided)')}
+                  </label>
+                  <select
+                    value={confidence}
+                    onChange={(e) => setConfidence(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
+                  >
+                    <option value="90">90 %</option>
+                    <option value="95">95 % ({t('meanDifference.standard', 'standard')})</option>
+                    <option value="99">99 %</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    {t('meanDifference.powerLabel', 'Power (%)')}
+                  </label>
+                  <select
+                    value={power}
+                    onChange={(e) => setPower(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
+                  >
+                    <option value="80">80 %</option>
+                    <option value="85">85 %</option>
+                    <option value="90">90 %</option>
+                    <option value="95">95 %</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    {t('meanDifference.ratioLabel', 'Ratio (n₂ / n₁)')}
+                  </label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={ratio}
+                    onChange={(e) => setRatio(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('meanDifference.ratioNote', 'Use 1 for equal groups')}
+                  </p>
                 </div>
               </div>
+
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
-                <button onClick={loadExample} className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
-                  <Info className="w-4 h-4" /> Exemple
+                <button
+                  onClick={handleExample}
+                  className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Info className="w-4 h-4" /> {t('meanDifference.btnExample', 'Example')}
                 </button>
-                <button onClick={clearForm} className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center">
+                <button
+                  onClick={handleClear}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl"
+                  aria-label="Clear"
+                >
                   <RotateCcw className="w-5 h-5" />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Right column - results */}
+          {/* Right: Results */}
           <div className="lg:col-span-7">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
-              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
-                </h2>
-                {results && (
-                  <div className="flex gap-2">
-                    <button onClick={copyResults} className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors">
-                      <Copy className="w-4 h-4" />
-                    </button>
-                    <button onClick={exportPDF} className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors">
-                      <FileDown className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+  <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+    <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+        <Presentation className="w-5 h-5 mr-3 text-indigo-500" />
+        {t('meanDifference.resultsTitle', 'Sample size estimates')}
+      </h2>
+      {showResults && (
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopy}
+            className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+            title={t('meanDifference.btnCopy', 'Copy results')}
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleExport}
+            className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+            title={t('meanDifference.btnExport', 'Export PDF')}
+          >
+            <FileDown className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+    </div>
+
+    <div className="p-4 lg:p-8 bg-slate-50/30 dark:bg-slate-900/10">
+      {!showResults ? (
+        <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+          <Presentation className="w-16 h-16 mb-4 text-slate-300" />
+          <p className="text-lg">{t('meanDifference.enterData', 'Enter valid parameters to see results')}</p>
+          <p className="text-sm mt-2 text-slate-400">
+            {t('meanDifference.enterDataHint', 'Check that means and SDs are numbers, SD > 0, ratio > 0, and the means are not identical.')}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Hero card : total sample size */}
+          <div className="p-6 rounded-3xl text-center border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
+              {t('meanDifference.totalSampleSize', 'Total Sample Size')}
+            </p>
+            <div className="text-5xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
+              {result.total.toLocaleString()}
+            </div>
+            <p className="text-sm text-slate-500 mt-2">
+              {t('meanDifference.breakdown', 'Group 1: {n1} | Group 2: {n2}', { n1: result.n1, n2: result.n2 })}
+            </p>
+          </div>
+
+          {/* Détails par groupe : moyenne, écart‑type, variance */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                {t('meanDifference.group1', 'Group 1')}
               </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">{t('meanDifference.mean', 'Mean')}</span>
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {parseFloat(mean1).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">{t('meanDifference.sd', 'Standard deviation')}</span>
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {parseFloat(sd1).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">{t('meanDifference.variance', 'Variance')}</span>
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {Math.pow(parseFloat(sd1), 2).toFixed(3)}
+                  </span>
+                </div>
+              </div>
+            </div>
 
-              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
-                {!results ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-                    <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
-                    <div className="text-4xl font-bold mt-2">
-                      0.00
-                    </div>
-                  </div>
-                ) : (
-                  <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Total sample size card */}
-                    <div className="p-8 rounded-3xl text-center border bg-indigo-50/50 border-indigo-100 dark:bg-indigo-900/10 dark:border-indigo-800/30">
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Taille totale de l’échantillon</p>
-                      <div className="text-5xl font-bold tracking-tight mb-2 text-indigo-600">{results.totalN}</div>
-                      <span className="px-3 py-1 bg-white dark:bg-slate-800 rounded-full text-xs font-semibold shadow-sm border border-slate-100 dark:border-slate-700">
-                        Groupe 1: {results.n1} | Groupe 2: {results.n2}
-                      </span>
-                    </div>
-
-                    {/* Difference and pooled SD cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-700">
-                        <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">Différence</h3>
-                        <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">{results.difference.toFixed(2)}</div>
-                      </div>
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-5 border border-purple-200 dark:border-purple-700">
-                        <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-1">Écart-type poolé</h3>
-                        <div className="text-3xl font-bold text-purple-700 dark:text-purple-300">{Math.sqrt(results.pooledVariance).toFixed(2)}</div>
-                      </div>
-                    </div>
-
-                    {/* Detailed table */}
-                    <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-                      <div className="mt-4 overflow-x-auto">
-                        <table className="w-full text-xs sm:text-sm">
-                          <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-                            <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Paramètre</th>
-                              <th className="px-3 py-2 text-center font-semibold">Valeur</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                            <tr><td>Groupe 1 - Taille</td><td className="text-center font-mono">{results.n1}</td></tr>
-                            <tr><td>Groupe 2 - Taille</td><td className="text-center font-mono">{results.n2}</td></tr>
-                            <tr><td>Taille totale</td><td className="text-center font-mono">{results.totalN}</td></tr>
-                            <tr><td>Différence</td><td className="text-center font-mono">{results.difference.toFixed(2)}</td></tr>
-                            <tr><td>Écart-type poolé</td><td className="text-center font-mono">{Math.sqrt(results.pooledVariance).toFixed(2)}</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
+            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                {t('meanDifference.group2', 'Group 2')}
+              </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">{t('meanDifference.mean', 'Mean')}</span>
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {parseFloat(mean2).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">{t('meanDifference.sd', 'Standard deviation')}</span>
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {parseFloat(sd2).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">{t('meanDifference.variance', 'Variance')}</span>
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {Math.pow(parseFloat(sd2), 2).toFixed(3)}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* Métriques : différence et écart‑type poolé */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl text-center">
+              <div className="text-xs text-slate-500 uppercase tracking-wide">
+                {t('meanDifference.differenceLabel', 'Difference (Δ)')}
+              </div>
+              <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+                {result.difference.toFixed(3)}
+              </div>
+            </div>
+            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl text-center">
+              <div className="text-xs text-slate-500 uppercase tracking-wide">
+                {t('meanDifference.pooledSDLabel', 'Pooled SD')}
+              </div>
+              <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+                {result.pooledSD.toFixed(3)}
+              </div>
+            </div>
+          </div>
+
+          {/* Tableau détaillé */}
+          <div className="p-6 rounded-3xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+            <p className="text-xs font-bold tracking-widest text-slate-400 mb-4">
+              {t('meanDifference.details', 'Detailed Results')}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">
+                      {t('meanDifference.tableHeaderParameter', 'Parameter')}
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold">
+                      {t('meanDifference.tableHeaderValue', 'Value')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                  <tr>
+                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableGroup1', 'Group 1 sample size')}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                      {result.n1.toLocaleString()}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableGroup2', 'Group 2 sample size')}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                      {result.n2.toLocaleString()}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableTotal', 'Total')}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                      {result.total.toLocaleString()}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableDifference', 'Difference (Δ)')}</td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">
+                      {result.difference.toFixed(3)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 font-medium">{t('meanDifference.tablePooledSD', 'Pooled SD')}</td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">
+                      {result.pooledSD.toFixed(3)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Interprétation */}
+          <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
+            <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+              <Info className="w-4 h-4 text-blue-500" /> {t('meanDifference.interpretationTitle', 'Interpretation')}
+            </h3>
+            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+              {t(
+                'meanDifference.interpretationText',
+                'The calculated sample sizes ensure that the study has {power}% power to detect a difference of {delta} between the two means, assuming the given standard deviations and a {confidence}% confidence level, using a two-sided test. The total sample size is {total}. The pooled standard deviation is a weighted average of the two group standard deviations.',
+                {
+                  power: power,
+                  delta: result.difference.toFixed(3),
+                  confidence: confidence,
+                  total: result.total,
+                }
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+</div>
         </div>
 
         {/* Help Modal */}
-        {showHelpModal && (
+        {showHelp && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
               className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
-              onClick={() => setShowHelpModal(false)}
+              onClick={() => setShowHelp(false)}
             />
-            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide – Taille d’échantillon pour deux moyennes
+                  {t('meanDifference.helpTitle', 'Help & Methods')}
                 </h3>
                 <button
-                  onClick={() => setShowHelpModal(false)}
+                  onClick={() => setShowHelp(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
-              <div className="p-6 md:p-8 space-y-6 text-slate-600 dark:text-slate-300">
-                {/* Section 1 */}
+              <div className="p-6 md:p-8 space-y-6">
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">1</div>
-                    Principe
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
+                      1
+                    </div>
+                    {t('meanDifference.helpPrincipleTitle', 'Purpose')}
                   </h4>
-                  <p className="text-sm leading-relaxed">
-                    Ce calculateur estime le nombre de sujets nécessaires dans chaque groupe pour détecter une différence donnée entre deux moyennes, avec un niveau de confiance et une puissance statistique spécifiés. Il s’applique aux études comparant deux groupes indépendants (par exemple, un groupe traité vs un groupe témoin).
+                  <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+                    {t(
+                      'meanDifference.helpPrinciple',
+                      'This calculator determines the sample size needed to detect a specified difference between two independent group means, given the standard deviations, a chosen confidence level, power, and allocation ratio (n₂/n₁). It uses the standard formula for two independent samples (unequal variances).'
+                    )}
                   </p>
                 </section>
 
-                {/* Section 2 */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">2</div>
-                    Paramètres
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
+                      2
+                    </div>
+                    {t('meanDifference.helpFormulasTitle', 'Formula')}
                   </h4>
-                  <ul className="list-disc list-inside text-sm space-y-1">
-                    <li><strong className="text-slate-900 dark:text-white">Moyennes des deux groupes</strong> – valeurs attendues de la variable quantitative.</li>
-                    <li><strong className="text-slate-900 dark:text-white">Écarts-types</strong> – mesures de la dispersion dans chaque groupe (doivent être positifs).</li>
-                    <li><strong className="text-slate-900 dark:text-white">IC bilatéral</strong> – niveau de confiance (1‑α) pour l’intervalle entourant la différence estimée.</li>
-                    <li><strong className="text-slate-900 dark:text-white">Puissance</strong> – probabilité (1‑β) de rejeter l’hypothèse nulle si la différence est réelle.</li>
-                    <li><strong className="text-slate-900 dark:text-white">Ratio</strong> – nombre de sujets dans le groupe 2 pour un sujet dans le groupe 1 (par défaut 1, soit groupes de taille égale).</li>
-                  </ul>
+                  <div className="space-y-2 text-sm">
+                    <div className="font-mono">
+                      n₁ = (z<sub>α/2</sub> + z<sub>β</sub>)² × (σ₁² + σ₂² / r) / Δ²
+                    </div>
+                    <div className="font-mono">
+                      n₂ = r × n₁
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      où Δ = |μ₁ - μ₂|, r = n₂/n₁, et les z sont les quantiles de la loi normale.
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      L’écart-type poolé est calculé après estimation des tailles d’échantillon.
+                    </div>
+                  </div>
                 </section>
 
-                {/* Section 3 */}
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">3</div>
-                    Méthode de calcul
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
+                      3
+                    </div>
+                    {t('meanDifference.helpUsageTitle', 'Usage')}
                   </h4>
-                  <p className="text-sm leading-relaxed">
-                    La taille d’échantillon est calculée avec la formule classique pour deux groupes indépendants, en utilisant les quantiles exacts de la loi normale obtenus via la librairie <strong>jStat</strong>. Pour référence, les valeurs approximatives couramment utilisées sont :
-                  </p>
-                  <ul className="list-disc list-inside text-sm mt-2">
-                    <li>z<sub>α/2</sub> : 1,645 (90% IC), 1,96 (95% IC), 2,576 (99% IC)</li>
-                    <li>z<sub>β</sub> : 0,8416 (80% puissance), 1,2816 (90%), 1,6449 (95%)</li>
-                  </ul>
-                  <p className="text-sm mt-2">
-                    La taille pour le groupe 2 est donnée par :<br />
-                    <code className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">
-                      n₂ = ⌈(z<sub>α/2</sub> + z<sub>β</sub>)² × (σ₁² / r + σ₂²) / Δ²⌉
-                    </code><br />
-                    où <em>Δ</em> = |m₁ – m₂|, <em>r</em> est le ratio (n₂ / n₁), et <em>σ₁, σ₂</em> les écarts-types. La taille du groupe 1 est <em>n₁ = ⌈r × n₂⌉</em>. L’arrondi est toujours fait à l’entier supérieur pour garantir la puissance nominale.
-                  </p>
-                </section>
-
-                {/* Section 4 */}
-                <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">4</div>
-                    Interprétation des résultats
-                  </h4>
-                  <p className="text-sm leading-relaxed">
-                    Les nombres affichés sont les effectifs minimums arrondis à l’entier supérieur. Si la différence réelle est plus petite que celle anticipée, ou si les variances sont plus grandes, l’étude pourrait manquer de puissance. Il est conseillé d’ajouter un taux d’attrition (pertes de suivi) dans la planification finale.
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {t(
+                      'meanDifference.helpUsage',
+                      'Saisissez les moyennes et écarts‑types pour les deux groupes, le niveau de confiance (généralement 95 %), la puissance (souvent 80 %) et le ratio de tailles d’échantillon (n₂/n₁). Utilisez le bouton Exemple pour charger des valeurs typiques. Les résultats s’affichent automatiquement. Vous pouvez copier les résultats ou les exporter en PDF.'
+                    )}
                   </p>
                 </section>
 
-                {/* Section 5 */}
-                <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">5</div>
-                    Exemple
-                  </h4>
-                  <p className="text-sm leading-relaxed">
-                    Avec les valeurs par défaut (m₁ = 132,86, m₂ = 127,44, σ₁ = 15,34, σ₂ = 18,23, IC 95%, puissance 80%, ratio = 1), la différence est de 5,42 et l’écart‑type poolé d’environ 16,83. Le calculateur donne n₁ = n₂ = <strong>152</strong>, soit un total de <strong>304</strong> sujets (arrondi supérieur). La valeur exacte avant arrondi est 151,68. OpenEpi affiche parfois 151 car il n’applique pas l’arrondi supérieur, mais pour garantir la puissance, l’arrondi à l’entier supérieur est recommandé.
-                  </p>
-                </section>
-
-                {/* Section 6 */}
-                <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">6</div>
-                    Source
-                  </h4>
-                  <p className="text-sm leading-relaxed">
-                    Cet outil reproduit le module « Sample Size for Two Means » d’
-                    <a
-                      href="https://www.openepi.com/SampleSize/SSMean.htm"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:text-blue-700 underline font-medium ml-1"
-                    >OpenEpi</a>.
-                  </p>
+                <div className="text-right">
                   <a
                     href="https://www.openepi.com/SampleSize/SSMean.htm"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-3"
+                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700"
                   >
-                    Voir sur OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('meanDifference.helpSource', 'Référence OpenEpi')}
+                    <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
-                </section>
+                </div>
               </div>
             </div>
           </div>
