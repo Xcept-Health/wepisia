@@ -10,10 +10,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import jStat from 'jstat';
 
-// ============================================================
-// Types
-// ============================================================
 
+// Types
 interface SampleSizeResult {
   method: 'Kelsey' | 'Fleiss' | 'FleissCC';
   cases: number;
@@ -30,10 +28,8 @@ interface InputValues {
   or: number;         // odds ratio
 }
 
-// ============================================================
-// Pure calculation helpers
-// ============================================================
 
+// Pure calculation helpers
 /** Two-tailed z-score for a given alpha (significance level) */
 function zAlpha(alpha: number): number {
   return jStat.normal.inv(1 - alpha / 2, 0, 1);
@@ -135,10 +131,8 @@ function computeAllSampleSizes(
   ];
 }
 
-// ============================================================
-// PDF Export (unchanged, same as before)
-// ============================================================
 
+// PDF Export (unchanged, same as before)
 type RGB = [number, number, number];
 
 const P = {
@@ -336,10 +330,8 @@ function exportCaseControlPdf(
   doc.save(`CaseControl_${inputs.ratio}_${inputs.p0}_OR${inputs.or}.pdf`);
 }
 
-// ============================================================
-// Main Component
-// ============================================================
 
+// Main Component
 export default function UnmatchedCaseControl() {
   const { t, i18n } = useTranslation();
 
