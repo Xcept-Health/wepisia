@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
-
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import jStat from 'jstat';
@@ -34,13 +34,13 @@ interface CalculationResults {
   totalDiseased: number;
   totalUndiseased: number;
   total: number;
-  incidenceExposed: number;        // raw proportion
+  incidenceExposed: number;
   incidenceUnexposed: number;
   incidenceTotal: number;
   incidenceExposedPct: string;
   incidenceUnexposedPct: string;
   incidenceTotalPct: string;
-  oddsRatio: number | null;         // null if incalculable
+  oddsRatio: number | null;
   oddsRatioCI: ConfidenceInterval | null;
   relativeRisk: number | null;
   relativeRiskCI: ConfidenceInterval | null;
@@ -59,14 +59,19 @@ interface CalculationResults {
   riskTotalCI: ConfidenceInterval | null;
   riskDifference: number | null;
   riskDifferenceCI: ConfidenceInterval | null;
-  attrFracExp: number | null;       // FEe = (RR-1)/RR
+  attrFracExp: number | null;
   attrFracExpCI: ConfidenceInterval | null;
-  attrFracPop: number | null;       // FEp = pe*(RR-1)/(pe*(RR-1)+1)
-  attrFracPopCI: ConfidenceInterval | null
-
+  attrFracPop: number | null;
+  attrFracPopCI: ConfidenceInterval | null;
+  attrFracExpOR: number | null;
+  attrFracExpORCI: ConfidenceInterval | null;
+  attrFracPopOR: number | null;
+  attrFracPopORCI: ConfidenceInterval | null;
 }
 
 export default function TwoByTwo() {
+  const { t } = useTranslation();
+
   // Input states
   const [a, setA] = useState<string>('');
   const [b, setB] = useState<string>('');
@@ -81,24 +86,21 @@ export default function TwoByTwo() {
   // jStat is available via ES import – we rely on it for exact computations.
   const hasJStat = true; // jStat is imported
 
-
+  // Helper to format p‑values
   const formatPValue = (p: number | null | undefined): string => {
-    if (p === null || p === undefined || isNaN(p)) return 'N/A';
+    if (p === null || p === undefined || isNaN(p)) return t('common.na', 'N/A');
     if (p <= 0) return '< 0.0000001';
     if (p >= 0.001) return p.toFixed(4);
-    // Assez de décimales pour afficher 4 chiffres significatifs
     const mag = Math.floor(Math.log10(p));
     return p.toFixed(Math.min(-mag + 3, 10));
   };
-  
+
   const formatPct = (v: number, decimals = 2): string =>
     (v * 100).toFixed(decimals) + '%';
 
   // Custom hypergeometric PDF using jStat.combination
   const hypergeometricPdf = (k: number, n: number, K: number, N: number): number => {
-    // Check bounds
     if (k < Math.max(0, n + K - N) || k > Math.min(n, K)) return 0;
-    // Calculate C(K, k) * C(N-K, n-k) / C(N, n)
     const comb1 = jStat.combination(K, k);
     const comb2 = jStat.combination(N - K, n - k);
     const comb3 = jStat.combination(N, n);
@@ -126,7 +128,7 @@ export default function TwoByTwo() {
     totalAll: (parseInt(a) || 0) + (parseInt(b) || 0) + (parseInt(c) || 0) + (parseInt(d) || 0),
   };
 
-  //  Core calculation 
+  // Core calculation
   const calculate = () => {
     if (!validateInputs()) {
       setResults(null);
@@ -166,10 +168,6 @@ export default function TwoByTwo() {
         lower: Math.exp(lnOR - z * seOR),
         upper: Math.exp(lnOR + z * seOR),
       };
-    } else if (aVal === 0 && dVal === 0) {
-      // OR undefined, keep null
-    } else {
-      // If one of b or c is zero, OR is infinite (or zero), but we keep null
     }
 
     // Relative Risk and 95% CI (Taylor series)
@@ -191,7 +189,7 @@ export default function TwoByTwo() {
     // Chi‑square tests
     const adbc = aVal * dVal - bVal * cVal;
     const absadbc = Math.abs(adbc);
-    const denom = r1 * r2 * c1 * c2; // product of margins, may be zero
+    const denom = r1 * r2 * c1 * c2;
 
     let chi2Uncorrected = 0,
       chi2MantelHaenszel = 0,
@@ -216,7 +214,6 @@ export default function TwoByTwo() {
       const minA = Math.max(0, r1 + c1 - n);
       const maxA = Math.min(r1, c1);
       const expected = (r1 * c1) / n;
-
       const observedProb = hypergeometricPdf(aVal, r1, c1, n);
 
       let oneTail = 0;
@@ -235,94 +232,95 @@ export default function TwoByTwo() {
       fisherOneTail = oneTail;
       fisherTwoTail = twoTail;
     }
-    //  Mid-P exact 
-let midPOneTail: number | null = null;
-let midPTwoTail: number | null = null;
-if (fisherOneTail !== null && fisherTwoTail !== null) {
-  const obsP = hypergeometricPdf(aVal, r1, c1, n);
-  midPOneTail = Math.max(0, fisherOneTail - 0.5 * obsP);
-  midPTwoTail = Math.max(0, fisherTwoTail - obsP);
-}
 
-//  IC des risques individuels (Taylor) 
-const propCI = (prop: number, total: number): ConfidenceInterval => {
-  const se = Math.sqrt(prop * (1 - prop) / total);
-  return {
-    lower: Math.max(0, prop - 1.96 * se),
-    upper: Math.min(1, prop + 1.96 * se),
-  };
-};
-const riskExposedCI = r1 > 0 ? propCI(incExposed, r1) : null;
-const riskUnexposedCI = r2 > 0 ? propCI(incUnexposed, r2) : null;
-const riskTotalCI = propCI(incTotal, n);
+    // Mid-P exact
+    let midPOneTail: number | null = null;
+    let midPTwoTail: number | null = null;
+    if (fisherOneTail !== null && fisherTwoTail !== null) {
+      const obsP = hypergeometricPdf(aVal, r1, c1, n);
+      midPOneTail = Math.max(0, fisherOneTail - 0.5 * obsP);
+      midPTwoTail = Math.max(0, fisherTwoTail - obsP);
+    }
 
-//  Différence de risque (Taylor) 
-let riskDifference: number | null = null;
-let riskDifferenceCI: ConfidenceInterval | null = null;
-if (r1 > 0 && r2 > 0) {
-  riskDifference = incExposed - incUnexposed;
-  const seRD = Math.sqrt(
-    incExposed * (1 - incExposed) / r1 +
-    incUnexposed * (1 - incUnexposed) / r2
-  );
-  riskDifferenceCI = {
-    lower: riskDifference - 1.96 * seRD,
-    upper: riskDifference + 1.96 * seRD,
-  };
-}
-
-//  Fractions étiologiques (base risque) 
-let attrFracExp: number | null = null;
-let attrFracExpCI: ConfidenceInterval | null = null;
-let attrFracPop: number | null = null;
-let attrFracPopCI: ConfidenceInterval | null = null;
-
-if (relativeRisk !== null && relativeRisk > 0 && relativeRiskCI !== null) {
-  // FEe = (RR-1)/RR ; CI dérivé directement du CI de RR
-  attrFracExp = (relativeRisk - 1) / relativeRisk;
-  attrFracExpCI = {
-    lower: (relativeRiskCI.lower - 1) / relativeRiskCI.lower,
-    upper: (relativeRiskCI.upper - 1) / relativeRiskCI.upper,
-  };
-
-  // FEp = pe*(RR-1)/(pe*(RR-1)+1) — méthode de Levin
-  const pe = r1 / n;
-  const numFEp = pe * (relativeRisk - 1);
-  if (numFEp + 1 > 0) {
-    attrFracPop = numFEp / (numFEp + 1);
-    const fePopFromRR = (rr: number) => {
-      const num = pe * (rr - 1);
-      return Math.max(0, num / (num + 1));
+    // CI for individual risks (Taylor)
+    const propCI = (prop: number, total: number): ConfidenceInterval => {
+      const se = Math.sqrt(prop * (1 - prop) / total);
+      return {
+        lower: Math.max(0, prop - 1.96 * se),
+        upper: Math.min(1, prop + 1.96 * se),
+      };
     };
-    attrFracPopCI = {
-      lower: fePopFromRR(relativeRiskCI.lower),
-      upper: fePopFromRR(relativeRiskCI.upper),
-    };
-  }
-}
+    const riskExposedCI = r1 > 0 ? propCI(incExposed, r1) : null;
+    const riskUnexposedCI = r2 > 0 ? propCI(incUnexposed, r2) : null;
+    const riskTotalCI = propCI(incTotal, n);
 
-//  Fractions étiologiques (base OR) 
-let attrFracExpOR: number | null = null;
-let attrFracExpORCI: ConfidenceInterval | null = null;
-let attrFracPopOR: number | null = null;
-let attrFracPopORCI: ConfidenceInterval | null = null;
+    // Risk difference (Taylor)
+    let riskDifference: number | null = null;
+    let riskDifferenceCI: ConfidenceInterval | null = null;
+    if (r1 > 0 && r2 > 0) {
+      riskDifference = incExposed - incUnexposed;
+      const seRD = Math.sqrt(
+        incExposed * (1 - incExposed) / r1 +
+        incUnexposed * (1 - incUnexposed) / r2
+      );
+      riskDifferenceCI = {
+        lower: riskDifference - 1.96 * seRD,
+        upper: riskDifference + 1.96 * seRD,
+      };
+    }
 
-if (oddsRatio !== null && oddsRatio > 0 && oddsRatioCI !== null) {
-  // FEe|OR = (OR-1)/OR
-  attrFracExpOR = (oddsRatio - 1) / oddsRatio;
-  attrFracExpORCI = {
-    lower: (oddsRatioCI.lower - 1) / oddsRatioCI.lower,
-    upper: (oddsRatioCI.upper - 1) / oddsRatioCI.upper,
-  };
+    // Etiological fractions based on risk
+    let attrFracExp: number | null = null;
+    let attrFracExpCI: ConfidenceInterval | null = null;
+    let attrFracPop: number | null = null;
+    let attrFracPopCI: ConfidenceInterval | null = null;
 
-  // FEp|OR = (a/c1) * (OR-1)/OR
-  const pc = c1 > 0 ? aVal / c1 : 0;
-  attrFracPopOR = pc * attrFracExpOR;
-  attrFracPopORCI = {
-    lower: pc * attrFracExpORCI.lower,
-    upper: pc * attrFracExpORCI.upper,
-  };
-}
+    if (relativeRisk !== null && relativeRisk > 0 && relativeRiskCI !== null) {
+      // FEe = (RR-1)/RR
+      attrFracExp = (relativeRisk - 1) / relativeRisk;
+      attrFracExpCI = {
+        lower: (relativeRiskCI.lower - 1) / relativeRiskCI.lower,
+        upper: (relativeRiskCI.upper - 1) / relativeRiskCI.upper,
+      };
+
+      // FEp = pe*(RR-1)/(pe*(RR-1)+1) — Levin's method
+      const pe = r1 / n;
+      const numFEp = pe * (relativeRisk - 1);
+      if (numFEp + 1 > 0) {
+        attrFracPop = numFEp / (numFEp + 1);
+        const fePopFromRR = (rr: number) => {
+          const num = pe * (rr - 1);
+          return Math.max(0, num / (num + 1));
+        };
+        attrFracPopCI = {
+          lower: fePopFromRR(relativeRiskCI.lower),
+          upper: fePopFromRR(relativeRiskCI.upper),
+        };
+      }
+    }
+
+    // Etiological fractions based on OR
+    let attrFracExpOR: number | null = null;
+    let attrFracExpORCI: ConfidenceInterval | null = null;
+    let attrFracPopOR: number | null = null;
+    let attrFracPopORCI: ConfidenceInterval | null = null;
+
+    if (oddsRatio !== null && oddsRatio > 0 && oddsRatioCI !== null) {
+      // FEe|OR = (OR-1)/OR
+      attrFracExpOR = (oddsRatio - 1) / oddsRatio;
+      attrFracExpORCI = {
+        lower: (oddsRatioCI.lower - 1) / oddsRatioCI.lower,
+        upper: (oddsRatioCI.upper - 1) / oddsRatioCI.upper,
+      };
+
+      // FEp|OR = (a/c1) * (OR-1)/OR
+      const pc = c1 > 0 ? aVal / c1 : 0;
+      attrFracPopOR = pc * attrFracExpOR;
+      attrFracPopORCI = {
+        lower: pc * attrFracExpORCI.lower,
+        upper: pc * attrFracExpORCI.upper,
+      };
+    }
 
     setResults({
       a: aVal,
@@ -375,14 +373,14 @@ if (oddsRatio !== null && oddsRatio > 0 && oddsRatioCI !== null) {
     calculate();
   }, [a, b, c, d]);
 
-  //  UI Handlers 
+  // UI Handlers
   const clearForm = () => {
     setA('');
     setB('');
     setC('');
     setD('');
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('twoByTwo.clearMessage', 'Fields cleared'));
   };
 
   const loadExample = () => {
@@ -390,50 +388,50 @@ if (oddsRatio !== null && oddsRatio > 0 && oddsRatioCI !== null) {
     setB('40');
     setC('30');
     setD('70');
-    toast.success('Exemple chargé');
+    toast.success(t('twoByTwo.exampleLoaded', 'Example loaded'));
   };
 
   const copyResults = async () => {
     if (!results) return;
 
-    const orText = results.oddsRatio ? results.oddsRatio.toFixed(3) : 'N/A';
+    const orText = results.oddsRatio ? results.oddsRatio.toFixed(3) : t('common.na', 'N/A');
     const orCI = results.oddsRatioCI
       ? `${results.oddsRatioCI.lower.toFixed(3)}–${results.oddsRatioCI.upper.toFixed(3)}`
-      : 'N/A';
-    const rrText = results.relativeRisk ? results.relativeRisk.toFixed(3) : 'N/A';
+      : t('common.na', 'N/A');
+    const rrText = results.relativeRisk ? results.relativeRisk.toFixed(3) : t('common.na', 'N/A');
     const rrCI = results.relativeRiskCI
       ? `${results.relativeRiskCI.lower.toFixed(3)}–${results.relativeRiskCI.upper.toFixed(3)}`
-      : 'N/A';
+      : t('common.na', 'N/A');
 
-    const text = `Résultats de l'Analyse 2×2
-Tableau:
-a (exposés malades): ${results.a}
-b (exposés non-malades): ${results.b}
-c (non-exposés malades): ${results.c}
-d (non-exposés non-malades): ${results.d}
+    const text = `${t('twoByTwo.copyPrefix')}
+${t('twoByTwo.tableTitle')}:
+${t('twoByTwo.exposedDiseased')}: ${results.a}
+${t('twoByTwo.exposedNonDiseased')}: ${results.b}
+${t('twoByTwo.unexposedDiseased')}: ${results.c}
+${t('twoByTwo.unexposedNonDiseased')}: ${results.d}
 
-Incidences:
-  Exposés: ${results.incidenceExposedPct}
-  Non-exposés: ${results.incidenceUnexposedPct}
-  Totale: ${results.incidenceTotalPct}
+${t('twoByTwo.incidences')}:
+  ${t('twoByTwo.exposed')}: ${results.incidenceExposedPct}
+  ${t('twoByTwo.unexposed')}: ${results.incidenceUnexposedPct}
+  ${t('twoByTwo.total')}: ${results.incidenceTotalPct}
 
-Odds Ratio (OR): ${orText} (95% CI: ${orCI})
-Risque Relatif (RR): ${rrText} (95% CI: ${rrCI})
+${t('twoByTwo.oddsRatio')}: ${orText} (95% CI: ${orCI})
+${t('twoByTwo.relativeRisk')}: ${rrText} (95% CI: ${rrCI})
 
-Tests du χ²:
-  Non corrigé: χ² = ${results.chi2Uncorrected.toFixed(3)}, p = ${formatPValue(results.chi2UncorrectedP)}
-  Mantel‑Haenszel: χ² = ${results.chi2MantelHaenszel.toFixed(3)}, p = ${results.chi2MantelHaenszelP.toFixed(8)}
-  Yates: χ² = ${results.chi2Yates.toFixed(3)}, p = ${results.chi2YatesP.toFixed(8)}
+${t('twoByTwo.chiSquareTests')}:
+  ${t('twoByTwo.uncorrected')}: χ² = ${results.chi2Uncorrected.toFixed(3)}, p = ${formatPValue(results.chi2UncorrectedP)}
+  ${t('twoByTwo.mantelHaenszel')}: χ² = ${results.chi2MantelHaenszel.toFixed(3)}, p = ${results.chi2MantelHaenszelP.toFixed(8)}
+  ${t('twoByTwo.yates')}: χ² = ${results.chi2Yates.toFixed(3)}, p = ${results.chi2YatesP.toFixed(8)}
 
-Test exact de Fisher:
-  1‑queue: p = ${results.fisherOneTail?.toFixed(8) ?? 'N/A'}
-  2‑queues: p = ${results.fisherTwoTail?.toFixed(8) ?? 'N/A'}`;
+${t('twoByTwo.fisherExact')}:
+  1‑${t('twoByTwo.tail')}: p = ${results.fisherOneTail?.toFixed(8) ?? t('common.na', 'N/A')}
+  2‑${t('twoByTwo.tails')}: p = ${results.fisherTwoTail?.toFixed(8) ?? t('common.na', 'N/A')}`;
 
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('twoByTwo.copySuccess', 'Results copied'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('twoByTwo.copyError', 'Copy failed'));
     }
   };
 
@@ -452,120 +450,113 @@ Test exact de Fisher:
           ? { bg: [255, 247, 237] as [number, number, number], border: [234, 88, 12] as [number, number, number], text: [234, 88, 12] as [number, number, number] }
           : { bg: [236, 253, 245] as [number, number, number], border: [5, 150, 105] as [number, number, number], text: [5, 150, 105] as [number, number, number] };
       const colorSlate = {
-        50: [248, 250, 252] as [number, number, number],
-        100: [241, 245, 249] as [number, number, number],
-        200: [226, 232, 240] as [number, number, number],
-        300: [203, 213, 225] as [number, number, number],
-        500: [100, 116, 139] as [number, number, number],
-        700: [51, 65, 85] as [number, number, number],
-        900: [15, 23, 42] as [number, number, number],
+        50: [248, 250, 252],
+        100: [241, 245, 249],
+        200: [226, 232, 240],
+        300: [203, 213, 225],
+        500: [100, 116, 139],
+        700: [51, 65, 85],
+        900: [15, 23, 42],
       };
-      const colorRed = [239, 68, 68] as [number, number, number];
-
-      // Helper for rounded rectangles
       const roundedRect = (x: number, y: number, w: number, h: number, r: number, style: 'F' | 'S' | 'FD' = 'F') => {
         doc.roundedRect(x, y, w, h, r, r, style);
       };
 
-      //  Header 
+      // Header
       doc.setFillColor(...colorSlate[50]);
       roundedRect(0, 0, 210, 40, 0, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'Analyse 2×2", 20, 25);
+      doc.text(t('twoByTwo.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
-      doc.text('Calculateur 2×2 – Épidémiologie', 190, 32, { align: 'right' });
+      doc.text(`${t('twoByTwo.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')} ${t('twoByTwo.at')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 20, 32);
+      doc.text(t('twoByTwo.reportSubtitle'), 190, 32, { align: 'right' });
 
-      //  Input data 
+      // Input data table
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Données analysées', 20, y);
+      doc.text(t('twoByTwo.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
       y += 8;
 
-      // Draw the 2x2 table
+      // 2x2 table
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
 
-      // Table header
-      doc.text('Exposition', 25, y);
-      doc.text('Malade', 75, y, { align: 'center' });
-      doc.text('Non-malade', 115, y, { align: 'center' });
-      doc.text('Total', 160, y, { align: 'center' });
+      doc.text(t('twoByTwo.exposure'), 25, y);
+      doc.text(t('twoByTwo.diseased'), 75, y, { align: 'center' });
+      doc.text(t('twoByTwo.nonDiseased'), 115, y, { align: 'center' });
+      doc.text(t('twoByTwo.total'), 160, y, { align: 'center' });
       y += 6;
 
-      // Row 1: Exposed
-      doc.text('Exposé', 25, y);
+      doc.text(t('twoByTwo.exposed'), 25, y);
       doc.text(results.a.toString(), 75, y, { align: 'center' });
       doc.text(results.b.toString(), 115, y, { align: 'center' });
       doc.text(results.totalExposed.toString(), 160, y, { align: 'center' });
       y += 6;
 
-      // Row 2: Unexposed
-      doc.text('Non-exposé', 25, y);
+      doc.text(t('twoByTwo.unexposed'), 25, y);
       doc.text(results.c.toString(), 75, y, { align: 'center' });
       doc.text(results.d.toString(), 115, y, { align: 'center' });
       doc.text(results.totalUnexposed.toString(), 160, y, { align: 'center' });
       y += 6;
 
-      // Row 3: Total
       doc.setFont('helvetica', 'bold');
-      doc.text('Total', 25, y);
+      doc.text(t('twoByTwo.total'), 25, y);
       doc.text(results.totalDiseased.toString(), 75, y, { align: 'center' });
       doc.text(results.totalUndiseased.toString(), 115, y, { align: 'center' });
       doc.text(results.total.toString(), 160, y, { align: 'center' });
       y += 12;
 
-      //  Incidence card 
+      // Incidence card
       doc.setFillColor(...colorPrimary.bg);
       doc.setDrawColor(...colorPrimary.border);
       roundedRect(20, y, 170, 35, 5, 'FD');
       doc.setTextColor(...colorPrimary.text);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text('INCIDENCES', 105, y + 8, { align: 'center' });
+      doc.text(t('twoByTwo.incidences'), 105, y + 8, { align: 'center' });
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
-      doc.text(`Exposés: ${results.incidenceExposedPct}`, 35, y + 20);
-      doc.text(`Non-exposés: ${results.incidenceUnexposedPct}`, 105, y + 20, { align: 'center' });
-      doc.text(`Totale: ${results.incidenceTotalPct}`, 175, y + 20, { align: 'center' });
+      doc.text(`${t('twoByTwo.exposed')}: ${results.incidenceExposedPct}`, 35, y + 20);
+      doc.text(`${t('twoByTwo.unexposed')}: ${results.incidenceUnexposedPct}`, 105, y + 20, { align: 'center' });
+      doc.text(`${t('twoByTwo.total')}: ${results.incidenceTotalPct}`, 175, y + 20, { align: 'center' });
       y += 45;
 
-      //  Measures of association 
+      // Measures of association
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Mesures d’association', 20, y);
+      doc.text(t('twoByTwo.measuresTitle'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
 
-      const orValue = results.oddsRatio ? results.oddsRatio.toFixed(3) : 'N/A';
+      const orValue = results.oddsRatio ? results.oddsRatio.toFixed(3) : t('common.na', 'N/A');
       const orCI = results.oddsRatioCI
         ? `${results.oddsRatioCI.lower.toFixed(3)} – ${results.oddsRatioCI.upper.toFixed(3)}`
-        : 'N/A';
-      const rrValue = results.relativeRisk ? results.relativeRisk.toFixed(3) : 'N/A';
+        : t('common.na', 'N/A');
+      const rrValue = results.relativeRisk ? results.relativeRisk.toFixed(3) : t('common.na', 'N/A');
       const rrCI = results.relativeRiskCI
         ? `${results.relativeRiskCI.lower.toFixed(3)} – ${results.relativeRiskCI.upper.toFixed(3)}`
-        : 'N/A';
+        : t('common.na', 'N/A');
 
       const measuresBody = [
-        ['Odds Ratio (OR)', orValue, orCI],
-        ['Risque Relatif (RR)', rrValue, rrCI],
+        [t('twoByTwo.oddsRatio'), orValue, orCI],
+        [t('twoByTwo.relativeRisk'), rrValue, rrCI],
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Mesure', 'Valeur', 'IC 95%']],
+        head: [[t('twoByTwo.measure'), t('twoByTwo.value'), t('twoByTwo.ci95')]],
         body: measuresBody,
         theme: 'striped',
         headStyles: {
@@ -586,26 +577,26 @@ Test exact de Fisher:
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      //  Statistical tests 
+      // Statistical tests
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Tests statistiques', 20, y);
+      doc.text(t('twoByTwo.statTestsTitle'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
 
       const testsBody = [
-        ['χ² non corrigé', results.chi2Uncorrected.toFixed(3), results.chi2UncorrectedP.toFixed(8)],
-        ['χ² Mantel‑Haenszel', results.chi2MantelHaenszel.toFixed(3), results.chi2MantelHaenszelP.toFixed(8)],
-        ['χ² corrigé (Yates)', results.chi2Yates.toFixed(3), results.chi2YatesP.toFixed(8)],
-        ['Fisher exact 1‑queue', '—', results.fisherOneTail?.toFixed(8) ?? 'N/A'],
-        ['Fisher exact 2‑queues', '—', results.fisherTwoTail?.toFixed(8) ?? 'N/A'],
+        [t('twoByTwo.uncorrected'), results.chi2Uncorrected.toFixed(3), results.chi2UncorrectedP.toFixed(8)],
+        [t('twoByTwo.mantelHaenszel'), results.chi2MantelHaenszel.toFixed(3), results.chi2MantelHaenszelP.toFixed(8)],
+        [t('twoByTwo.yates'), results.chi2Yates.toFixed(3), results.chi2YatesP.toFixed(8)],
+        [t('twoByTwo.fisherOneTail'), '—', results.fisherOneTail?.toFixed(8) ?? t('common.na', 'N/A')],
+        [t('twoByTwo.fisherTwoTail'), '—', results.fisherTwoTail?.toFixed(8) ?? t('common.na', 'N/A')],
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Test', 'Statistique', 'p‑value']],
+        head: [[t('twoByTwo.test'), t('twoByTwo.statistic'), t('twoByTwo.pValue')]],
         body: testsBody,
         theme: 'striped',
         headStyles: {
@@ -626,11 +617,11 @@ Test exact de Fisher:
 
       y = (doc as any).lastAutoTable.finalY + 10;
 
-      //  Interpretation 
+      // Interpretation
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...colorSlate[900]);
-      doc.text('Interprétation', 20, y);
+      doc.text(t('twoByTwo.interpretation'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
@@ -638,18 +629,18 @@ Test exact de Fisher:
       let interpretation = '';
       const pValue = results.chi2UncorrectedP;
       if (pValue < 0.05) {
-        interpretation = 'Association statistiquement significative (p < 0.05). ';
+        interpretation = t('twoByTwo.significantAssociation');
       } else {
-        interpretation = "Aucune association significative (p ≥ 0.05). ";
+        interpretation = t('twoByTwo.nonSignificantAssociation');
       }
 
       if (results.relativeRisk) {
         if (results.relativeRisk > 1) {
-          interpretation += 'Le risque relatif indique un risque accru chez les exposés.';
+          interpretation += ' ' + t('twoByTwo.increasedRisk');
         } else if (results.relativeRisk < 1) {
-          interpretation += 'Le risque relatif indique un effet protecteur de l’exposition.';
+          interpretation += ' ' + t('twoByTwo.protectiveEffect');
         } else {
-          interpretation += 'Le risque relatif est égal à 1, suggérant aucune association.';
+          interpretation += ' ' + t('twoByTwo.noAssociation');
         }
       }
 
@@ -667,19 +658,19 @@ Test exact de Fisher:
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Calculateur 2×2 – Outil statistique pour épidémiologie', 20, footerY + 5);
+      doc.text(t('twoByTwo.reportFooter'), 20, footerY + 5);
       doc.text('Page 1 / 1', 190, footerY + 5, { align: 'right' });
-      doc.text(`Méthode : ${hasJStat ? 'jStat (exact)' : 'Approximation'}`, 20, footerY + 10);
+      doc.text(`${t('twoByTwo.method')}: ${hasJStat ? 'jStat (exact)' : 'Approximation'}`, 20, footerY + 10);
 
       doc.save(`Rapport_2x2_${results.a}_${results.b}_${results.c}_${results.d}.pdf`);
-      toast.success('Rapport PDF exporté avec succès');
+      toast.success(t('twoByTwo.exportSuccess', 'PDF exported successfully'));
     } catch (error) {
-      console.error('Erreur PDF :', error);
-      toast.error('Erreur lors de la génération du PDF');
+      console.error('PDF error:', error);
+      toast.error(t('twoByTwo.exportError', 'Failed to generate PDF'));
     }
   };
 
-  //  Render 
+  // Render
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
@@ -688,7 +679,7 @@ Test exact de Fisher:
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li>
               <Link href="/" className="hover:text-blue-500 transition-colors">
-                Accueil
+                {t('common.home')}
               </Link>
             </li>
             <li>
@@ -696,7 +687,7 @@ Test exact de Fisher:
             </li>
             <li>
               <span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">
-                Tableau 2×2
+                {t('twoByTwo.title')}
               </span>
             </li>
           </ol>
@@ -710,10 +701,10 @@ Test exact de Fisher:
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Analyse de tableau 2×2
+                {t('twoByTwo.title')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Calculez l'odds ratio, le risque relatif et les tests du chi‑carré.
+                {t('twoByTwo.description')}
               </p>
             </div>
           </div>
@@ -730,95 +721,94 @@ Test exact de Fisher:
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('twoByTwo.parameters')}
               </h2>
               <div className="space-y-5">
-              <div className="w-full max-w-2xl mx-auto">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm text-left">
-                  <thead>
-                    <tr className="border-b border-gray-100 dark:border-slate-800">
-                      <th className="py-4 px-4 font-medium text-gray-400 dark:text-slate-500">Exposition</th>
-                      <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">Malade</th>
-                      <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">Non-malade</th>
-                      <th className="py-4 px-4 font-medium text-right text-gray-400 dark:text-slate-500">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-slate-800/50">
-                    <tr className="group transition-colors hover:bg-gray-50/50 dark:hover:bg-slate-800/30">
-                      <td className="py-5 px-4 font-medium text-gray-700 dark:text-slate-300">Exposé</td>
-                      <td className="py-5 px-4 text-center">
-                        <input
-                          type="number"
-                          value={a}
-                          onChange={(e) => setA(e.target.value)}
-                          className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="py-5 px-4 text-center">
-                        <input
-                          type="number"
-                          value={b}
-                          onChange={(e) => setB(e.target.value)}
-                          className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="py-5 px-4 text-right font-semibold text-gray-400 tabular-nums">
-                        {totals.totalExposed || '0'}
-                      </td>
-                    </tr>
-
-                    <tr className="group transition-colors hover:bg-gray-50/50 dark:hover:bg-slate-800/30">
-                      <td className="py-5 px-4 font-medium text-gray-700 dark:text-slate-300">Non-exposé</td>
-                      <td className="py-5 px-4 text-center">
-                        <input
-                          type="number"
-                          value={c}
-                          onChange={(e) => setC(e.target.value)}
-                          className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="py-5 px-4 text-center">
-                        <input
-                          type="number"
-                          value={d}
-                          onChange={(e) => setD(e.target.value)}
-                          className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="py-5 px-4 text-right font-semibold text-gray-400 tabular-nums">
-                        {totals.totalUnexposed || '0'}
-                      </td>
-                    </tr>
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-gray-100 dark:border-slate-800">
-                      <td className="py-5 px-4 font-bold text-gray-900 dark:text-white text-xs uppercase tracking-wider">Total</td>
-                      <td className="py-5 px-4 text-center  text-gray-900 dark:text-white tabular-nums">
-                        {totals.totalDiseased || '0'}
-                      </td>
-                      <td className="py-5 px-4 text-center  text-gray-900 dark:text-white tabular-nums">
-                        {totals.totalUndiseased || '0'}
-                      </td>
-                      <td className="py-5 px-4 text-right font-bold  dark:text-blue-400 tabular-nums">
-                        {totals.totalAll || '0'}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
+                <div className="w-full max-w-2xl mx-auto">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-sm text-left">
+                      <thead>
+                        <tr className="border-b border-gray-100 dark:border-slate-800">
+                          <th className="py-4 px-4 font-medium text-gray-400 dark:text-slate-500">{t('twoByTwo.exposure')}</th>
+                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">{t('twoByTwo.diseased')}</th>
+                          <th className="py-4 px-4 font-medium text-center text-gray-500 dark:text-slate-400">{t('twoByTwo.nonDiseased')}</th>
+                          <th className="py-4 px-4 font-medium text-right text-gray-400 dark:text-slate-500">{t('twoByTwo.total')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-slate-800/50">
+                        <tr className="group transition-colors hover:bg-gray-50/50 dark:hover:bg-slate-800/30">
+                          <td className="py-5 px-4 font-medium text-gray-700 dark:text-slate-300">{t('twoByTwo.exposed')}</td>
+                          <td className="py-5 px-4 text-center">
+                            <input
+                              type="number"
+                              value={a}
+                              onChange={(e) => setA(e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="py-5 px-4 text-center">
+                            <input
+                              type="number"
+                              value={b}
+                              onChange={(e) => setB(e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="py-5 px-4 text-right font-semibold text-gray-400 tabular-nums">
+                            {totals.totalExposed || '0'}
+                          </td>
+                        </tr>
+                        <tr className="group transition-colors hover:bg-gray-50/50 dark:hover:bg-slate-800/30">
+                          <td className="py-5 px-4 font-medium text-gray-700 dark:text-slate-300">{t('twoByTwo.unexposed')}</td>
+                          <td className="py-5 px-4 text-center">
+                            <input
+                              type="number"
+                              value={c}
+                              onChange={(e) => setC(e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="py-5 px-4 text-center">
+                            <input
+                              type="number"
+                              value={d}
+                              onChange={(e) => setD(e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent group-hover:border-gray-200 dark:group-hover:border-slate-700 focus:border-blue-500 focus:outline-none text-center transition-all tabular-nums"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="py-5 px-4 text-right font-semibold text-gray-400 tabular-nums">
+                            {totals.totalUnexposed || '0'}
+                          </td>
+                        </tr>
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-100 dark:border-slate-800">
+                          <td className="py-5 px-4 font-bold text-gray-900 dark:text-white text-xs uppercase tracking-wider">{t('twoByTwo.total')}</td>
+                          <td className="py-5 px-4 text-center text-gray-900 dark:text-white tabular-nums">
+                            {totals.totalDiseased || '0'}
+                          </td>
+                          <td className="py-5 px-4 text-center text-gray-900 dark:text-white tabular-nums">
+                            {totals.totalUndiseased || '0'}
+                          </td>
+                          <td className="py-5 px-4 text-right font-bold dark:text-blue-400 tabular-nums">
+                            {totals.totalAll || '0'}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
               </div>
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
                 <button
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('twoByTwo.example')}
                 </button>
                 <button
                   onClick={clearForm}
@@ -835,21 +825,21 @@ Test exact de Fisher:
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Analyse des résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('twoByTwo.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier le résultat principal"
+                      title={t('twoByTwo.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('twoByTwo.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -861,7 +851,7 @@ Test exact de Fisher:
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('twoByTwo.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">0.00</div>
                   </div>
                 ) : (
@@ -875,7 +865,7 @@ Test exact de Fisher:
                       }`}
                     >
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Incidences
+                        {t('twoByTwo.incidences')}
                       </p>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
@@ -886,7 +876,7 @@ Test exact de Fisher:
                           >
                             {results.incidenceExposedPct}
                           </div>
-                          <span className="text-xs">Exposés</span>
+                          <span className="text-xs">{t('twoByTwo.exposed')}</span>
                         </div>
                         <div>
                           <div
@@ -896,7 +886,7 @@ Test exact de Fisher:
                           >
                             {results.incidenceUnexposedPct}
                           </div>
-                          <span className="text-xs">Non-exposés</span>
+                          <span className="text-xs">{t('twoByTwo.unexposed')}</span>
                         </div>
                         <div>
                           <div
@@ -906,7 +896,7 @@ Test exact de Fisher:
                           >
                             {results.incidenceTotalPct}
                           </div>
-                          <span className="text-xs">Totale</span>
+                          <span className="text-xs">{t('twoByTwo.total')}</span>
                         </div>
                       </div>
                     </div>
@@ -920,7 +910,7 @@ Test exact de Fisher:
                       }`}
                     >
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        Mesures d'association
+                        {t('twoByTwo.measuresTitle')}
                       </p>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -929,13 +919,13 @@ Test exact de Fisher:
                               (results.oddsRatio ?? 1) > 1 ? 'text-orange-600' : 'text-emerald-600'
                             }`}
                           >
-                            {results.oddsRatio ? results.oddsRatio.toFixed(3) : 'N/A'}
+                            {results.oddsRatio ? results.oddsRatio.toFixed(3) : t('common.na', 'N/A')}
                           </div>
-                          <span className="text-xs">Odds Ratio (OR)</span>
+                          <span className="text-xs">{t('twoByTwo.oddsRatio')}</span>
                           <p className="text-xs mt-1">
                             {results.oddsRatioCI
                               ? `${results.oddsRatioCI.lower.toFixed(3)} – ${results.oddsRatioCI.upper.toFixed(3)}`
-                              : 'N/A'}
+                              : t('common.na', 'N/A')}
                           </p>
                         </div>
                         <div>
@@ -944,13 +934,13 @@ Test exact de Fisher:
                               (results.relativeRisk ?? 1) > 1 ? 'text-orange-600' : 'text-emerald-600'
                             }`}
                           >
-                            {results.relativeRisk ? results.relativeRisk.toFixed(3) : 'N/A'}
+                            {results.relativeRisk ? results.relativeRisk.toFixed(3) : t('common.na', 'N/A')}
                           </div>
-                          <span className="text-xs">Risque Relatif (RR)</span>
+                          <span className="text-xs">{t('twoByTwo.relativeRisk')}</span>
                           <p className="text-xs mt-1">
                             {results.relativeRiskCI
                               ? `${results.relativeRiskCI.lower.toFixed(3)} – ${results.relativeRiskCI.upper.toFixed(3)}`
-                              : 'N/A'}
+                              : t('common.na', 'N/A')}
                           </p>
                         </div>
                       </div>
@@ -962,211 +952,164 @@ Test exact de Fisher:
                         <table className="w-full text-xs sm:text-sm">
                           <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
                             <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Méthode</th>
-                              <th className="px-3 py-2 text-center font-semibold">Valeur</th>
-                              <th className="px-3 py-2 text-center font-semibold">p‑value</th>
+                              <th className="px-3 py-2 text-left font-semibold">{t('twoByTwo.method')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.value')}</th>
+                              <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.pValue')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                             <tr>
-                              <td className="px-3 py-2 font-medium">χ² non corrigé</td>
+                              <td className="px-3 py-2 font-medium">{t('twoByTwo.uncorrected')}</td>
                               <td className="px-3 py-2 text-center font-mono">
                                 {results.chi2Uncorrected.toFixed(3)}
                               </td>
                               <td className="px-3 py-2 text-center font-mono">
-                                {results.chi2UncorrectedP.toFixed(8)}
+                                {formatPValue(results.chi2UncorrectedP)}
                               </td>
                             </tr>
                             <tr>
-                              <td className="px-3 py-2 font-medium">χ² Mantel‑Haenszel</td>
+                              <td className="px-3 py-2 font-medium">{t('twoByTwo.mantelHaenszel')}</td>
                               <td className="px-3 py-2 text-center font-mono">
                                 {results.chi2MantelHaenszel.toFixed(3)}
                               </td>
                               <td className="px-3 py-2 text-center font-mono">
-                                {results.chi2MantelHaenszelP.toFixed(8)}
+                                {formatPValue(results.chi2MantelHaenszelP)}
                               </td>
                             </tr>
                             <tr>
-                              <td className="px-3 py-2 font-medium">χ² corrigé (Yates)</td>
+                              <td className="px-3 py-2 font-medium">{t('twoByTwo.yates')}</td>
                               <td className="px-3 py-2 text-center font-mono">
                                 {results.chi2Yates.toFixed(3)}
                               </td>
                               <td className="px-3 py-2 text-center font-mono">
-                                {results.chi2YatesP.toFixed(8)}
+                                {formatPValue(results.chi2YatesP)}
                               </td>
                             </tr>
-                              <tr>
-                                <td className="px-3 py-2 font-medium">Fisher exact 1‑queue</td>
-                                <td className="px-3 py-2 text-center font-mono">—</td>
-                                <td className="px-3 py-2 text-center font-mono">
-                                  {formatPValue(results.fisherOneTail)}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="px-3 py-2 font-medium">Fisher exact 2‑queues</td>
-                                <td className="px-3 py-2 text-center font-mono">—</td>
-                                <td className="px-3 py-2 text-center font-mono">
-                                  {formatPValue(results.fisherTwoTail)}
-                                </td>
-                              </tr>
-                              {/* ── Nouvelle ligne Mid-P ── */}
-                              <tr>
-                                <td className="px-3 py-2 font-medium">Mid-P exact 1‑queue</td>
-                                <td className="px-3 py-2 text-center font-mono">—</td>
-                                <td className="px-3 py-2 text-center font-mono">
-                                  {formatPValue(results.midPOneTail)}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="px-3 py-2 font-medium">Mid-P exact 2‑queues</td>
-                                <td className="px-3 py-2 text-center font-mono">—</td>
-                                <td className="px-3 py-2 text-center font-mono">
-                                  {formatPValue(results.midPTwoTail)}
-                                </td>
-                              </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('twoByTwo.fisherOneTail')}</td>
+                              <td className="px-3 py-2 text-center font-mono">—</td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {formatPValue(results.fisherOneTail)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('twoByTwo.fisherTwoTail')}</td>
+                              <td className="px-3 py-2 text-center font-mono">—</td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {formatPValue(results.fisherTwoTail)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('twoByTwo.midPOneTail')}</td>
+                              <td className="px-3 py-2 text-center font-mono">—</td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {formatPValue(results.midPOneTail)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('twoByTwo.midPTwoTail')}</td>
+                              <td className="px-3 py-2 text-center font-mono">—</td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {formatPValue(results.midPTwoTail)}
+                              </td>
+                            </tr>
                           </tbody>
                         </table>
                         <p className="text-sm text-slate-400 mt-3 italic">
-                          * Les IC pour OR et RR sont calculés par approximation de Taylor (méthode de Woolf).
+                          * {t('twoByTwo.ciNote')}
                         </p>
                       </div>
                     </div>
-                    {/* ── Estimations basées sur le risque ── */}
-<div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-  <p className="text-xs font-bold  tracking-widest text-slate-400 mb-3">
-    Estimations basées sur le risque
-    <span className="ml-2 text-slate-300 font-normal normal-case">(non valable études cas-témoins)</span>
-  </p>
-  <table className="w-full text-xs sm:text-sm">
-    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-      <tr>
-        <th className="px-3 py-2 text-left font-semibold">Type</th>
-        <th className="px-3 py-2 text-center font-semibold">Valeur</th>
-        <th className="px-3 py-2 text-center font-semibold">IC 95% inférieur</th>
-        <th className="px-3 py-2 text-center font-semibold">IC 95% supérieur</th>
-      </tr>
-    </thead>
-    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-      {[
-        {
-          label: 'Risque exposés',
-          value: formatPct(results.incidenceExposed),
-          ci: results.riskExposedCI,
-        },
-        {
-          label: 'Risque non-exposés',
-          value: formatPct(results.incidenceUnexposed),
-          ci: results.riskUnexposedCI,
-        },
-        {
-          label: 'Risque global',
-          value: formatPct(results.incidenceTotal),
-          ci: results.riskTotalCI,
-        },
-        {
-          label: 'Rapport de risque (RR)',
-          value: results.relativeRisk?.toFixed(3) ?? 'N/A',
-          ci: results.relativeRiskCI,
-          isRatio: true,
-        },
-        {
-          label: 'Différence de risque',
-          value: results.riskDifference !== null ? formatPct(results.riskDifference) : 'N/A',
-          ci: results.riskDifferenceCI,
-          isPct: true,
-        },
-        {
-          label: 'FEp (fraction étiol. pop.)',
-          value: results.attrFracPop !== null ? formatPct(results.attrFracPop) : 'N/A',
-          ci: results.attrFracPopCI,
-          isPct: true,
-        },
-        {
-          label: 'FEe (fraction étiol. exposés)',
-          value: results.attrFracExp !== null ? formatPct(results.attrFracExp) : 'N/A',
-          ci: results.attrFracExpCI,
-          isPct: true,
-        },
-      ].map(({ label, value, ci, isRatio, isPct }) => (
-        <tr key={label}>
-          <td className="px-3 py-2 font-medium">{label}</td>
-          <td className="px-3 py-2 text-center font-mono">{value}</td>
-          <td className="px-3 py-2 text-center font-mono">
-            {ci
-              ? isRatio
-                ? ci.lower.toFixed(3)
-                : isPct
-                ? formatPct(ci.lower)
-                : formatPct(ci.lower)
-              : '—'}
-          </td>
-          <td className="px-3 py-2 text-center font-mono">
-            {ci
-              ? isRatio
-                ? ci.upper.toFixed(3)
-                : isPct
-                ? formatPct(ci.upper)
-                : formatPct(ci.upper)
-              : '—'}
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-</div>
 
-{/* ── Estimations basées sur l'OR ── */}
-<div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-  <p className="text-xs font-bold tracking-widest text-slate-400 mb-3">
-    Estimations basées sur les rapports de cotes
-  </p>
-  <table className="w-full text-xs sm:text-sm">
-    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-      <tr>
-        <th className="px-3 py-2 text-left font-semibold">Type</th>
-        <th className="px-3 py-2 text-center font-semibold">Valeur</th>
-        <th className="px-3 py-2 text-center font-semibold">IC 95% inférieur</th>
-        <th className="px-3 py-2 text-center font-semibold">IC 95% supérieur</th>
-      </tr>
-    </thead>
-    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-      {[
-        {
-          label: 'Odds Ratio (OR) Taylor',
-          value: results.oddsRatio?.toFixed(3) ?? 'N/A',
-          ci: results.oddsRatioCI,
-          isRatio: true,
-        },
-        {
-          label: 'FEp|OR (fraction étiol. pop.)',
-          value: results.attrFracPopOR !== null ? formatPct(results.attrFracPopOR) : 'N/A',
-          ci: results.attrFracPopORCI,
-          isPct: true,
-        },
-        {
-          label: 'FEe|OR (fraction étiol. exposés)',
-          value: results.attrFracExpOR !== null ? formatPct(results.attrFracExpOR) : 'N/A',
-          ci: results.attrFracExpORCI,
-          isPct: true,
-        },
-      ].map(({ label, value, ci, isRatio, isPct }) => (
-        <tr key={label}>
-          <td className="px-3 py-2 font-medium">{label}</td>
-          <td className="px-3 py-2 text-center font-mono">{value}</td>
-          <td className="px-3 py-2 text-center font-mono">
-            {ci ? (isRatio ? ci.lower.toFixed(3) : formatPct(ci.lower)) : '—'}
-          </td>
-          <td className="px-3 py-2 text-center font-mono">
-            {ci ? (isRatio ? ci.upper.toFixed(3) : formatPct(ci.upper)) : '—'}
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-  <p className="text-xs text-slate-400 mt-2 italic">
-    * IC calculés par séries de Taylor (méthode de Woolf). FEp|OR = (a/c₁)·(OR−1)/OR.
-  </p>
-</div>
+                    {/* Risk‑based estimates */}
+                    <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                      <p className="text-xs font-bold tracking-widest text-slate-400 mb-3">
+                        {t('twoByTwo.riskBasedTitle')}
+                        <span className="ml-2 text-slate-300 font-normal normal-case">({t('twoByTwo.notValidCaseControl')})</span>
+                      </p>
+                      <table className="w-full text-xs sm:text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">{t('twoByTwo.type')}</th>
+                            <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.value')}</th>
+                            <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.lowerCI')}</th>
+                            <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.upperCI')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                          {[
+                            { label: t('twoByTwo.riskExposed'), value: formatPct(results.incidenceExposed), ci: results.riskExposedCI },
+                            { label: t('twoByTwo.riskUnexposed'), value: formatPct(results.incidenceUnexposed), ci: results.riskUnexposedCI },
+                            { label: t('twoByTwo.riskTotal'), value: formatPct(results.incidenceTotal), ci: results.riskTotalCI },
+                            { label: t('twoByTwo.relativeRisk'), value: results.relativeRisk?.toFixed(3) ?? t('common.na', 'N/A'), ci: results.relativeRiskCI, isRatio: true },
+                            { label: t('twoByTwo.riskDifference'), value: results.riskDifference !== null ? formatPct(results.riskDifference) : t('common.na', 'N/A'), ci: results.riskDifferenceCI, isPct: true },
+                            { label: t('twoByTwo.attrFracPop'), value: results.attrFracPop !== null ? formatPct(results.attrFracPop) : t('common.na', 'N/A'), ci: results.attrFracPopCI, isPct: true },
+                            { label: t('twoByTwo.attrFracExp'), value: results.attrFracExp !== null ? formatPct(results.attrFracExp) : t('common.na', 'N/A'), ci: results.attrFracExpCI, isPct: true },
+                          ].map(({ label, value, ci, isRatio, isPct }) => (
+                            <tr key={label}>
+                              <td className="px-3 py-2 font-medium">{label}</td>
+                              <td className="px-3 py-2 text-center font-mono">{value}</td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {ci
+                                  ? isRatio
+                                    ? ci.lower.toFixed(3)
+                                    : isPct
+                                    ? formatPct(ci.lower)
+                                    : formatPct(ci.lower)
+                                  : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {ci
+                                  ? isRatio
+                                    ? ci.upper.toFixed(3)
+                                    : isPct
+                                    ? formatPct(ci.upper)
+                                    : formatPct(ci.upper)
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* OR‑based estimates */}
+                    <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                      <p className="text-xs font-bold tracking-widest text-slate-400 mb-3">
+                        {t('twoByTwo.orBasedTitle')}
+                      </p>
+                      <table className="w-full text-xs sm:text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">{t('twoByTwo.type')}</th>
+                            <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.value')}</th>
+                            <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.lowerCI')}</th>
+                            <th className="px-3 py-2 text-center font-semibold">{t('twoByTwo.upperCI')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                          {[
+                            { label: t('twoByTwo.oddsRatio'), value: results.oddsRatio?.toFixed(3) ?? t('common.na', 'N/A'), ci: results.oddsRatioCI, isRatio: true },
+                            { label: t('twoByTwo.attrFracPopOR'), value: results.attrFracPopOR !== null ? formatPct(results.attrFracPopOR) : t('common.na', 'N/A'), ci: results.attrFracPopORCI, isPct: true },
+                            { label: t('twoByTwo.attrFracExpOR'), value: results.attrFracExpOR !== null ? formatPct(results.attrFracExpOR) : t('common.na', 'N/A'), ci: results.attrFracExpORCI, isPct: true },
+                          ].map(({ label, value, ci, isRatio, isPct }) => (
+                            <tr key={label}>
+                              <td className="px-3 py-2 font-medium">{label}</td>
+                              <td className="px-3 py-2 text-center font-mono">{value}</td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {ci ? (isRatio ? ci.lower.toFixed(3) : formatPct(ci.lower)) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {ci ? (isRatio ? ci.upper.toFixed(3) : formatPct(ci.upper)) : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="text-xs text-slate-400 mt-2 italic">
+                        * {t('twoByTwo.orNote')}
+                      </p>
+                    </div>
 
                     {/* Interpretation block */}
                     <div
@@ -1177,18 +1120,18 @@ Test exact de Fisher:
                       }`}
                     >
                       <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-500" /> Interprétation
+                        <Info className="w-4 h-4 text-blue-500" /> {t('twoByTwo.interpretation')}
                       </h3>
                       <p className="text-sm leading-relaxed">
                         {results.chi2UncorrectedP < 0.05
-                          ? 'Association statistiquement significative (p < 0.05). '
-                          : "Aucune association significative (p ≥ 0.05). "}
+                          ? t('twoByTwo.significantAssociation')
+                          : t('twoByTwo.nonSignificantAssociation')}
                         {results.relativeRisk &&
                           (results.relativeRisk > 1
-                            ? 'Le risque relatif indique un risque accru chez les exposés.'
+                            ? ' ' + t('twoByTwo.increasedRisk')
                             : results.relativeRisk < 1
-                            ? 'Le risque relatif indique un effet protecteur de l’exposition.'
-                            : 'Le risque relatif est égal à 1, suggérant aucune association.')}
+                            ? ' ' + t('twoByTwo.protectiveEffect')
+                            : ' ' + t('twoByTwo.noAssociation'))}
                       </p>
                     </div>
                   </div>
@@ -1207,7 +1150,7 @@ Test exact de Fisher:
             />
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Guide Rapide – Tableau 2×2</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('twoByTwo.helpTitle')}</h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
@@ -1219,42 +1162,26 @@ Test exact de Fisher:
               <div className="p-6 md:p-8 space-y-8">
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      1
-                    </div>
-                    Le Principe
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">1</div>
+                    {t('twoByTwo.principleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    L'analyse d'un tableau 2×2 permet d'étudier l'association entre une exposition et une maladie. On calcule l'odds ratio (études cas‑témoins) et le risque relatif (études de cohorte), ainsi que divers tests d'indépendance.
+                    {t('twoByTwo.principleText')}
                   </p>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      2
-                    </div>
-                    Méthodes de calcul
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">2</div>
+                    {t('twoByTwo.methodsTitle')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Odds Ratio (OR)</strong> – (a·d)/(b·c). Intervalle de confiance par approximation de Woolf.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Risque Relatif (RR)</strong> – (a/(a+b)) / (c/(c+d)). IC par approximation de Taylor.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Chi‑carré non corrigé</strong> – Test d'indépendance classique (Pearson).
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Chi‑carré de Mantel‑Haenszel</strong> – Utilise (n‑1) pour une meilleure approximation.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Chi‑carré corrigé (Yates)</strong> – Correction de continuité pour petits effectifs.
-                    </p>
-                    <p>
-                      <strong className="text-slate-900 dark:text-white">Test exact de Fisher</strong> – Basé sur la distribution hypergéométrique, recommandé pour petits effectifs.
-                    </p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoByTwo.orTitle')}</strong> – {t('twoByTwo.orDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoByTwo.rrTitle')}</strong> – {t('twoByTwo.rrDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoByTwo.chi2UncorrectedTitle')}</strong> – {t('twoByTwo.chi2UncorrectedDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoByTwo.mantelHaenszelTitle')}</strong> – {t('twoByTwo.mantelHaenszelDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoByTwo.yatesTitle')}</strong> – {t('twoByTwo.yatesDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('twoByTwo.fisherTitle')}</strong> – {t('twoByTwo.fisherDesc')}</p>
                   </div>
                   <a
                     href="https://www.openepi.com/TwobyTwo/TwobyTwo.htm"
@@ -1262,19 +1189,17 @@ Test exact de Fisher:
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Source: OpenEpi <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('twoByTwo.source')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      3
-                    </div>
-                    Interprétation
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">3</div>
+                    {t('twoByTwo.interpretationTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm">
-                    Si l'intervalle de confiance de l'OR ou du RR exclut 1, l'association est significative. La p‑value du test du χ² indique la significativité de l'association (p &lt; 0.05).
+                    {t('twoByTwo.interpretationText')}
                   </p>
                 </section>
               </div>
