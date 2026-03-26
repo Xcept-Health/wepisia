@@ -499,7 +499,7 @@ export default function SampleSizeProportion() {
 
           {/* Right: Results */}
           <div className="lg:col-span-7">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
                   <Presentation className="w-5 h-5 mr-3 text-indigo-500" />
