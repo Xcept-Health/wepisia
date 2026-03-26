@@ -678,7 +678,7 @@ Fraction étiologique population (EFp) : ${results.efp} [${results.efpLower} –
         </nav>
 
         {/* Page header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+        <div className="module-header flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
               <TrendingUp className="w-7 h-7 text-blue-600 dark:text-blue-400" />

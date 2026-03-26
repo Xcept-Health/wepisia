@@ -813,4 +813,40 @@
   z-index: 1000 !important;
 }
 
+/* Header de module — compact sur mobile */
+@media (max-width: 768px) {
+  /* Icône plus petite */
+  .module-header .w-14 {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  
+  .module-header .w-7 {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
 
+  /* Titre plus petit */
+  .module-header h1 {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+
+  /* Description cachée */
+  .module-header p {
+    display: none;
+  }
+
+  /* Bouton aide toujours visible */
+  .module-header button {
+    display: flex !important;
+  }
+
+  /* Layout en ligne */
+  .module-header {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.75rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+}
