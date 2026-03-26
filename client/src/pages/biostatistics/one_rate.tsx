@@ -89,7 +89,7 @@ export default function OneRate() {
       for (let i = 0; i < 100; i++) {
         let mid = (low + high) / 2;
         let cum = jStat.poisson.cdf(a - 1, mid * N) + 0.5 * jStat.poisson.pdf(a, mid * N);
-        if (cum < alpha / 2) high = mid;
+        if (cum < 1 - alpha / 2) high = mid;
         else low = mid;
       }
       midpLower = (low + high) / 2;
@@ -100,8 +100,8 @@ export default function OneRate() {
       for (let i = 0; i < 100; i++) {
         let mid = (low + high) / 2;
         let cum = jStat.poisson.cdf(a, mid * N) - 0.5 * jStat.poisson.pdf(a, mid * N);
-        if (cum < 1 - alpha / 2) low = mid;
-        else high = mid;
+        if (cum < alpha / 2) high = mid;
+        else low = mid;
       }
       midpUpper = (low + high) / 2;
     }
