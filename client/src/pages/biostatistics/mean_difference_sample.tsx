@@ -10,10 +10,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import jStat from 'jstat';
 
-// ============================================================
-// Types
-// ============================================================
 
+// Types
 interface SampleSizeResult {
   n1: number;
   n2: number;
@@ -22,10 +20,8 @@ interface SampleSizeResult {
   pooledSD: number;
 }
 
-// ============================================================
-// Pure calculation helpers
-// ============================================================
 
+// Pure calculation helpers
 /** Two-tailed z-score for a given confidence level (in percent) */
 function zAlpha(confidence: number): number {
   const alpha = 1 - confidence / 100;
@@ -73,10 +69,8 @@ function computeSampleSizes(
   return { n1, n2, total, difference: delta, pooledSD };
 }
 
-// ============================================================
-// PDF Export
-// ============================================================
 
+// PDF Export
 type RGB = [number, number, number];
 
 const P = {
@@ -108,7 +102,7 @@ function exportMeanDifferencePdf(
     sd1: number; sd2: number;
     confidence: number; power: number; ratio: number;
   },
-  t: (key: string, fallback?: string) => string,
+  t: (key: string) => string,
   lang: string
 ) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -133,17 +127,17 @@ function exportMeanDifferencePdf(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
   color(P.slate800);
-  doc.text(t('meanDifference.reportTitle', 'Sample Size – Difference of Means'), M + 5, 20);
+  doc.text(t('meanDiffSample.reportTitle'), M + 5, 20);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   color(P.slate500);
-  doc.text(t('meanDifference.reportSubtitle', 'OpenEpi style calculator'), M + 5, 28);
+  doc.text(t('meanDiffSample.reportSubtitle'), M + 5, 28);
 
   const dateStr = new Date().toLocaleDateString(lang, { year: 'numeric', month: 'long', day: 'numeric' });
   const timeStr = new Date().toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
   doc.text(
-    t('meanDifference.reportGenerated', 'Generated on {date} at {time}', { date: dateStr, time: timeStr }),
+    t('meanDiffSample.reportGenerated', { date: dateStr, time: timeStr }),
     W - M, 28,
     { align: 'right' }
   );
@@ -158,9 +152,9 @@ function exportMeanDifferencePdf(
   const cardW = (CW - gap * 3) / 4;
   const cardH = 22;
   const inputsData = [
-    { label: t('meanDifference.confidenceLabel', 'Confidence level'), value: `${inputs.confidence} %` },
-    { label: t('meanDifference.powerLabel', 'Power'), value: `${inputs.power} %` },
-    { label: t('meanDifference.ratioLabel', 'Ratio (n₂/n₁)'), value: inputs.ratio.toFixed(2) },
+    { label: t('meanDiffSample.confidenceLabel'), value: `${inputs.confidence} %` },
+    { label: t('meanDiffSample.powerLabel'), value: `${inputs.power} %` },
+    { label: t('meanDiffSample.ratioLabel'), value: inputs.ratio.toFixed(2) },
   ];
   inputsData.forEach((item, i) => {
     const x = M + i * (cardW + gap);
@@ -183,12 +177,12 @@ function exportMeanDifferencePdf(
   doc.setFontSize(9);
   color(P.slate500);
   doc.text(
-    `${t('meanDifference.mean1Label', 'Mean 1')}: ${inputs.mean1.toFixed(2)}   |   ${t('meanDifference.sd1Label', 'SD 1')}: ${inputs.sd1.toFixed(2)}`,
+    `${t('meanDiffSample.mean1Label')}: ${inputs.mean1.toFixed(2)}   |   ${t('meanDiffSample.sd1Label')}: ${inputs.sd1.toFixed(2)}`,
     M, y
   );
   y += 5;
   doc.text(
-    `${t('meanDifference.mean2Label', 'Mean 2')}: ${inputs.mean2.toFixed(2)}   |   ${t('meanDifference.sd2Label', 'SD 2')}: ${inputs.sd2.toFixed(2)}`,
+    `${t('meanDiffSample.mean2Label')}: ${inputs.mean2.toFixed(2)}   |   ${t('meanDiffSample.sd2Label')}: ${inputs.sd2.toFixed(2)}`,
     M, y
   );
   y += 10;
@@ -197,25 +191,25 @@ function exportMeanDifferencePdf(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   color(P.slate700);
-  doc.text(t('meanDifference.resultsTitle', 'Sample size estimates').toUpperCase(), M, y);
+  doc.text(t('meanDiffSample.resultsTitle').toUpperCase(), M, y);
   y += 2;
   draw(P.slate200);
   ln(M, y, M + CW, y, 0.3);
   y += 6;
 
   const tableRows = [
-    [t('meanDifference.tableGroup1', 'Group 1'), result.n1.toLocaleString()],
-    [t('meanDifference.tableGroup2', 'Group 2'), result.n2.toLocaleString()],
-    [t('meanDifference.tableTotal', 'Total'), result.total.toLocaleString()],
-    [t('meanDifference.tableDifference', 'Difference (Δ)'), result.difference.toFixed(3)],
-    [t('meanDifference.tablePooledSD', 'Pooled SD'), result.pooledSD.toFixed(3)],
+    [t('meanDiffSample.tableGroup1'), result.n1.toLocaleString()],
+    [t('meanDiffSample.tableGroup2'), result.n2.toLocaleString()],
+    [t('meanDiffSample.tableTotal'), result.total.toLocaleString()],
+    [t('meanDiffSample.tableDifference'), result.difference.toFixed(3)],
+    [t('meanDiffSample.tablePooledSD'), result.pooledSD.toFixed(3)],
   ];
 
   autoTable(doc, {
     startY: y,
     head: [[
-      t('meanDifference.tableHeaderParameter', 'Parameter'),
-      t('meanDifference.tableHeaderValue', 'Value'),
+      t('meanDiffSample.tableHeaderParameter'),
+      t('meanDiffSample.tableHeaderValue'),
     ]],
     body: tableRows,
     theme: 'plain',
@@ -247,15 +241,12 @@ function exportMeanDifferencePdf(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   color(P.slate600);
-  doc.text(t('meanDifference.formulaTitle', 'Formula'), M, y);
+  doc.text(t('meanDiffSample.formulaTitle'), M, y);
   y += 4;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   color(P.slate500);
-  const formula = t(
-    'meanDifference.formula',
-    'n₁ = (z_α/₂ + z_β)² × (σ₁² + σ₂² / r) / Δ²\nn₂ = r × n₁\nwhere Δ = |μ₁ - μ₂|, r = n₂/n₁'
-  );
+  const formula = t('meanDiffSample.formula');
   const formulaLines = doc.splitTextToSize(formula, CW);
   doc.text(formulaLines, M, y);
   y += formulaLines.length * 4 + 4;
@@ -264,10 +255,7 @@ function exportMeanDifferencePdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   color(P.slate400);
-  const note = t(
-    'meanDifference.footnote',
-    'Results are rounded up to the nearest integer. Pooled standard deviation is computed using the estimated sample sizes.'
-  );
+  const note = t('meanDiffSample.footnote');
   const noteLines = doc.splitTextToSize(note, CW);
   doc.text(noteLines, M, y);
 
@@ -278,7 +266,7 @@ function exportMeanDifferencePdf(
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(6.5);
   color(P.slate400);
-  doc.text(t('meanDifference.reportFooter', 'OpenEpi style sample size calculator · jStat · autoTable'), M, fY + 4.5);
+  doc.text(t('meanDiffSample.reportFooter'), M, fY + 4.5);
   doc.setFont('helvetica', 'bold');
   color(P.slate500);
   doc.text('1 / 1', W - M, fY + 6.5, { align: 'right' });
@@ -286,18 +274,16 @@ function exportMeanDifferencePdf(
   doc.save(`MeanDifference_${inputs.mean1}_${inputs.mean2}.pdf`);
 }
 
-// ============================================================
-// Main Component
-// ============================================================
 
+// Main Component
 export default function MeanDifference() {
   const { t, i18n } = useTranslation();
 
-  // Input states
-  const [mean1, setMean1] = useState('132.86');
-  const [mean2, setMean2] = useState('127.44');
-  const [sd1, setSd1] = useState('15.34');
-  const [sd2, setSd2] = useState('18.23');
+  // Input states – all numeric fields start empty
+  const [mean1, setMean1] = useState('');
+  const [mean2, setMean2] = useState('');
+  const [sd1, setSd1] = useState('');
+  const [sd2, setSd2] = useState('');
   const [confidence, setConfidence] = useState('95');
   const [power, setPower] = useState('80');
   const [ratio, setRatio] = useState('1');
@@ -307,10 +293,11 @@ export default function MeanDifference() {
 
   // Recompute on any input change
   useEffect(() => {
-    const m1 = parseFloat(mean1);
-    const m2 = parseFloat(mean2);
-    const s1 = parseFloat(sd1);
-    const s2 = parseFloat(sd2);
+    // Parse only if all fields are non-empty numbers
+    const m1 = mean1.trim() === '' ? NaN : parseFloat(mean1);
+    const m2 = mean2.trim() === '' ? NaN : parseFloat(mean2);
+    const s1 = sd1.trim() === '' ? NaN : parseFloat(sd1);
+    const s2 = sd2.trim() === '' ? NaN : parseFloat(sd2);
     const conf = parseFloat(confidence);
     const pow = parseFloat(power);
     const r = parseFloat(ratio);
@@ -338,7 +325,7 @@ export default function MeanDifference() {
     setPower('80');
     setRatio('1');
     setResult(null);
-    toast.info(t('meanDifference.clearMessage', 'Inputs cleared'));
+    toast.info(t('meanDiffSample.clearMessage'));
   };
 
   const handleExample = () => {
@@ -349,7 +336,7 @@ export default function MeanDifference() {
     setConfidence('95');
     setPower('80');
     setRatio('1');
-    toast.success(t('meanDifference.exampleLoaded', 'Example data loaded'));
+    toast.success(t('meanDiffSample.exampleLoaded'));
   };
 
   const handleCopy = async () => {
@@ -357,9 +344,9 @@ export default function MeanDifference() {
     const text = `Sample sizes:\nGroup 1: ${result.n1}\nGroup 2: ${result.n2}\nTotal: ${result.total}\nDifference: ${result.difference.toFixed(3)}\nPooled SD: ${result.pooledSD.toFixed(3)}`;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(t('meanDifference.copySuccess', 'Results copied'));
+      toast.success(t('meanDiffSample.copySuccess'));
     } catch {
-      toast.error(t('meanDifference.copyError', 'Copy failed'));
+      toast.error(t('meanDiffSample.copyError'));
     }
   };
 
@@ -374,10 +361,10 @@ export default function MeanDifference() {
     const r = parseFloat(ratio);
     try {
       exportMeanDifferencePdf(result, { mean1: m1, mean2: m2, sd1: s1, sd2: s2, confidence: conf, power: pow, ratio: r }, t, i18n.language);
-      toast.success(t('meanDifference.exportSuccess', 'PDF exported'));
+      toast.success(t('meanDiffSample.exportSuccess'));
     } catch (err) {
       console.error(err);
-      toast.error(t('meanDifference.exportError', 'Export failed'));
+      toast.error(t('meanDiffSample.exportError'));
     }
   };
 
@@ -391,7 +378,7 @@ export default function MeanDifference() {
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
             <li>
               <Link href="/" className="hover:text-blue-500 transition-colors">
-                {t('common.home', 'Home')}
+                {t('common.home')}
               </Link>
             </li>
             <li>
@@ -399,7 +386,7 @@ export default function MeanDifference() {
             </li>
             <li>
               <span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">
-                {t('meanDifference.title', 'Sample Size – Difference of Means')}
+                {t('meanDiffSample.title')}
               </span>
             </li>
           </ol>
@@ -413,13 +400,10 @@ export default function MeanDifference() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {t('meanDifference.title', 'Sample Size – Difference of Means')}
+                {t('meanDiffSample.title')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                {t(
-                  'meanDifference.subtitle',
-                  'Calculate required sample size to detect a difference between two independent means'
-                )}
+                {t('meanDiffSample.subtitle')}
               </p>
             </div>
           </div>
@@ -438,14 +422,14 @@ export default function MeanDifference() {
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
                 <Calculator className="w-5 h-5 mr-3 text-blue-500" />
-                {t('meanDifference.parameters', 'Parameters')}
+                {t('meanDiffSample.parameters')}
               </h2>
 
               <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                      {t('meanDifference.mean1Label', 'Mean – Group 1')}
+                      {t('meanDiffSample.mean1Label')}
                     </label>
                     <input
                       type="number"
@@ -457,7 +441,7 @@ export default function MeanDifference() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                      {t('meanDifference.mean2Label', 'Mean – Group 2')}
+                      {t('meanDiffSample.mean2Label')}
                     </label>
                     <input
                       type="number"
@@ -472,7 +456,7 @@ export default function MeanDifference() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                      {t('meanDifference.sd1Label', 'SD – Group 1')}
+                      {t('meanDiffSample.sd1Label')}
                     </label>
                     <input
                       type="number"
@@ -485,7 +469,7 @@ export default function MeanDifference() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                      {t('meanDifference.sd2Label', 'SD – Group 2')}
+                      {t('meanDiffSample.sd2Label')}
                     </label>
                     <input
                       type="number"
@@ -500,7 +484,7 @@ export default function MeanDifference() {
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('meanDifference.confidenceLabel', 'Confidence level (two-sided)')}
+                    {t('meanDiffSample.confidenceLabel')}
                   </label>
                   <select
                     value={confidence}
@@ -508,14 +492,14 @@ export default function MeanDifference() {
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
                     <option value="90">90 %</option>
-                    <option value="95">95 % ({t('meanDifference.standard', 'standard')})</option>
+                    <option value="95">95 % ({t('meanDiffSample.standard')})</option>
                     <option value="99">99 %</option>
                   </select>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('meanDifference.powerLabel', 'Power (%)')}
+                    {t('meanDiffSample.powerLabel')}
                   </label>
                   <select
                     value={power}
@@ -531,7 +515,7 @@ export default function MeanDifference() {
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('meanDifference.ratioLabel', 'Ratio (n₂ / n₁)')}
+                    {t('meanDiffSample.ratioLabel')}
                   </label>
                   <input
                     type="number"
@@ -542,7 +526,7 @@ export default function MeanDifference() {
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    {t('meanDifference.ratioNote', 'Use 1 for equal groups')}
+                    {t('meanDiffSample.ratioNote')}
                   </p>
                 </div>
               </div>
@@ -552,7 +536,7 @@ export default function MeanDifference() {
                   onClick={handleExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> {t('meanDifference.btnExample', 'Example')}
+                  <Info className="w-4 h-4" /> {t('meanDiffSample.btnExample')}
                 </button>
                 <button
                   onClick={handleClear}
@@ -567,207 +551,203 @@ export default function MeanDifference() {
 
           {/* Right: Results */}
           <div className="lg:col-span-7">
-  <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
-    <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
-      <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-        <Presentation className="w-5 h-5 mr-3 text-indigo-500" />
-        {t('meanDifference.resultsTitle', 'Sample size estimates')}
-      </h2>
-      {showResults && (
-        <div className="flex gap-2">
-          <button
-            onClick={handleCopy}
-            className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-            title={t('meanDifference.btnCopy', 'Copy results')}
-          >
-            <Copy className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleExport}
-            className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-            title={t('meanDifference.btnExport', 'Export PDF')}
-          >
-            <FileDown className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-    </div>
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" />
+                  {t('meanDiffSample.resultsTitle')}
+                </h2>
+                {showResults && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCopy}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title={t('meanDiffSample.btnCopy')}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={handleExport}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title={t('meanDiffSample.btnExport')}
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
 
-    <div className="p-4 lg:p-8 bg-slate-50/30 dark:bg-slate-900/10">
-      {!showResults ? (
-        <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-          <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-          <p className="text-lg">{t('meanDifference.enterData', 'Enter valid parameters to see results')}</p>
-          <p className="text-sm mt-2 text-slate-400">
-            {t('meanDifference.enterDataHint', 'Check that means and SDs are numbers, SD > 0, ratio > 0, and the means are not identical.')}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {/* Hero card : total sample size */}
-          <div className="p-6 rounded-3xl text-center border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
-              {t('meanDifference.totalSampleSize', 'Total Sample Size')}
-            </p>
-            <div className="text-5xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
-              {result.total.toLocaleString()}
+              <div className="p-4 lg:p-8 bg-slate-50/30 dark:bg-slate-900/10">
+                {!showResults ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                    <Presentation className="w-16 h-16 mb-4 text-slate-300" />
+                    <p className="text-lg">{t('meanDiffSample.enterData')}</p>
+                    <p className="text-sm mt-2 text-slate-400">
+                      {t('meanDiffSample.enterDataHint')}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Hero card : total sample size */}
+                    <div className="p-6 rounded-3xl text-center border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
+                        {t('meanDiffSample.totalSampleSize')}
+                      </p>
+                      <div className="text-5xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
+                        {result.total.toLocaleString()}
+                      </div>
+                      <p className="text-sm text-slate-500 mt-2">
+                        {t('meanDiffSample.breakdown', { n1: result.n1, n2: result.n2 })}
+                      </p>
+                    </div>
+
+                    {/* Détails par groupe : moyenne, écart‑type, variance */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl">
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                          {t('meanDiffSample.group1')}
+                        </div>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">{t('meanDiffSample.mean')}</span>
+                            <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                              {parseFloat(mean1).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">{t('meanDiffSample.sd')}</span>
+                            <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                              {parseFloat(sd1).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">{t('meanDiffSample.variance')}</span>
+                            <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                              {Math.pow(parseFloat(sd1), 2).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl">
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                          {t('meanDiffSample.group2')}
+                        </div>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">{t('meanDiffSample.mean')}</span>
+                            <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                              {parseFloat(mean2).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">{t('meanDiffSample.sd')}</span>
+                            <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                              {parseFloat(sd2).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">{t('meanDiffSample.variance')}</span>
+                            <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                              {Math.pow(parseFloat(sd2), 2).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Métriques : différence et écart‑type poolé */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl text-center">
+                        <div className="text-xs text-slate-500 uppercase tracking-wide">
+                          {t('meanDiffSample.differenceLabel')}
+                        </div>
+                        <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+                          {result.difference.toFixed(3)}
+                        </div>
+                      </div>
+                      <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl text-center">
+                        <div className="text-xs text-slate-500 uppercase tracking-wide">
+                          {t('meanDiffSample.pooledSDLabel')}
+                        </div>
+                        <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+                          {result.pooledSD.toFixed(3)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tableau détaillé */}
+                    <div className="p-6 rounded-3xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                      <p className="text-xs font-bold tracking-widest text-slate-400 mb-4">
+                        {t('meanDiffSample.details')}
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold">
+                                {t('meanDiffSample.tableHeaderParameter')}
+                              </th>
+                              <th className="px-3 py-2 text-right font-semibold">
+                                {t('meanDiffSample.tableHeaderValue')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('meanDiffSample.tableGroup1')}</td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {result.n1.toLocaleString()}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('meanDiffSample.tableGroup2')}</td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {result.n2.toLocaleString()}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('meanDiffSample.tableTotal')}</td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                                {result.total.toLocaleString()}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('meanDiffSample.tableDifference')}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">
+                                {result.difference.toFixed(3)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 font-medium">{t('meanDiffSample.tablePooledSD')}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">
+                                {result.pooledSD.toFixed(3)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Interprétation */}
+                    <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
+                      <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-500" /> {t('meanDiffSample.interpretationTitle')}
+                      </h3>
+                      <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                        {t('meanDiffSample.interpretationText', {
+                          power: power,
+                          delta: result.difference.toFixed(3),
+                          confidence: confidence,
+                          total: result.total,
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-slate-500 mt-2">
-              {t('meanDifference.breakdown', 'Group 1: {n1} | Group 2: {n2}', { n1: result.n1, n2: result.n2 })}
-            </p>
           </div>
-
-          {/* Détails par groupe : moyenne, écart‑type, variance */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                {t('meanDifference.group1', 'Group 1')}
-              </div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{t('meanDifference.mean', 'Mean')}</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
-                    {parseFloat(mean1).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{t('meanDifference.sd', 'Standard deviation')}</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
-                    {parseFloat(sd1).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{t('meanDifference.variance', 'Variance')}</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
-                    {Math.pow(parseFloat(sd1), 2).toFixed(3)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                {t('meanDifference.group2', 'Group 2')}
-              </div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{t('meanDifference.mean', 'Mean')}</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
-                    {parseFloat(mean2).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{t('meanDifference.sd', 'Standard deviation')}</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
-                    {parseFloat(sd2).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{t('meanDifference.variance', 'Variance')}</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
-                    {Math.pow(parseFloat(sd2), 2).toFixed(3)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Métriques : différence et écart‑type poolé */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl text-center">
-              <div className="text-xs text-slate-500 uppercase tracking-wide">
-                {t('meanDifference.differenceLabel', 'Difference (Δ)')}
-              </div>
-              <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                {result.difference.toFixed(3)}
-              </div>
-            </div>
-            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl text-center">
-              <div className="text-xs text-slate-500 uppercase tracking-wide">
-                {t('meanDifference.pooledSDLabel', 'Pooled SD')}
-              </div>
-              <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                {result.pooledSD.toFixed(3)}
-              </div>
-            </div>
-          </div>
-
-          {/* Tableau détaillé */}
-          <div className="p-6 rounded-3xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-            <p className="text-xs font-bold tracking-widest text-slate-400 mb-4">
-              {t('meanDifference.details', 'Detailed Results')}
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">
-                      {t('meanDifference.tableHeaderParameter', 'Parameter')}
-                    </th>
-                    <th className="px-3 py-2 text-right font-semibold">
-                      {t('meanDifference.tableHeaderValue', 'Value')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                  <tr>
-                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableGroup1', 'Group 1 sample size')}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
-                      {result.n1.toLocaleString()}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableGroup2', 'Group 2 sample size')}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
-                      {result.n2.toLocaleString()}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableTotal', 'Total')}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                      {result.total.toLocaleString()}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 font-medium">{t('meanDifference.tableDifference', 'Difference (Δ)')}</td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">
-                      {result.difference.toFixed(3)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 font-medium">{t('meanDifference.tablePooledSD', 'Pooled SD')}</td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">
-                      {result.pooledSD.toFixed(3)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Interprétation */}
-          <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5">
-            <h3 className="font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-              <Info className="w-4 h-4 text-blue-500" /> {t('meanDifference.interpretationTitle', 'Interpretation')}
-            </h3>
-            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              {t(
-                'meanDifference.interpretationText',
-                'The calculated sample sizes ensure that the study has {power}% power to detect a difference of {delta} between the two means, assuming the given standard deviations and a {confidence}% confidence level, using a two-sided test. The total sample size is {total}. The pooled standard deviation is a weighted average of the two group standard deviations.',
-                {
-                  power: power,
-                  delta: result.difference.toFixed(3),
-                  confidence: confidence,
-                  total: result.total,
-                }
-              )}
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
-  </div>
-</div>
         </div>
 
         {/* Help Modal */}
@@ -780,7 +760,7 @@ export default function MeanDifference() {
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  {t('meanDifference.helpTitle', 'Help & Methods')}
+                  {t('meanDiffSample.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelp(false)}
@@ -792,54 +772,35 @@ export default function MeanDifference() {
               <div className="p-6 md:p-8 space-y-6">
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      1
-                    </div>
-                    {t('meanDifference.helpPrincipleTitle', 'Purpose')}
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">1</div>
+                    {t('meanDiffSample.helpPrincipleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    {t(
-                      'meanDifference.helpPrinciple',
-                      'This calculator determines the sample size needed to detect a specified difference between two independent group means, given the standard deviations, a chosen confidence level, power, and allocation ratio (n₂/n₁). It uses the standard formula for two independent samples (unequal variances).'
-                    )}
+                    {t('meanDiffSample.helpPrinciple')}
                   </p>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      2
-                    </div>
-                    {t('meanDifference.helpFormulasTitle', 'Formula')}
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">2</div>
+                    {t('meanDiffSample.helpFormulasTitle')}
                   </h4>
                   <div className="space-y-2 text-sm">
-                    <div className="font-mono">
-                      n₁ = (z<sub>α/2</sub> + z<sub>β</sub>)² × (σ₁² + σ₂² / r) / Δ²
-                    </div>
-                    <div className="font-mono">
-                      n₂ = r × n₁
-                    </div>
+                    <div className="font-mono">n₁ = (z<sub>α/2</sub> + z<sub>β</sub>)² × (σ₁² + σ₂² / r) / Δ²</div>
+                    <div className="font-mono">n₂ = r × n₁</div>
                     <div className="text-xs text-slate-500 mt-1">
-                      où Δ = |μ₁ - μ₂|, r = n₂/n₁, et les z sont les quantiles de la loi normale.
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      L’écart-type poolé est calculé après estimation des tailles d’échantillon.
+                      {t('meanDiffSample.formulaExplanation')}
                     </div>
                   </div>
                 </section>
 
                 <section>
                   <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
-                      3
-                    </div>
-                    {t('meanDifference.helpUsageTitle', 'Usage')}
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">3</div>
+                    {t('meanDiffSample.helpUsageTitle')}
                   </h4>
                   <p className="text-sm text-slate-600 dark:text-slate-300">
-                    {t(
-                      'meanDifference.helpUsage',
-                      'Saisissez les moyennes et écarts‑types pour les deux groupes, le niveau de confiance (généralement 95 %), la puissance (souvent 80 %) et le ratio de tailles d’échantillon (n₂/n₁). Utilisez le bouton Exemple pour charger des valeurs typiques. Les résultats s’affichent automatiquement. Vous pouvez copier les résultats ou les exporter en PDF.'
-                    )}
+                    {t('meanDiffSample.helpUsage')}
                   </p>
                 </section>
 
@@ -850,7 +811,7 @@ export default function MeanDifference() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700"
                   >
-                    {t('meanDifference.helpSource', 'Référence OpenEpi')}
+                    {t('meanDiffSample.helpSource')}
                     <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </div>
