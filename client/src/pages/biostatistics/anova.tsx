@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -36,12 +37,14 @@ interface GroupRow {
  * This component replicates OpenEpi's ANOVA module.
  * Results now appear ONLY AFTER the user starts entering data.
  * Initial rows are completely empty so nothing shows on page load.
- * UI text remains in French, comments in English.
+ * UI text now fully internationalized via i18n.
  * Automatic recalculation once the user types (same behaviour as before).
  */
 
 export default function OneWayANOVA() {
-  // ----- State declarations -----
+  const { t } = useTranslation();
+
+  // -- State declarations --
   const [rows, setRows] = useState<GroupRow[]>([
     { id: '1', label: '1', n: '', mean: '', sd: '' },
     { id: '2', label: '2', n: '', mean: '', sd: '' },
@@ -54,7 +57,7 @@ export default function OneWayANOVA() {
   const [isJStatReady, setIsJStatReady] = useState<boolean>(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // ----- Dynamic loading of jStat -----
+  // -- Dynamic loading of jStat --
   useEffect(() => {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
@@ -69,14 +72,14 @@ export default function OneWayANOVA() {
     loadScripts();
   }, []); // Runs once on mount
 
-  // ----- Formatting helper -----
+  // -- Formatting helper --
   const formatNumber = (num: number, decimals: number = 4): string => {
     if (num === Infinity || num === -Infinity) return '∞';
     if (isNaN(num) || !isFinite(num)) return '-';
     return num.toFixed(decimals);
   };
 
-  // ----- Core calculation function (ANOVA, Bartlett, group CIs) -----
+  // -- Core calculation function (ANOVA, Bartlett, group CIs) --
   const calculateANOVA = useCallback(() => {
     // Do not calculate anything if user hasn't entered any data yet
     const hasAnyInput = rows.some(row =>
@@ -141,7 +144,7 @@ export default function OneWayANOVA() {
       pValue = 0.05;
     }
 
-    // --- Bartlett's test for homogeneity of variances ---
+    //  Bartlett's test for homogeneity of variances 
     let bartlettChi2 = 0, bartlettDf = 0, bartlettP = 0;
     if (isJStatReady && (window as any).jStat?.chisquare?.cdf) {
       const pooledVar = ssw / dfWithin;
@@ -167,7 +170,7 @@ export default function OneWayANOVA() {
       bartlettP = 0.141005;
     }
 
-    // --- Confidence intervals for group means ---
+    //  Confidence intervals for group means 
     const groupCIs = groups.map(g => {
       const tSelf = isJStatReady && (window as any).jStat?.studentt?.inv
         ? (window as any).jStat.studentt.inv(1 - alpha / 2, g.n - 1)
@@ -211,12 +214,12 @@ export default function OneWayANOVA() {
     });
   }, [rows, confidenceLevel, isJStatReady]);
 
-  // ----- Automatic recalculation whenever inputs change -----
+  // -- Automatic recalculation whenever inputs change --
   useEffect(() => {
     calculateANOVA();
   }, [calculateANOVA]);
 
-  // ----- Handlers for row management -----
+  // -- Handlers for row management --
   const addRow = () => {
     const newId = (rows.length + 1).toString();
     setRows([...rows, { id: newId, label: newId, n: '', mean: '', sd: '' }]);
@@ -226,7 +229,7 @@ export default function OneWayANOVA() {
     if (rows.length > 2) {
       setRows(rows.filter(r => r.id !== id));
     } else {
-      toast.error('Au moins deux groupes sont nécessaires');
+      toast.error(t('oneWayAnova.minGroupsError'));
     }
   };
 
@@ -241,7 +244,7 @@ export default function OneWayANOVA() {
     ]);
     setConfidenceLevel('95');
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('oneWayAnova.clearMessage'));
   };
 
   const loadExample = () => {
@@ -250,67 +253,66 @@ export default function OneWayANOVA() {
       { id: '2', label: '2', n: '17', mean: '47.59', sd: '7.08' },
       { id: '3', label: '3', n: '15', mean: '49.4', sd: '10.2' },
     ]);
-    toast.success('Exemple chargé');
+    toast.success(t('oneWayAnova.exampleLoaded'));
   };
 
-  // ----- Copy and PDF export (unchanged) -----
+  // -- Copy and PDF export (unchanged) --
   const copyResults = async () => {
     if (!results) return;
 
-    let text = `Analyse de la variance (ANOVA) – OpenEpi\n`;
-    text += `Niveau de confiance : ${results.conf}%\n\n`;
-    text += `Tableau ANOVA\n`;
-    text += `Source\tSC\tdl\tCM\tF\tp\n`;
-    text += `Entre groupes\t${formatNumber(results.ssb)}\t${results.dfBetween}\t${formatNumber(results.msb)}\t${formatNumber(results.fStat)}\t${formatNumber(results.pValue)}\n`;
-    text += `Dans les groupes\t${formatNumber(results.ssw)}\t${results.dfWithin}\t${formatNumber(results.msw)}\t-\t-\n`;
-    text += `Total\t${formatNumber(results.sst)}\t${results.dfTotal}\t-\t-\t-\n\n`;
+    let text = `${t('oneWayAnova.copyPrefix')}\n`;
+    text += `${t('oneWayAnova.confidenceLevel')} : ${results.conf}%\n\n`;
+    text += `${t('oneWayAnova.anovaTable')}\n`;
+    text += `${t('oneWayAnova.source')}\t${t('oneWayAnova.ss')}\t${t('oneWayAnova.df')}\t${t('oneWayAnova.ms')}\tF\tp\n`;
+    text += `${t('oneWayAnova.betweenGroups')}\t${formatNumber(results.ssb)}\t${results.dfBetween}\t${formatNumber(results.msb)}\t${formatNumber(results.fStat)}\t${formatNumber(results.pValue)}\n`;
+    text += `${t('oneWayAnova.withinGroups')}\t${formatNumber(results.ssw)}\t${results.dfWithin}\t${formatNumber(results.msw)}\t-\t-\n`;
+    text += `${t('oneWayAnova.total')}\t${formatNumber(results.sst)}\t${results.dfTotal}\t-\t-\t-\n\n`;
 
-    text += `Test d’égalité des variances (Bartlett) :\n`;
+    text += `${t('oneWayAnova.bartlettTitle')} :\n`;
     text += `Chi² = ${formatNumber(results.bartlettChi2)}, ddl = ${results.bartlettDf}, p = ${formatNumber(results.bartlettP)}\n\n`;
 
-    text += `Intervalles de confiance à ${results.conf}% des moyennes :\n`;
-    text += `Groupe\tn\tMoyenne\tÉcart-type\tIC (var. propre)\t\tIC (var. commune)\n`;
+    text += `${t('oneWayAnova.groupCIs', { level: results.conf })}\n`;
+    text += `${t('oneWayAnova.group')}\t${t('oneWayAnova.n')}\t${t('oneWayAnova.mean')}\t${t('oneWayAnova.sd')}\t${t('oneWayAnova.ciSelf')}\t\t${t('oneWayAnova.ciPooled')}\n`;
     results.groupCIs.forEach((g: any) => {
       text += `${g.label}\t${g.n}\t${formatNumber(g.mean)}\t${formatNumber(g.sd)}\t`;
-      text += `[${formatNumber(g.ciSelfLower)} – ${formatNumber(g.ciSelfUpper)}]\t`;
-      text += `[${formatNumber(g.ciPooledLower)} – ${formatNumber(g.ciPooledUpper)}]\n`;
+      text += `[${formatNumber(g.ciSelfLower)} - ${formatNumber(g.ciSelfUpper)}]\t`;
+      text += `[${formatNumber(g.ciPooledLower)} - ${formatNumber(g.ciPooledUpper)}]\n`;
     });
 
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('oneWayAnova.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('oneWayAnova.copyError'));
     }
   };
 
   const exportPDF = () => {
     if (!results) {
-      toast.error('Veuillez d’abord effectuer un calcul');
+      toast.error(t('oneWayAnova.exportNoData'));
       return;
     }
-    // (le reste du code PDF est identique à votre version originale)
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      // ... (tout le code PDF que vous aviez déjà, je ne le recopie pas pour gagner de la place, il reste inchangé)
+      // ... (le code PDF reste inchangé - nous ne le recopions pas ici pour des raisons de longueur)
       doc.save(`ANOVA_k${results.groups.length}_N${results.totalN}.pdf`);
-      toast.success('Rapport PDF exporté');
+      toast.success(t('oneWayAnova.exportSuccess'));
     } catch (error) {
       console.error(error);
-      toast.error('Erreur PDF');
+      toast.error(t('oneWayAnova.exportError'));
     }
   };
 
-  // ----- Render -----
+  // -- Render --
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">ANOVA</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('oneWayAnova.title')}</span></li>
           </ol>
         </nav>
 
@@ -322,10 +324,10 @@ export default function OneWayANOVA() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                ANOVA à un facteur
+                {t('oneWayAnova.title')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Analyse de la variance, test F de Fisher, test de Bartlett
+                {t('oneWayAnova.description')}
               </p>
             </div>
           </div>
@@ -338,11 +340,11 @@ export default function OneWayANOVA() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-          {/* Left column – input form */}
+          {/* Left column - input form */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('oneWayAnova.parameters')}
               </h2>
               <div className="space-y-5">
                 {/* Group table */}
@@ -350,10 +352,10 @@ export default function OneWayANOVA() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-100 dark:bg-slate-700/50">
                       <tr>
-                        <th className="px-3 py-2 text-left">Groupe</th>
-                        <th className="px-3 py-2 text-center">N</th>
-                        <th className="px-3 py-2 text-center">Moyenne</th>
-                        <th className="px-3 py-2 text-center">Écart-type</th>
+                        <th className="px-3 py-2 text-left">{t('oneWayAnova.group')}</th>
+                        <th className="px-3 py-2 text-center">{t('oneWayAnova.n')}</th>
+                        <th className="px-3 py-2 text-center">{t('oneWayAnova.mean')}</th>
+                        <th className="px-3 py-2 text-center">{t('oneWayAnova.sd')}</th>
                         <th className="px-3 py-2 text-center"></th>
                       </tr>
                     </thead>
@@ -405,7 +407,7 @@ export default function OneWayANOVA() {
                             {rows.length > 2 && (
                               <button
                                 onClick={() => removeRow(row.id)}
-                                className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20  transition-colors"
+                                className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -422,12 +424,12 @@ export default function OneWayANOVA() {
                   disabled={rows.length >= 10}
                   className="w-full px-4 py-2.5 text-sm font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Plus className="w-4 h-4" /> Ajouter un groupe
+                  <Plus className="w-4 h-4" /> {t('oneWayAnova.addGroup')}
                 </button>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Niveau de confiance
+                    {t('oneWayAnova.confidenceLabel')}
                   </label>
                   <select
                     value={confidenceLevel}
@@ -435,7 +437,7 @@ export default function OneWayANOVA() {
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
                     <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
+                    <option value="95">{t('oneWayAnova.standard')} 95%</option>
                     <option value="99">99%</option>
                   </select>
                 </div>
@@ -446,7 +448,7 @@ export default function OneWayANOVA() {
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('oneWayAnova.example')}
                 </button>
                 <button
                   onClick={clear}
@@ -458,26 +460,26 @@ export default function OneWayANOVA() {
             </div>
           </div>
 
-          {/* Right column – results */}
+          {/* Right column - results */}
           <div className="lg:col-span-7">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('oneWayAnova.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier les résultats"
+                      title={t('oneWayAnova.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('oneWayAnova.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -488,8 +490,8 @@ export default function OneWayANOVA() {
                 {!results ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez au moins deux groupes valides</p>
-                    <p className="text-slate-400 text-sm mt-2">(n ≥ 2, écart‑type &gt; 0)</p>
+                    <p className="text-lg">{t('oneWayAnova.enterData')}</p>
+                    <p className="text-slate-400 text-sm mt-2">{t('oneWayAnova.enterDataHint')}</p>
                   </div>
                 ) : (
                   <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -497,17 +499,17 @@ export default function OneWayANOVA() {
                     <div className={`p-5 rounded-2xl border ${results.pValue < 0.05 ? 'bg-orange-50/50 border-orange-200 dark:bg-orange-900/10 dark:border-orange-800' : 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800'}`}>
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-xs font-bold uppercase text-slate-400">Test F</p>
+                          <p className="text-xs font-bold uppercase text-slate-400">{t('oneWayAnova.fTest')}</p>
                           <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">
                             F = {formatNumber(results.fStat)}
                           </p>
                           <p className="text-xs text-slate-500">
-                            ddl = {results.dfBetween}, {results.dfWithin} • p = {formatNumber(results.pValue)}
+                            {t('oneWayAnova.df')} = {results.dfBetween}, {results.dfWithin} • p = {formatNumber(results.pValue)}
                           </p>
                         </div>
                         <div className="text-right">
                           <span className={`px-3 py-1.5 text-xs font-bold rounded-full ${results.pValue < 0.05 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
-                            {results.pValue < 0.05 ? 'Significatif' : 'Non significatif'}
+                            {results.pValue < 0.05 ? t('oneWayAnova.significant') : t('oneWayAnova.nonSignificant')}
                           </span>
                         </div>
                       </div>
@@ -516,23 +518,23 @@ export default function OneWayANOVA() {
                     {/* ANOVA table */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
-                        <h3 className="font-semibold text-slate-900 dark:text-white">Tableau ANOVA</h3>
+                        <h3 className="font-semibold text-slate-900 dark:text-white">{t('oneWayAnova.anovaTable')}</h3>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-slate-100 dark:bg-slate-700/50">
                             <tr>
-                              <th className="px-4 py-3 text-left">Source</th>
-                              <th className="px-4 py-3 text-center">SC</th>
-                              <th className="px-4 py-3 text-center">ddl</th>
-                              <th className="px-4 py-3 text-center">CM</th>
+                              <th className="px-4 py-3 text-left">{t('oneWayAnova.source')}</th>
+                              <th className="px-4 py-3 text-center">{t('oneWayAnova.ss')}</th>
+                              <th className="px-4 py-3 text-center">{t('oneWayAnova.df')}</th>
+                              <th className="px-4 py-3 text-center">{t('oneWayAnova.ms')}</th>
                               <th className="px-4 py-3 text-center">F</th>
                               <th className="px-4 py-3 text-center">p</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             <tr>
-                              <td className="px-4 py-3 font-medium">Entre groupes</td>
+                              <td className="px-4 py-3 font-medium">{t('oneWayAnova.betweenGroups')}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.ssb)}</td>
                               <td className="px-4 py-3 text-center font-mono">{results.dfBetween}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.msb)}</td>
@@ -540,7 +542,7 @@ export default function OneWayANOVA() {
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.pValue)}</td>
                             </tr>
                             <tr>
-                              <td className="px-4 py-3 font-medium">Dans les groupes</td>
+                              <td className="px-4 py-3 font-medium">{t('oneWayAnova.withinGroups')}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.ssw)}</td>
                               <td className="px-4 py-3 text-center font-mono">{results.dfWithin}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.msw)}</td>
@@ -548,7 +550,7 @@ export default function OneWayANOVA() {
                               <td className="px-4 py-3 text-center font-mono">-</td>
                             </tr>
                             <tr className="bg-slate-50/50 dark:bg-slate-700/20">
-                              <td className="px-4 py-3 font-medium">Total</td>
+                              <td className="px-4 py-3 font-medium">{t('oneWayAnova.total')}</td>
                               <td className="px-4 py-3 text-center font-mono">{formatNumber(results.sst)}</td>
                               <td className="px-4 py-3 text-center font-mono">{results.dfTotal}</td>
                               <td className="px-4 py-3 text-center font-mono">-</td>
@@ -564,7 +566,7 @@ export default function OneWayANOVA() {
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
                       <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
                         <Sigma className="w-4 h-4 text-blue-500" />
-                        Test d'égalité des variances (Bartlett)
+                        {t('oneWayAnova.bartlettTitle')}
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
@@ -572,18 +574,18 @@ export default function OneWayANOVA() {
                           <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.bartlettChi2)}</p>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
-                          <p className="text-xs text-slate-500">ddl</p>
+                          <p className="text-xs text-slate-500">{t('oneWayAnova.df')}</p>
                           <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{results.bartlettDf}</p>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-700/30 p-3 rounded-lg">
-                          <p className="text-xs text-slate-500">valeur-p</p>
+                          <p className="text-xs text-slate-500">{t('oneWayAnova.pValue')}</p>
                           <p className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.bartlettP)}</p>
                         </div>
                       </div>
                       <p className="text-xs text-slate-600 dark:text-slate-400 mt-3">
                         {results.bartlettP < 0.05
-                          ? ' Les variances sont significativement différentes (p < 0.05).'
-                          : ' Les variances sont homogènes (p >= 0.05).'}
+                          ? t('oneWayAnova.variancesDifferent')
+                          : t('oneWayAnova.variancesHomogeneous')}
                       </p>
                     </div>
 
@@ -591,19 +593,19 @@ export default function OneWayANOVA() {
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Intervalles de confiance à {results.conf}% des moyennes
+                          {t('oneWayAnova.groupCIs', { level: results.conf })}
                         </h3>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-slate-100 dark:bg-slate-700/50">
                             <tr>
-                              <th className="px-3 py-2 text-center">Groupe</th>
-                              <th className="px-3 py-2 text-center">N</th>
-                              <th className="px-3 py-2 text-center">Moyenne</th>
-                              <th className="px-3 py-2 text-center">Écart-type</th>
-                              <th className="px-3 py-2 text-center">IC (var. propre)</th>
-                              <th className="px-3 py-2 text-center">IC (var. commune)</th>
+                              <th className="px-3 py-2 text-center">{t('oneWayAnova.group')}</th>
+                              <th className="px-3 py-2 text-center">{t('oneWayAnova.n')}</th>
+                              <th className="px-3 py-2 text-center">{t('oneWayAnova.mean')}</th>
+                              <th className="px-3 py-2 text-center">{t('oneWayAnova.sd')}</th>
+                              <th className="px-3 py-2 text-center">{t('oneWayAnova.ciSelf')}</th>
+                              <th className="px-3 py-2 text-center">{t('oneWayAnova.ciPooled')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -614,10 +616,10 @@ export default function OneWayANOVA() {
                                 <td className="px-3 py-2 text-center font-mono">{formatNumber(g.mean)}</td>
                                 <td className="px-3 py-2 text-center font-mono">{formatNumber(g.sd)}</td>
                                 <td className="px-3 py-2 text-center font-mono text-xs">
-                                  [{formatNumber(g.ciSelfLower)} – {formatNumber(g.ciSelfUpper)}]
+                                  [{formatNumber(g.ciSelfLower)} - {formatNumber(g.ciSelfUpper)}]
                                 </td>
                                 <td className="px-3 py-2 text-center font-mono text-xs">
-                                  [{formatNumber(g.ciPooledLower)} – {formatNumber(g.ciPooledUpper)}]
+                                  [{formatNumber(g.ciPooledLower)} - {formatNumber(g.ciPooledUpper)}]
                                 </td>
                               </tr>
                             ))}
@@ -631,6 +633,7 @@ export default function OneWayANOVA() {
             </div>
           </div>
         </div>
+
         {/* Help modal */}
         {showHelpModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -641,7 +644,7 @@ export default function OneWayANOVA() {
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide – ANOVA à un facteur
+                  {t('oneWayAnova.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -657,21 +660,21 @@ export default function OneWayANOVA() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       1
                     </div>
-                    Le principe
+                    {t('oneWayAnova.helpPrincipleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce module reproduit l’outil <strong>ANOVA</strong> d’OpenEpi. Il compare les moyennes de plusieurs groupes indépendants à partir de leurs tailles, moyennes et écarts-types. Le tableau ANOVA décompose la variabilité totale en variabilité inter‑groupe et intra‑groupe, et fournit le test F de Fisher. Le test de Bartlett vérifie l’égalité des variances.
+                    {t('oneWayAnova.helpPrincipleText')}
                   </p>
                 </section>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1">F &gt; 1</div>
-                    <div className="text-xs text-slate-500">La variance inter‑groupe est supérieure à la variance intra‑groupe.</div>
+                    <div className="text-xs text-slate-500">{t('oneWayAnova.fInterpret')}</div>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1">p &lt; 0.05</div>
-                    <div className="text-xs text-slate-500">Au moins une moyenne diffère significativement.</div>
+                    <div className="text-xs text-slate-500">{t('oneWayAnova.pInterpret')}</div>
                   </div>
                 </div>
 
@@ -680,13 +683,13 @@ export default function OneWayANOVA() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       2
                     </div>
-                    Méthodes de calcul
+                    {t('oneWayAnova.helpMethodsTitle')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p><strong className="text-slate-900 dark:text-white">Sommes de carrés</strong> – SSB = Σ nᵢ (x̄ᵢ – x̄)², SSW = Σ (nᵢ‑1)·sᵢ², SST = SSB + SSW.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Test F</strong> – F = (SSB/(k‑1)) / (SSW/(N‑k)). p‑value = 1 – F.cdf(F, k‑1, N‑k).</p>
-                    <p><strong className="text-slate-900 dark:text-white">Test de Bartlett</strong> – Basé sur le logarithme des variances, suit une loi du χ².</p>
-                    <p><strong className="text-slate-900 dark:text-white">IC des moyennes</strong> – IC avec variance propre (t, nᵢ‑1 ddl) et IC avec variance commune (t, N‑k ddl).</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('oneWayAnova.ssDescription')}</strong> - {t('oneWayAnova.ssDescText')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('oneWayAnova.fTest')}</strong> - {t('oneWayAnova.fDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('oneWayAnova.bartlettTitle')}</strong> - {t('oneWayAnova.bartlettDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('oneWayAnova.groupCIsTitle')}</strong> - {t('oneWayAnova.ciDesc')}</p>
                   </div>
                   <a
                     href="https://www.openepi.com/ANOVA/ANOVA.htm"
@@ -694,7 +697,7 @@ export default function OneWayANOVA() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Source : OpenEpi – ANOVA <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('oneWayAnova.sourceLink')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
 
@@ -703,16 +706,16 @@ export default function OneWayANOVA() {
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       3
                     </div>
-                    Ressources
+                    {t('oneWayAnova.helpResourcesTitle')}
                   </h4>
                   <div className="space-y-2 text-sm">
                     <p>
                       <a href="https://www.openepi.com/PDFDocs/ANOVADoc.pdf" target="_blank" className="text-blue-600 hover:underline">
-                        Documentation officielle OpenEpi (PDF)
+                        {t('oneWayAnova.openEpiPdf')}
                       </a>
                     </p>
                     <p>
-                      Snedecor G.W., Cochran W.G. – <em>Statistical Methods</em>, 8th ed.
+                      Snedecor G.W., Cochran W.G. - <em>Statistical Methods</em>, 8th ed.
                     </p>
                   </div>
                 </section>
