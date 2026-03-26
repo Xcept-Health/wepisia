@@ -1,253 +1,388 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  ChevronRight,
-  Calculator,
-  Presentation,
-  Copy,
-  FileDown,
-  HelpCircle,
-  X,
-  Info,
-  RotateCcw,
-  ArrowRight,
-  Target
+  Blocks, ChevronRight, Calculator, Presentation,
+  Copy, FileDown, HelpCircle, X, Info, RotateCcw, ArrowRight,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import jStat from 'jstat';
+
+// ============================================================
+// Types
+// ============================================================
+
+interface SampleSizeResult {
+  confidenceLevel: number;
+  sampleSize: number;
+}
+
+// ============================================================
+// Pure calculation helpers
+// ============================================================
+
+/** Two-tailed z-score for a given confidence level (in percent) */
+const Z = (confidence: number): number => {
+  const alpha = 1 - confidence / 100;
+  return jStat.normal.inv(1 - alpha / 2, 0, 1);
+};
 
 /**
- * Sample Size for a Proportion (SSPropor)
- * 
- * This component replicates OpenEpi's SSPropor module.
- * Results and preview now appear ONLY AFTER the user starts typing.
- * Initial states are empty so nothing shows on page load.
- * UI text remains in French, comments in English.
+ * Sample size for one confidence level.
+ * Uses the standard formula with finite population correction (FPC).
+ *
+ * @param N   Population size
+ * @param p   Anticipated proportion (0..100)
+ * @param d   Absolute precision (0..100)
+ * @param deff Design effect (≥1)
+ * @param conf Confidence level (e.g., 95)
+ * @returns Sample size (rounded up to nearest integer)
  */
+function computeSampleSize(
+  N: number,
+  p: number,
+  d: number,
+  deff: number,
+  conf: number
+): number {
+  const p_frac = Math.min(100, Math.max(0, p)) / 100;
+  const d_frac = Math.min(100, Math.max(0, d)) / 100;
+  const z = Z(conf);
+
+  // If proportion is 0% or 100%, sample size is 0 (no variability)
+  if (p_frac === 0 || p_frac === 1) return 0;
+
+  const numerator = deff * N * p_frac * (1 - p_frac);
+  const denominator = (d_frac * d_frac) / (z * z) * (N - 1) + p_frac * (1 - p_frac);
+
+  if (denominator === 0) return N; // fallback
+  const n = numerator / denominator;
+  return Math.ceil(Math.min(n, N));
+}
+
+/**
+ * Compute sample sizes for all standard confidence levels.
+ */
+function computeAllSampleSizes(
+  N: number,
+  p: number,
+  d: number,
+  deff: number
+): SampleSizeResult[] {
+  const levels = [80, 90, 95, 97, 99, 99.9, 99.99];
+  return levels.map((conf) => ({
+    confidenceLevel: conf,
+    sampleSize: computeSampleSize(N, p, d, deff, conf),
+  }));
+}
+
+// ============================================================
+// PDF Export
+// ============================================================
+
+type RGB = [number, number, number];
+
+const P = {
+  white:    [255, 255, 255] as RGB,
+  slate50:  [248, 250, 252] as RGB,
+  slate100: [241, 245, 249] as RGB,
+  slate200: [226, 232, 240] as RGB,
+  slate300: [203, 213, 225] as RGB,
+  slate400: [148, 163, 184] as RGB,
+  slate500: [100, 116, 139] as RGB,
+  slate600: [ 71,  85, 105] as RGB,
+  slate700: [ 51,  65,  85] as RGB,
+  slate800: [ 30,  41,  59] as RGB,
+  slate900: [ 15,  23,  42] as RGB,
+  blue50:   [239, 246, 255] as RGB,
+  blue100:  [219, 234, 254] as RGB,
+  blue200:  [191, 219, 254] as RGB,
+  blue500:  [ 59, 130, 246] as RGB,
+  blue600:  [ 37,  99, 235] as RGB,
+  blue700:  [ 29,  78, 216] as RGB,
+  green600: [  5, 150, 105] as RGB,
+  red400:   [248, 113, 113] as RGB,
+};
+
+function exportSampleSizePdf(
+  results: SampleSizeResult[],
+  inputs: { N: number; p: number; d: number; deff: number },
+  t: (key: string, fallback?: string) => string,
+  lang: string
+) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210, M = 16, CW = W - M * 2;
+
+  const fill = (c: RGB) => doc.setFillColor(...c);
+  const draw = (c: RGB) => doc.setDrawColor(...c);
+  const color = (c: RGB) => doc.setTextColor(...c);
+  const rr = (x: number, y: number, w: number, h: number, rad: number, s: 'F' | 'S' | 'FD' = 'F') =>
+    doc.roundedRect(x, y, w, h, rad, rad, s);
+  const ln = (x1: number, y1: number, x2: number, y2: number, lw = 0.25) => {
+    doc.setLineWidth(lw);
+    doc.line(x1, y1, x2, y2);
+  };
+
+  // Header
+  fill(P.blue50);
+  doc.rect(0, 0, W, 38, 'F');
+  fill(P.blue500);
+  doc.rect(0, 0, W, 1.5, 'F');
+  fill(P.blue100);
+  doc.rect(M, 8, 0.8, 22, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  color(P.slate800);
+  doc.text(t('sampleSizeProportion.reportTitle', 'Sample Size for a Proportion'), M + 5, 20);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  color(P.slate500);
+  doc.text(t('sampleSizeProportion.reportSubtitle', 'OpenEpi style calculator'), M + 5, 28);
+
+  const dateStr = new Date().toLocaleDateString(lang, { year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = new Date().toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
+  doc.text(
+    t('sampleSizeProportion.reportGenerated', 'Generated on {date} at {time}', { date: dateStr, time: timeStr }),
+    W - M, 28,
+    { align: 'right' }
+  );
+
+  draw(P.blue200);
+  ln(0, 38, W, 38, 0.3);
+
+  let y = 48;
+
+  // Input summary (as cards)
+  const gap = 3;
+  const cardW = (CW - gap * 3) / 4;
+  const cardH = 22;
+  const inputsData = [
+    { label: t('sampleSizeProportion.populationLabel', 'Population size (N)'), value: inputs.N.toLocaleString() },
+    { label: t('sampleSizeProportion.pLabel', 'Anticipated frequency (p)'), value: `${inputs.p} %` },
+    { label: t('sampleSizeProportion.dLabel', 'Precision (±)'), value: `${inputs.d} %` },
+    { label: t('sampleSizeProportion.deffLabel', 'Design effect (DEFF)'), value: inputs.deff.toFixed(1) },
+  ];
+
+  inputsData.forEach((item, i) => {
+    const x = M + i * (cardW + gap);
+    fill(P.white);
+    draw(P.slate200);
+    rr(x, y, cardW, cardH, 2.5, 'FD');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    color(P.slate400);
+    doc.text(item.label.toUpperCase(), x + cardW / 2, y + 6.5, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    color(P.slate700);
+    doc.text(item.value, x + cardW / 2, y + 16.5, { align: 'center' });
+  });
+  y += cardH + 12;
+
+  // Results table
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  color(P.slate700);
+  doc.text(t('sampleSizeProportion.resultsTitle', 'Sample sizes for different confidence levels').toUpperCase(), M, y);
+  y += 2;
+  draw(P.slate200);
+  ln(M, y, M + CW, y, 0.3);
+  y += 6;
+
+  const tableRows = results.map((r) => [
+    `${r.confidenceLevel} %`,
+    r.sampleSize.toLocaleString(),
+  ]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [[
+      t('sampleSizeProportion.tableHeaderConfidence', 'Confidence level'),
+      t('sampleSizeProportion.tableHeaderSampleSize', 'Sample size (n)'),
+    ]],
+    body: tableRows,
+    theme: 'plain',
+    headStyles: {
+      fillColor: P.slate100,
+      textColor: P.slate600,
+      fontStyle: 'bold',
+      halign: 'center',
+      fontSize: 7.5,
+      cellPadding: 2.5,
+    },
+    columnStyles: {
+      0: { cellWidth: 60, halign: 'center', textColor: P.slate700 },
+      1: { cellWidth: 40, halign: 'center', textColor: P.slate700, fontStyle: 'bold' },
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2.5,
+      lineColor: P.slate200,
+      lineWidth: 0.15,
+    },
+    alternateRowStyles: { fillColor: P.slate50 },
+    margin: { left: M, right: M },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 8;
+
+  // Equation
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  color(P.slate600);
+  doc.text(t('sampleSizeProportion.equationTitle', 'Formula'), M, y);
+  y += 4;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  color(P.slate500);
+  const eqLines = doc.splitTextToSize(
+    t(
+      'sampleSizeProportion.equation',
+      'n = [DEFF × N × p(1-p)] / [ (d² / Z²_{1-α/2}) × (N-1) + p(1-p) ]'
+    ),
+    CW
+  );
+  doc.text(eqLines, M, y);
+  y += eqLines.length * 4 + 4;
+
+  // Footnote
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  color(P.slate400);
+  const foot = doc.splitTextToSize(
+    t('sampleSizeProportion.footnote', 'Results computed using finite population correction. p and d are expressed as percentages.'),
+    CW
+  );
+  doc.text(foot, M, y);
+
+  // Footer
+  const fY = 284;
+  draw(P.slate200);
+  ln(M, fY, W - M, fY, 0.3);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.5);
+  color(P.slate400);
+  doc.text(t('sampleSizeProportion.reportFooter', 'OpenEpi style sample size calculator · jStat · autoTable'), M, fY + 4.5);
+  doc.setFont('helvetica', 'bold');
+  color(P.slate500);
+  doc.text('1 / 1', W - M, fY + 6.5, { align: 'right' });
+
+  doc.save(`SampleSize_${inputs.N}_p${inputs.p}_d${inputs.d}.pdf`);
+}
+
+// ============================================================
+// Main Component
+// ============================================================
 
 export default function SampleSizeProportion() {
-  // ----- State declarations -----
-  const [confidenceLevel, setConfidenceLevel] = useState<string>('95');
-  const [marginError, setMarginError] = useState<string>('');
-  const [proportion, setProportion] = useState<string>('');
-  const [populationSize, setPopulationSize] = useState<string>('');
-  const [designEffect, setDesignEffect] = useState<string>('1');
+  const { t, i18n } = useTranslation();
 
-  const [results, setResults] = useState<any>(null);
-  const [previewN, setPreviewN] = useState<string>('-');
-  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
-  const [isJStatReady, setIsJStatReady] = useState<boolean>(false);
-  const resultsRef = useRef<HTMLDivElement>(null);
+  // Input states (as strings for easy binding)
+  const [population, setPopulation] = useState('1000000');
+  const [p, setP] = useState('50');
+  const [d, setD] = useState('5');
+  const [deff, setDeff] = useState('1');
 
-  // ----- Dynamic loading of jStat -----
+  const [results, setResults] = useState<SampleSizeResult[]>([]);
+  const [showHelp, setShowHelp] = useState(false);
+
+  // Recompute when any input changes
   useEffect(() => {
-    const loadScripts = async () => {
-      if (!(window as any).jStat) {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js';
-        script.onload = () => setIsJStatReady(true);
-        document.body.appendChild(script);
-      } else {
-        setIsJStatReady(true);
-      }
-    };
-    loadScripts();
-  }, []);
+    const N = parseFloat(population);
+    const prop = parseFloat(p);
+    const prec = parseFloat(d);
+    const design = parseFloat(deff);
 
-  // ----- Formatting helper -----
-  const formatNumber = (num: number, decimals: number = 2): string => {
-    if (num === Infinity || num === -Infinity) return '∞';
-    if (isNaN(num) || !isFinite(num)) return '-';
-    return num.toFixed(decimals);
+    if (
+      isNaN(N) || N <= 0 ||
+      isNaN(prop) || prop < 0 || prop > 100 ||
+      isNaN(prec) || prec < 0 || prec > 100 ||
+      isNaN(design) || design < 0
+    ) {
+      setResults([]);
+      return;
+    }
+
+    const sizes = computeAllSampleSizes(N, prop, prec, design);
+    setResults(sizes);
+  }, [population, p, d, deff]);
+
+  // Handlers
+  const handleClear = () => {
+    setPopulation('');
+    setP('');
+    setD('');
+    setDeff('');
+    setResults([]);
+    toast.info(t('sampleSizeProportion.clearMessage', 'Inputs cleared'));
   };
 
-  // ----- Preview calculation (only when user has entered values) -----
-  useEffect(() => {
-    const margStr = marginError.trim();
-    const propStr = proportion.trim();
-
-    // Do not show preview until user has typed something
-    if (!margStr || !propStr) {
-      setPreviewN('-');
-      return;
-    }
-
-    const d = parseFloat(margStr) / 100;
-    const p = parseFloat(propStr) / 100;
-    const deff = parseFloat(designEffect) || 1;
-
-    if (isNaN(p) || p <= 0 || p >= 1 || isNaN(d) || d <= 0 || d >= 1 || isNaN(deff) || deff <= 0) {
-      setPreviewN('-');
-      return;
-    }
-
-    // z-value for preview
-    let z = 1.96;
-    if (confidenceLevel === '80') z = 1.282;
-    else if (confidenceLevel === '90') z = 1.645;
-    else if (confidenceLevel === '99') z = 2.576;
-
-    let n = (Math.pow(z, 2) * p * (1 - p)) / Math.pow(d, 2);
-    n = Math.ceil(n * deff);
-    setPreviewN(n.toString());
-  }, [confidenceLevel, marginError, proportion, designEffect]);
-
-  // ----- Core calculation function -----
-  const calculateSampleSize = useCallback(() => {
-    const margStr = marginError.trim();
-    const propStr = proportion.trim();
-
-    // Do not calculate anything if user hasn't entered required fields
-    if (!margStr || !propStr) {
-      setResults(null);
-      return;
-    }
-
-    const conf = parseInt(confidenceLevel);
-    const alpha = 1 - conf / 100;
-    const d = parseFloat(margStr) / 100;
-    const p = parseFloat(propStr) / 100;
-    const N = populationSize.trim() === '' ? Infinity : parseFloat(populationSize);
-    const deff = parseFloat(designEffect) || 1;
-
-    // Input validation
-    if (isNaN(p) || p <= 0 || p >= 1) {
-      setResults(null);
-      return;
-    }
-    if (isNaN(d) || d <= 0 || d >= 1) {
-      setResults(null);
-      return;
-    }
-    if (isNaN(N) || N < 0) {
-      setResults(null);
-      return;
-    }
-    if (isNaN(deff) || deff <= 0) {
-      setResults(null);
-      return;
-    }
-
-    // Critical z-value
-    const z = isJStatReady && (window as any).jStat?.normal?.inv
-      ? (window as any).jStat.normal.inv(1 - alpha / 2, 0, 1)
-      : confidenceLevel === '80' ? 1.282
-      : confidenceLevel === '90' ? 1.645
-      : confidenceLevel === '95' ? 1.96
-      : 2.576;
-
-    // Sample size without finite correction
-    let n = (Math.pow(z, 2) * p * (1 - p)) / Math.pow(d, 2);
-    n = Math.ceil(n * deff);
-
-    // With finite population correction
-    let n_adj = n;
-    if (isFinite(N) && N > 0 && n > 0.05 * N) {
-      n_adj = Math.ceil((n * N) / (n + (N - 1)));
-    }
-
-    // Table for different margins
-    const margins = [1, 2, 3, 5, 10, 20].map(m => {
-      const d_m = m / 100;
-      let n_m = (Math.pow(z, 2) * p * (1 - p)) / Math.pow(d_m, 2);
-      n_m = Math.ceil(n_m * deff);
-      let n_m_adj = n_m;
-      if (isFinite(N) && N > 0 && n_m > 0.05 * N) {
-        n_m_adj = Math.ceil((n_m * N) / (n_m + (N - 1)));
-      }
-      return { margin: m, n: n_m, n_adj: n_m_adj };
-    });
-
-    setResults({
-      conf,
-      marginError: d * 100,
-      proportion: p * 100,
-      populationSize: N,
-      designEffect: deff,
-      z,
-      n,
-      n_adj,
-      margins,
-      isJStatReady
-    });
-  }, [confidenceLevel, marginError, proportion, populationSize, designEffect, isJStatReady]);
-
-  // ----- Automatic recalculation (only when inputs change) -----
-  useEffect(() => {
-    calculateSampleSize();
-  }, [calculateSampleSize]);
-
-  // ----- UI handlers -----
-  const clear = () => {
-    setConfidenceLevel('95');
-    setMarginError('');
-    setProportion('');
-    setPopulationSize('');
-    setDesignEffect('1');
-    setResults(null);
-    toast.info('Champs réinitialisés');
+  const handleExample = () => {
+    setPopulation('1000000');
+    setP('50');
+    setD('5');
+    setDeff('1');
+    toast.success(t('sampleSizeProportion.exampleLoaded', 'Example data loaded'));
   };
 
-  const loadExample = () => {
-    setConfidenceLevel('95');
-    setMarginError('5');
-    setProportion('50');
-    setPopulationSize('10000');
-    setDesignEffect('1');
-    toast.success('Exemple chargé (population finie 10000)');
-  };
-
-  const copyResults = async () => {
-    if (!results) return;
+  const handleCopy = async () => {
+    if (results.length === 0) return;
+    const lines = results.map(
+      (r) => `${r.confidenceLevel}% : ${r.sampleSize.toLocaleString()}`
+    );
+    const text = `Sample sizes:\n${lines.join('\n')}`;
     try {
-      const text = `Taille d'échantillon pour une proportion\n\n` +
-        `Niveau de confiance : ${results.conf}%\n` +
-        `Marge d'erreur : ${results.marginError}%\n` +
-        `Proportion estimée : ${results.proportion}%\n` +
-        `Taille requise (avec correction) : ${results.n_adj}\n` +
-        `Sans correction : ${results.n}\n` +
-        `Population : ${isFinite(results.populationSize) ? results.populationSize : 'Infinie'}`;
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('sampleSizeProportion.copySuccess', 'Results copied to clipboard'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('sampleSizeProportion.copyError', 'Could not copy'));
     }
   };
 
-  const exportPDF = () => {
-    if (!results) {
-      toast.error('Veuillez d’abord effectuer un calcul');
+  const handleExport = () => {
+    const N = parseFloat(population);
+    const prop = parseFloat(p);
+    const prec = parseFloat(d);
+    const design = parseFloat(deff);
+    if (results.length === 0 || isNaN(N) || isNaN(prop) || isNaN(prec) || isNaN(design)) {
+      toast.error(t('sampleSizeProportion.exportError', 'No valid results to export'));
       return;
     }
     try {
-      const doc = new jsPDF();
-      doc.setFontSize(16);
-      doc.text("Taille d'échantillon pour une proportion", 20, 20);
-      doc.setFontSize(12);
-      doc.text(`Niveau de confiance : ${results.conf}%`, 20, 40);
-      doc.text(`Marge d'erreur : ${results.marginError}%`, 20, 50);
-      doc.text(`Proportion estimée : ${results.proportion}%`, 20, 60);
-      doc.text(`Taille requise : ${results.n_adj}`, 20, 80);
-      doc.text(`(sans correction : ${results.n})`, 20, 90);
-      doc.save(`Taille_Echantillon_${results.n_adj}.pdf`);
-      toast.success('Rapport PDF exporté avec succès');
-    } catch (error) {
-      console.error('Erreur PDF :', error);
-      toast.error('Erreur lors de la génération du PDF');
+      exportSampleSizePdf(results, { N, p: prop, d: prec, deff: design }, t, i18n.language);
+      toast.success(t('sampleSizeProportion.exportSuccess', 'PDF exported'));
+    } catch (err) {
+      console.error(err);
+      toast.error(t('sampleSizeProportion.exportError', 'Export failed'));
     }
   };
 
-  // ----- Render -----
+  // UI helpers
+  const showResults = results.length > 0;
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
-            <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">Taille d'échantillon pour une proportion</span></li>
+            <li>
+              <Link href="/" className="hover:text-blue-500 transition-colors">
+                {t('common.home', 'Home')}
+              </Link>
+            </li>
+            <li>
+              <ChevronRight className="w-3 h-3" />
+            </li>
+            <li>
+              <span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">
+                {t('sampleSizeProportion.title', 'Sample Size for a Proportion')}
+              </span>
+            </li>
           </ol>
         </nav>
 
@@ -255,122 +390,119 @@ export default function SampleSizeProportion() {
         <div className="module-header flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
-              <Target className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+              <Blocks className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Taille d'échantillon pour une proportion
+                {t('sampleSizeProportion.title', 'Sample Size for a Proportion')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Estimation de la taille d'échantillon nécessaire – OpenEpi SSPropor
+                {t(
+                  'sampleSizeProportion.subtitle',
+                  'Calculate required sample size for a population proportion (OpenEpi style)'
+                )}
               </p>
             </div>
           </div>
           <button
-            onClick={() => setShowHelpModal(true)}
-            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+            onClick={() => setShowHelp(true)}
+            className="hidden md:flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
           >
             <HelpCircle className="w-4 h-4" />
           </button>
         </div>
 
+        {/* Main grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-          {/* Left column – input form */}
-          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
+          {/* Left: Inputs */}
+          <div className="lg:col-span-5 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" />
+                {t('sampleSizeProportion.parameters', 'Parameters')}
               </h2>
+
               <div className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Niveau de confiance
-                  </label>
-                  <select
-                    value={confidenceLevel}
-                    onChange={(e) => setConfidenceLevel(e.target.value)}
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
-                  >
-                    <option value="80">80%</option>
-                    <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
-                    <option value="99">99%</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Marge d'erreur (%) <span className="font-normal">(demi-largeur de l'IC)</span>
+                    {t('sampleSizeProportion.populationLabel', 'Population size (N)')}
                   </label>
                   <input
                     type="number"
-                    value={marginError}
-                    onChange={(e) => setMarginError(e.target.value)}
-                    min="0.1"
-                    max="50"
-                    step="0.1"
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 5"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Proportion estimée (%) <span className="font-normal">(p, utiliser 50% si inconnue)</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={proportion}
-                    onChange={(e) => setProportion(e.target.value)}
-                    min="1"
-                    max="99"
-                    step="1"
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 50"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Taille de la population (N) <span className="font-normal">(optionnel)</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={populationSize}
-                    onChange={(e) => setPopulationSize(e.target.value)}
                     min="1"
                     step="1"
+                    value={population}
+                    onChange={(e) => setPopulation(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Laissez vide pour population infinie"
+                    placeholder={t('sampleSizeProportion.populationPlaceholder', 'e.g., 1000000')}
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('sampleSizeProportion.populationNote', 'If large, leave at 1,000,000')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    {t('sampleSizeProportion.pLabel', 'Anticipated frequency (p) %')}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={p}
+                    onChange={(e) => setP(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('sampleSizeProportion.pNote', 'Between 0 and 99.99. If unknown, use 50%')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
+                    {t('sampleSizeProportion.dLabel', 'Absolute precision (±) %')}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={d}
+                    onChange={(e) => setD(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
                   />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Effet de plan (DEFF)
+                    {t('sampleSizeProportion.deffLabel', 'Design effect (DEFF)')}
                   </label>
                   <input
                     type="number"
-                    value={designEffect}
-                    onChange={(e) => setDesignEffect(e.target.value)}
-                    min="0.1"
+                    min="1"
                     step="0.1"
+                    value={deff}
+                    onChange={(e) => setDeff(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="1.0"
                   />
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t('sampleSizeProportion.deffNote', '1.0 for simple random sample')}
+                  </p>
                 </div>
               </div>
 
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex gap-3">
                 <button
-                  onClick={loadExample}
+                  onClick={handleExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('sampleSizeProportion.btnExample', 'Example')}
                 </button>
                 <button
-                  onClick={clear}
-                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl flex items-center justify-center"
+                  onClick={handleClear}
+                  className="px-4 py-3 text-slate-400 hover:text-red-500 transition-colors rounded-xl"
+                  aria-label="Clear"
                 >
                   <RotateCcw className="w-5 h-5" />
                 </button>
@@ -378,101 +510,88 @@ export default function SampleSizeProportion() {
             </div>
           </div>
 
-          {/* Right column – results */}
+          {/* Right: Results */}
           <div className="lg:col-span-7">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
-              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+              <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" />
+                  {t('sampleSizeProportion.resultsTitle', 'Sample sizes')}
                 </h2>
-                {results && (
+                {showResults && (
                   <div className="flex gap-2">
-                    <button onClick={copyResults} className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors">
+                    <button
+                      onClick={handleCopy}
+                      className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
+                      title={t('sampleSizeProportion.btnCopy', 'Copy results')}
+                    >
                       <Copy className="w-4 h-4" />
                     </button>
-                    <button onClick={exportPDF} className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors">
+                    <button
+                      onClick={handleExport}
+                      className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
+                      title={t('sampleSizeProportion.btnExport', 'Export PDF')}
+                    >
                       <FileDown className="w-4 h-4" />
                     </button>
                   </div>
                 )}
               </div>
 
-              <div className="p-4 lg:p-8 flex-1 bg-slate-50/30 dark:bg-slate-900/10">
-                {!results ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+              <div className="p-4 lg:p-8 bg-slate-50/30 dark:bg-slate-900/10">
+                {!showResults ? (
+                  <div className="flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les paramètres</p>
-                    <div className="text-4xl font-bold mt-2">
-                      {previewN === '-' ? '—' : previewN}
-                    </div>
-                    <p className="text-slate-400 text-sm mt-2">Aperçu de la taille nécessaire</p>
+                    <p className="text-lg">
+                      {t('sampleSizeProportion.enterData', 'Enter valid inputs to see results')}
+                    </p>
                   </div>
                 ) : (
-                  <div ref={resultsRef} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Main result card */}
-                    <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-6 text-center">
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
-                        Taille d'échantillon requise
-                      </p>
-                      <div className="text-5xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
-                        {results.n_adj}
-                      </div>
-                      <p className="text-sm text-slate-500">
-                        avec correction pour population finie
-                      </p>
-                      <div className="flex justify-center gap-4 mt-3 text-xs">
-                        <span className="px-3 py-1.5 bg-white dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
-                          Sans correction : {results.n}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Key parameters cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Z critique</p>
-                        <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.z, 4)}</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Marge</p>
-                        <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.marginError)}%</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Proportion</p>
-                        <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.proportion)}%</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Effet plan</p>
-                        <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.designEffect, 2)}</p>
-                      </div>
-                    </div>
-
-                    {/* Table for different margins */}
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                      <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
-                        <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Taille d'échantillon selon la marge d'erreur
-                        </h3>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-slate-100 dark:bg-slate-700/50">
-                            <tr>
-                              <th className="px-4 py-3 text-center">Marge d'erreur (%)</th>
-                              <th className="px-4 py-3 text-center">Sans correction</th>
-                              <th className="px-4 py-3 text-center">Avec correction</th>
+                  <div className="space-y-6">
+                    {/* Results table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-700">
+                            <th className="px-4 py-3 text-left font-semibold text-slate-500">
+                              {t('sampleSizeProportion.tableHeaderConfidence', 'Confidence level')}
+                            </th>
+                            <th className="px-4 py-3 text-right font-semibold text-slate-500">
+                              {t('sampleSizeProportion.tableHeaderSampleSize', 'Sample size (n)')}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {results.map((r) => (
+                            <tr
+                              key={r.confidenceLevel}
+                              className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/30"
+                            >
+                              <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                                {r.confidenceLevel} %
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {r.sampleSize.toLocaleString()}
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {results.margins.map((m: any, idx: number) => (
-                              <tr key={idx} className={m.margin === results.marginError ? 'bg-blue-50 dark:bg-blue-900/10' : ''}>
-                                <td className="px-4 py-3 text-center font-mono">{m.margin}%</td>
-                                <td className="px-4 py-3 text-center font-mono">{m.n}</td>
-                                <td className="px-4 py-3 text-center font-mono">{m.n_adj}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Equation box */}
+                    <div className="bg-slate-100 dark:bg-slate-800/50 rounded-xl p-5 text-xs font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
+                        {t('sampleSizeProportion.equationTitle', 'Formula')}
+                      </div>
+                      <div className="leading-relaxed">
+                        n = [DEFF × N × p(1-p)] / [ (d² / Z²<sub>1-α/2</sub>) × (N-1) + p(1-p) ]
+                      </div>
+                      <div className="mt-3 text-[11px] text-slate-400 italic">
+                        {t(
+                          'sampleSizeProportion.footnote',
+                          'Results use finite population correction. p and d are expressed as percentages.'
+                        )}
                       </div>
                     </div>
                   </div>
@@ -482,94 +601,86 @@ export default function SampleSizeProportion() {
           </div>
         </div>
 
-        {/* Help modal  */}
-        {showHelpModal && (
+        {/* Help Modal */}
+        {showHelp && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
               className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm"
-              onClick={() => setShowHelpModal(false)}
+              onClick={() => setShowHelp(false)}
             />
-            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide – Taille d'échantillon pour une proportion
+                  {t('sampleSizeProportion.helpTitle', 'Help & Methods')}
                 </h3>
                 <button
-                  onClick={() => setShowHelpModal(false)}
+                  onClick={() => setShowHelp(false)}
                   className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
-              <div className="p-6 md:p-8 space-y-8">
+              <div className="p-6 md:p-8 space-y-6">
                 <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       1
                     </div>
-                    Le principe
+                    {t('sampleSizeProportion.helpPrincipleTitle', 'Principle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce module reproduit l'outil <strong>SSPropor</strong> d'OpenEpi. Il calcule la taille d'échantillon nécessaire pour estimer une proportion avec une précision (marge d'erreur) et un niveau de confiance donnés. La formule repose sur la distribution normale. Une correction pour population finie peut être appliquée, ainsi qu'un effet de plan pour les sondages complexes.
+                    {t(
+                      'sampleSizeProportion.helpPrinciple',
+                      'This calculator determines the sample size required to estimate a population proportion with a given absolute precision, using the finite population correction (FPC) when the population size is known. It follows the OpenEpi methodology and provides sample sizes for multiple confidence levels.'
+                    )}
                   </p>
                 </section>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-                    <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                       p = 50%
-                    </div>
-                    <div className="text-xs text-slate-500">Donne la taille d'échantillon maximale (cas le plus conservateur).</div>
-                  </div>
-                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-                    <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                      Correction finie
-                    </div>
-                    <div className="text-xs text-slate-500">Réduit la taille d'échantillon quand la population est petite.</div>
-                  </div>
-                </div>
-
                 <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
                       2
                     </div>
-                    Méthodes de calcul
+                    {t('sampleSizeProportion.helpFormulaTitle', 'Formula')}
                   </h4>
-                  <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p><strong className="text-slate-900 dark:text-white">Formule de base</strong> – n = Z²·p·(1-p) / d². Z est le quantile de la loi normale (1,96 pour 95%).</p>
-                    <p><strong className="text-slate-900 dark:text-white">Correction pour population finie</strong> – n' = (n·N) / (n + N - 1). Utilisée quand l'échantillon dépasse 5% de la population.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Effet de plan (DEFF)</strong> – n_final = n × DEFF. Pour un sondage aléatoire simple, DEFF = 1. Pour un sondage en grappes, DEFF {'>'} 1.</p>
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-sm font-mono text-slate-700 dark:text-slate-300">
+                    n = [DEFF × N × p(1-p)] / [ (d² / Z²) × (N-1) + p(1-p) ]
                   </div>
+                  <ul className="mt-3 text-sm text-slate-600 dark:text-slate-400 list-disc list-inside space-y-1">
+                    <li>N = population size</li>
+                    <li>p = anticipated proportion (0–100%)</li>
+                    <li>d = absolute precision (±%)</li>
+                    <li>DEFF = design effect (≥1)</li>
+                    <li>Z = two-tailed normal deviate for chosen confidence level</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold">
+                      3
+                    </div>
+                    {t('sampleSizeProportion.helpUsageTitle', 'Usage')}
+                  </h4>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {t(
+                      'sampleSizeProportion.helpUsage',
+                      'Enter the population size (use 1,000,000 for "infinite"), the expected frequency (p), the desired absolute precision (± d), and the design effect (1 for simple random sampling). The table will show the required sample size for confidence levels from 80% to 99.99%.'
+                    )}
+                  </p>
+                </section>
+
+                <div className="text-right">
                   <a
                     href="https://www.openepi.com/SampleSize/SSPropor.htm"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
+                    className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700"
                   >
-                    Source : OpenEpi – SSPropor <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('sampleSizeProportion.helpSource', 'OpenEpi reference')}
+                    <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
-                </section>
-
-                <section>
-                  <h4 className="font-semibold text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
-                      3
-                    </div>
-                    Ressources
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <p>
-                      <a href="https://www.openepi.com/PDFDocs/SampleSizeDoc.pdf" target="_blank" className="text-blue-600 hover:underline">
-                        Documentation officielle OpenEpi (PDF)
-                      </a>
-                    </p>
-                    <p>
-                      Cochran W.G. – <em>Sampling Techniques</em>, 3rd ed.
-                    </p>
-                  </div>
-                </section>
+                </div>
               </div>
             </div>
           </div>
