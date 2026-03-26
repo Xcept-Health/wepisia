@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { toast } from '@/lib/notifications';
+import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -39,7 +40,9 @@ import autoTable from 'jspdf-autotable';
  */
 
 export default function MeanConfidenceInterval() {
-  // ----- State declarations -----
+  const { t } = useTranslation();
+
+  //  State declarations 
   const [sampleMean, setSampleMean] = useState<string>('');       // Sample mean (x̄)
   const [sampleStddev, setSampleStddev] = useState<string>('');   // Sample standard deviation (s)
   const [sampleSize, setSampleSize] = useState<string>('');       // Sample size (n)
@@ -53,7 +56,7 @@ export default function MeanConfidenceInterval() {
   // Check if jStat is already available (e.g., from global scope)
   const hasJStat = typeof (window as any).jStat !== 'undefined';
 
-  // ----- Dynamic loading of jStat -----
+  //  Dynamic loading of jStat 
   useEffect(() => {
     const loadScripts = async () => {
       if (!(window as any).jStat) {
@@ -65,14 +68,14 @@ export default function MeanConfidenceInterval() {
     loadScripts();
   }, []); // Runs once on mount
 
-  // ----- Formatting helper (consistent with OpenEpi's output style) -----
+  //  Formatting helper (consistent with OpenEpi's output style) 
   const formatNumber = (num: number, decimals: number = 4): string => {
     if (num === Infinity || num === -Infinity) return '∞';
     if (isNaN(num) || !isFinite(num)) return '-';
     return num.toFixed(decimals);
   };
 
-  // ----- Core calculation function (matches OpenEpi MeanCI) -----
+  //  Core calculation function (matches OpenEpi MeanCI) 
   const calculateCI = () => {
     const mean = parseFloat(sampleMean) || 0;
     const stddev = parseFloat(sampleStddev) || 0;
@@ -89,7 +92,7 @@ export default function MeanConfidenceInterval() {
     if (isNaN(N) || N <= 0) N = Infinity;
     if (N < n) N = n; // OpenEpi logic: N cannot be smaller than n
 
-    // ----- Standard error -----
+    //  Standard error 
     const seBase = stddev / Math.sqrt(n);
     // Finite population correction (FPC): sqrt((N-n)/(N-1))
     const fpc = N === Infinity ? 1 : Math.sqrt((N - n) / (N - 1));
@@ -97,12 +100,12 @@ export default function MeanConfidenceInterval() {
 
     const variance = stddev ** 2;
 
-    // ----- Critical values -----
+    //  Critical values 
     const z = hasJStat ? (window as any).jStat.normal.inv(1 - alpha / 2, 0, 1) : 1.96;
     const df = n - 1;
     const t = hasJStat ? (window as any).jStat.studentt.inv(1 - alpha / 2, df) : 2.0;
 
-    // ----- Margins of error and intervals -----
+    //  Margins of error and intervals 
     const zMargin = z * se;
     const tMargin = t * se;
 
@@ -113,7 +116,7 @@ export default function MeanConfidenceInterval() {
     const zWidth = zUpper - zLower;
     const tWidth = tUpper - tLower;
 
-    // ----- Assemble results object -----
+    //  Assemble results object 
     setResults({
       mean,
       stddev,
@@ -136,12 +139,12 @@ export default function MeanConfidenceInterval() {
     });
   };
 
-  // ----- Automatic recalculation whenever inputs change -----
+  //  Automatic recalculation whenever inputs change 
   useEffect(() => {
     calculateCI();
   }, [sampleMean, sampleStddev, sampleSize, populationSize, confidenceLevel]);
 
-  // ----- UI handlers -----
+  //  UI handlers 
 
   // Reset all input fields
   const clear = () => {
@@ -151,7 +154,7 @@ export default function MeanConfidenceInterval() {
     setPopulationSize('');
     setConfidenceLevel('95');
     setResults(null);
-    toast.info('Champs réinitialisés');
+    toast.info(t('meanCi.clearMessage'));
   };
 
   // Load an example dataset (typical values)
@@ -160,39 +163,43 @@ export default function MeanConfidenceInterval() {
     setSampleStddev('10');
     setSampleSize('30');
     setPopulationSize('');
-    toast.success('Exemple chargé');
+    toast.success(t('meanCi.exampleLoaded'));
   };
 
   // Copy results to clipboard as formatted text
   const copyResults = async () => {
     if (!results) return;
-    const text = `Intervalle de confiance pour la moyenne – OpenEpi MeanCI
-Moyenne : ${formatNumber(results.mean)}
-Écart-type : ${formatNumber(results.stddev)}
-Taille échantillon : ${results.n}
-Taille population : ${results.N === Infinity ? 'Infinie' : results.N}
-Niveau de confiance : ${results.conf}%
+    const text = `${t('meanCi.copyPrefix')}
+${t('meanCi.mean')} : ${formatNumber(results.mean)}
+${t('meanCi.stddev')} : ${formatNumber(results.stddev)}
+${t('meanCi.sampleSize')} : ${results.n}
+${t('meanCi.populationSize')} : ${results.N === Infinity ? t('meanCi.infinite') : results.N}
+${t('meanCi.confidenceLevel')} : ${results.conf}%
 
-Erreur-type : ${formatNumber(results.se, 6)}
-Facteur correction : ${formatNumber(results.fpc, 6)}
-Degrés de liberté : ${results.df}
+${t('meanCi.standardError')} : ${formatNumber(results.se, 6)}
+${t('meanCi.fpc')} : ${formatNumber(results.fpc, 6)}
+${t('meanCi.df')} : ${results.df}
 
-Intervalle Z (IC ${results.conf}%) : [${formatNumber(results.zLower)} – ${formatNumber(results.zUpper)}]
-Intervalle t (IC ${results.conf}%) : [${formatNumber(results.tLower)} – ${formatNumber(results.tUpper)}]
+${t('meanCi.zInterval', { level: results.conf })} : [${formatNumber(results.zLower)} – ${formatNumber(results.zUpper)}]
+${t('meanCi.tInterval', { level: results.conf })} : [${formatNumber(results.tLower)} – ${formatNumber(results.tUpper)}]
 
-Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la population se situe entre ${formatNumber(results.tLower)} et ${formatNumber(results.tUpper)} (méthode t recommandée).`;
+${t('meanCi.interpretationText', {
+  level: results.conf,
+  lower: formatNumber(results.tLower),
+  upper: formatNumber(results.tUpper)
+})}`;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Résultats copiés');
+      toast.success(t('meanCi.copySuccess'));
     } catch {
-      toast.error('Échec de la copie');
+      toast.error(t('meanCi.copyError'));
     }
   };
 
   // Export a comprehensive PDF report
   const exportPDF = () => {
     if (!results) {
-      toast.error('Veuillez d’abord effectuer un calcul');
+      toast.error(t('meanCi.exportNoData'));
       return;
     }
 
@@ -210,65 +217,65 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
         900: [15, 23, 42] as [number, number, number],
       };
 
-      // ----- Header -----
+      //  Header 
       doc.setFillColor(...colorSlate[50]);
       doc.roundedRect(0, 0, 210, 40, 0, 0, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(...colorSlate[900]);
-      doc.text("Rapport d'intervalle de confiance – Moyenne", 20, 25);
+      doc.text(t('meanCi.reportTitle'), 20, 25);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[500]);
-      doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
+      doc.text(`${t('meanCi.reportGenerated')} ${new Date().toLocaleDateString('fr-FR')}`, 20, 32);
       doc.text('MeanCI – OpenEpi', 190, 32, { align: 'right' });
 
-      // ----- Input data summary -----
+      //  Input data summary 
       let y = 55;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Données analysées', 20, y);
+      doc.text(t('meanCi.analysedData'), 20, y);
       y += 3;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, y, 190, y);
       y += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.text(`Moyenne : ${formatNumber(results.mean)}`, 25, y); y += 6;
-      doc.text(`Écart-type : ${formatNumber(results.stddev)}`, 25, y); y += 6;
-      doc.text(`Taille échantillon : ${results.n}`, 25, y); y += 6;
-      doc.text(`Taille population : ${results.N === Infinity ? 'Infinie' : results.N}`, 25, y); y += 6;
-      doc.text(`Niveau de confiance : ${results.conf} %`, 25, y); y += 12;
+      doc.text(`${t('meanCi.mean')} : ${formatNumber(results.mean)}`, 25, y); y += 6;
+      doc.text(`${t('meanCi.stddev')} : ${formatNumber(results.stddev)}`, 25, y); y += 6;
+      doc.text(`${t('meanCi.sampleSize')} : ${results.n}`, 25, y); y += 6;
+      doc.text(`${t('meanCi.populationSize')} : ${results.N === Infinity ? t('meanCi.infinite') : results.N}`, 25, y); y += 6;
+      doc.text(`${t('meanCi.confidenceLevel')} : ${results.conf} %`, 25, y); y += 12;
 
-      // ----- t‑interval card -----
+      //  t‑interval card 
       doc.setFillColor(236, 253, 245);
       doc.setDrawColor(5, 150, 105);
       doc.roundedRect(20, y, 170, 35, 3, 3, 'FD');
       doc.setTextColor(5, 150, 105);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text('INTERVALLE DE CONFIANCE (t de Student)', 105, y + 8, { align: 'center' });
+      doc.text(t('meanCi.tIntervalCard', { level: results.conf }), 105, y + 8, { align: 'center' });
       doc.setFontSize(16);
       doc.text(`[${formatNumber(results.tLower)} – ${formatNumber(results.tUpper)}]`, 105, y + 22, { align: 'center' });
       doc.setFontSize(9);
-      doc.text(`Moyenne : ${formatNumber(results.mean)}`, 105, y + 30, { align: 'center' });
+      doc.text(`${t('meanCi.mean')} : ${formatNumber(results.mean)}`, 105, y + 30, { align: 'center' });
       y += 45;
 
-      // ----- Descriptive statistics table -----
+      //  Descriptive statistics table 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Statistiques descriptives', 20, y);
+      doc.text(t('meanCi.descriptiveStats'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
 
       const statsTable = [
-        ['Variance', formatNumber(results.variance, 4)],
-        ['Erreur-type corrigée', formatNumber(results.se, 6)],
-        ['Facteur de correction (FPC)', formatNumber(results.fpc, 6)],
-        ['Degrés de liberté', results.df.toString()],
-        ['Valeur critique Z', formatNumber(results.zValue, 4)],
-        ['Valeur critique t', formatNumber(results.tValue, 4)],
+        [t('meanCi.variance'), formatNumber(results.variance, 4)],
+        [t('meanCi.standardError'), formatNumber(results.se, 6)],
+        [t('meanCi.fpc'), formatNumber(results.fpc, 6)],
+        [t('meanCi.df'), results.df.toString()],
+        [t('meanCi.zCritical'), formatNumber(results.zValue, 4)],
+        [t('meanCi.tCritical'), formatNumber(results.tValue, 4)],
       ];
 
       autoTable(doc, {
@@ -285,22 +292,22 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
 
       y = (doc as any).lastAutoTable.finalY + 15;
 
-      // ----- Confidence intervals comparison table -----
+      //  Confidence intervals comparison table 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text(`Intervalles de confiance à ${results.conf}%`, 20, y);
+      doc.text(t('meanCi.ciComparison', { level: results.conf }), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 5;
 
       const icTable = [
-        ['Z (grands échantillons)', formatNumber(results.zLower), formatNumber(results.zUpper), formatNumber(results.zWidth)],
-        ['t de Student (recommandé)', formatNumber(results.tLower), formatNumber(results.tUpper), formatNumber(results.tWidth)],
+        [t('meanCi.zMethod'), formatNumber(results.zLower), formatNumber(results.zUpper), formatNumber(results.zWidth)],
+        [t('meanCi.tMethod'), formatNumber(results.tLower), formatNumber(results.tUpper), formatNumber(results.tWidth)],
       ];
 
       autoTable(doc, {
         startY: y,
-        head: [['Méthode', 'Limite inf.', 'Limite sup.', 'Largeur']],
+        head: [[t('meanCi.method'), t('meanCi.lower'), t('meanCi.upper'), t('meanCi.width')]],
         body: icTable,
         theme: 'striped',
         headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -317,29 +324,33 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
 
       y = (doc as any).lastAutoTable.finalY + 15;
 
-      // ----- Interpretation -----
+      //  Interpretation 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Interprétation', 20, y);
+      doc.text(t('meanCi.interpretation'), 20, y);
       y += 3;
       doc.line(20, y, 190, y);
       y += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...colorSlate[700]);
-      const interpretation = `À ${results.conf}% de confiance, la vraie moyenne de la population se situe entre ${formatNumber(results.tLower)} et ${formatNumber(results.tUpper)}. L'intervalle basé sur la distribution t de Student est recommandé pour les petits échantillons (n < 30) ou lorsque l'écart-type de la population est inconnu.`;
+      const interpretation = t('meanCi.interpretationText', {
+        level: results.conf,
+        lower: formatNumber(results.tLower),
+        upper: formatNumber(results.tUpper)
+      });
       const splitText = doc.splitTextToSize(interpretation, 170);
       doc.text(splitText, 20, y);
       y += splitText.length * 5 + 10;
 
-      // ----- References and notes -----
+      //  References and notes 
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(...colorSlate[500]);
-      doc.text('Méthodes basées sur OpenEpi – MeanCI. Intervalle Z : approximation normale. Intervalle t : distribution t de Student.', 20, y); y += 4;
-      doc.text('Correction pour population finie appliquée si N est spécifié et inférieur à 999 999 999.', 20, y); y += 4;
+      doc.text(t('meanCi.referencesNote'), 20, y); y += 4;
+      doc.text(t('meanCi.fpcNote'), 20, y); y += 4;
 
-      // ----- Footer -----
+      //  Footer 
       const footerY = 280;
       doc.setDrawColor(...colorSlate[200]);
       doc.line(20, footerY, 190, footerY);
@@ -350,23 +361,23 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
       doc.text('Imprimer depuis le navigateur ou copier/coller', 190, footerY + 5, { align: 'right' });
 
       doc.save(`MeanCI_${results.mean.toFixed(1)}_n${results.n}.pdf`);
-      toast.success('Rapport PDF exporté');
+      toast.success(t('meanCi.exportSuccess'));
     } catch (error) {
       console.error(error);
-      toast.error('Erreur PDF');
+      toast.error(t('meanCi.exportError'));
     }
   };
 
-  // ----- Render (JSX) -----
+  //  Render (JSX) 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Breadcrumb navigation */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
           <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">Accueil</Link></li>
+            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('common.home')}</Link></li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">MeanCI</span></li>
+            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('meanCi.title')}</span></li>
           </ol>
         </nav>
 
@@ -378,10 +389,10 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Intervalle de confiance pour la moyenne
+                {t('meanCi.title')}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                Estimation de la moyenne populationnelle
+                {t('meanCi.description')}
               </p>
             </div>
           </div>
@@ -398,12 +409,12 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm p-6 lg:p-8 border border-slate-100 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center mb-6">
-                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> Paramètres
+                <Calculator className="w-5 h-5 mr-3 text-blue-500" /> {t('meanCi.parameters')}
               </h2>
               <div className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Moyenne de l'échantillon (x̄)
+                    {t('meanCi.sampleMean')}
                   </label>
                   <input
                     type="number"
@@ -411,12 +422,12 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     onChange={(e) => setSampleMean(e.target.value)}
                     step="any"
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 50"
+                    placeholder={t('meanCi.sampleMeanPlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Écart-type de l'échantillon (s)
+                    {t('meanCi.stddev')}
                   </label>
                   <input
                     type="number"
@@ -425,12 +436,12 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     min="0"
                     step="any"
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 10"
+                    placeholder={t('meanCi.stddevPlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Taille de l'échantillon (n)
+                    {t('meanCi.sampleSize')}
                   </label>
                   <input
                     type="number"
@@ -439,12 +450,12 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     min="2"
                     step="1"
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Ex: 30"
+                    placeholder={t('meanCi.sampleSizePlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Taille de la population (N) <span className="font-normal">(optionnel)</span>
+                    {t('meanCi.populationSize')} <span className="font-normal">({t('meanCi.optional')})</span>
                   </label>
                   <input
                     type="number"
@@ -453,12 +464,12 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     min="1"
                     step="1"
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-lg font-medium"
-                    placeholder="Laissez vide pour infini"
+                    placeholder={t('meanCi.populationSizePlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    Niveau de confiance
+                    {t('meanCi.confidenceLevel')}
                   </label>
                   <select
                     value={confidenceLevel}
@@ -466,7 +477,7 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-medium"
                   >
                     <option value="90">90%</option>
-                    <option value="95">95% (Standard)</option>
+                    <option value="95">{t('meanCi.standard')} 95%</option>
                     <option value="99">99%</option>
                   </select>
                 </div>
@@ -476,7 +487,7 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                   onClick={loadExample}
                   className="flex-1 px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <Info className="w-4 h-4" /> Exemple
+                  <Info className="w-4 h-4" /> {t('meanCi.example')}
                 </button>
                 <button
                   onClick={clear}
@@ -486,8 +497,6 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                 </button>
               </div>
             </div>
-
-          
           </div>
 
           {/* Right column – results display */}
@@ -495,21 +504,21 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden min-h-[500px] flex flex-col">
               <div className="p-6 lg:p-8 flex items-center justify-between border-b border-slate-50 dark:border-slate-700">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> Résultats
+                  <Presentation className="w-5 h-5 mr-3 text-indigo-500" /> {t('meanCi.resultsTitle')}
                 </h2>
                 {results && (
                   <div className="flex gap-2">
                     <button
                       onClick={copyResults}
                       className="p-2.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors"
-                      title="Copier les résultats"
+                      title={t('meanCi.copyTooltip')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={exportPDF}
                       className="p-2.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 rounded-xl hover:bg-blue-100 transition-colors"
-                      title="Exporter en PDF"
+                      title={t('meanCi.exportTooltip')}
                     >
                       <FileDown className="w-4 h-4" />
                     </button>
@@ -522,7 +531,7 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                   // Placeholder when no results
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
                     <Presentation className="w-16 h-16 mb-4 text-slate-300" />
-                    <p className="text-lg">Saisissez les données pour l'analyse</p>
+                    <p className="text-lg">{t('meanCi.enterData')}</p>
                     <div className="text-4xl font-bold mt-2">
                       0.00
                     </div>
@@ -533,40 +542,40 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     {/* t‑interval card */}
                     <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-6 text-center">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
-                        Intervalle de confiance à {results.conf}% (t de Student)
+                        {t('meanCi.tIntervalCard', { level: results.conf })}
                       </p>
                       <div className="text-2xl md:text-3xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
                         [{formatNumber(results.tLower)} – {formatNumber(results.tUpper)}]
                       </div>
                       <p className="text-sm text-slate-500">
-                        Moyenne = {formatNumber(results.mean)} • Largeur = {formatNumber(results.tWidth)}
+                        {t('meanCi.mean')} = {formatNumber(results.mean)} • {t('meanCi.width')} = {formatNumber(results.tWidth)}
                       </p>
                     </div>
 
                     {/* Descriptive statistics cards */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Erreur-type</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('meanCi.standardError')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.se, 6)}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Variance</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('meanCi.variance')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.variance, 4)}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">ddl (df)</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('meanCi.df')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{results.df}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">FPC</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('meanCi.fpc')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.fpc, 6)}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">Z critique</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('meanCi.zCritical')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.zValue, 4)}</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">t critique</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">{t('meanCi.tCritical')}</p>
                         <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{formatNumber(results.tValue, 4)}</p>
                       </div>
                     </div>
@@ -575,11 +584,11 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                         <h3 className="font-semibold text-slate-900 dark:text-white">
-                          Méthodes d'intervalle de confiance
+                          {t('meanCi.methodComparison')}
                         </h3>
                         {!hasJStat && (
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
-                            Approximation (jStat non chargé)
+                            {t('meanCi.approximationWarning')}
                           </span>
                         )}
                       </div>
@@ -587,21 +596,21 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                         <table className="w-full text-sm">
                           <thead className="bg-slate-100 dark:bg-slate-700/50">
                             <tr>
-                              <th className="px-6 py-3 text-left font-semibold">Méthode</th>
-                              <th className="px-6 py-3 text-center font-semibold">Limite inf.</th>
-                              <th className="px-6 py-3 text-center font-semibold">Limite sup.</th>
-                              <th className="px-6 py-3 text-center font-semibold">Largeur</th>
-                            </tr>
+                              <th className="px-6 py-3 text-left font-semibold">{t('meanCi.method')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('meanCi.lower')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('meanCi.upper')}</th>
+                              <th className="px-6 py-3 text-center font-semibold">{t('meanCi.width')}</th>
+                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             <tr>
-                              <td className="px-6 py-3 font-medium">Z (grands échantillons)</td>
+                              <td className="px-6 py-3 font-medium">{t('meanCi.zMethod')}</td>
                               <td className="px-6 py-3 text-center font-mono">{formatNumber(results.zLower)}</td>
                               <td className="px-6 py-3 text-center font-mono">{formatNumber(results.zUpper)}</td>
                               <td className="px-6 py-3 text-center font-mono">{formatNumber(results.zWidth)}</td>
                             </tr>
                             <tr className="bg-emerald-50/30 dark:bg-emerald-900/10">
-                              <td className="px-6 py-3 font-medium">t de Student (recommandé)</td>
+                              <td className="px-6 py-3 font-medium">{t('meanCi.tMethod')}</td>
                               <td className="px-6 py-3 text-center font-mono">{formatNumber(results.tLower)}</td>
                               <td className="px-6 py-3 text-center font-mono">{formatNumber(results.tUpper)}</td>
                               <td className="px-6 py-3 text-center font-mono">{formatNumber(results.tWidth)}</td>
@@ -617,15 +626,16 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                         <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                         <div>
                           <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
-                            Interprétation
+                            {t('meanCi.interpretation')}
                           </h4>
                           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                            À <strong>{results.conf}%</strong> de confiance, la vraie moyenne de la population se situe entre{' '}
-                            <strong>{formatNumber(results.tLower)}</strong> et <strong>{formatNumber(results.tUpper)}</strong>.
-                            L'intervalle basé sur la distribution <strong>t de Student</strong> est recommandé, surtout lorsque
-                            n &lt; 30 ou que l'écart-type de la population est inconnu.
+                            {t('meanCi.interpretationText', {
+                              level: results.conf,
+                              lower: formatNumber(results.tLower),
+                              upper: formatNumber(results.tUpper)
+                            })}
                             {results.N !== Infinity && (
-                              <> Une correction pour population finie a été appliquée (FPC = {formatNumber(results.fpc, 4)}).</>
+                              <> {t('meanCi.fpcApplied', { fpc: formatNumber(results.fpc, 4) })}</>
                             )}
                           </p>
                         </div>
@@ -648,7 +658,7 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="sticky top-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center z-10">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Guide – MeanCI (Intervalle pour une moyenne)
+                  {t('meanCi.helpTitle')}
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -664,13 +674,10 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       1
                     </div>
-                    Le principe
+                    {t('meanCi.principleTitle')}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
-                    Ce module reproduit l'outil <strong>MeanCI</strong> d'OpenEpi. Il calcule l'intervalle de confiance pour une moyenne
-                    à partir des statistiques d'un échantillon. Deux méthodes sont proposées : l'approximation normale (Z) et la
-                    distribution t de Student, plus adaptée aux petits échantillons. Une correction pour population finie peut être
-                    appliquée si la taille de la population totale est connue.
+                    {t('meanCi.principleText')}
                   </p>
                 </section>
 
@@ -679,13 +686,13 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
                       <Hash className="w-4 h-4 text-blue-500" /> Z vs t
                     </div>
-                    <div className="text-xs text-slate-500">Z : grand échantillon (n &ge; 30). t : petit échantillon (n {'<'} 30) ou σ inconnu.</div>
+                    <div className="text-xs text-slate-500">{t('meanCi.zVsT')}</div>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                     <div className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
                       <Gauge className="w-4 h-4 text-emerald-500" /> FPC
                     </div>
-                    <div className="text-xs text-slate-500">Réduit l'erreur-type quand l'échantillon couvre une part importante de la population.</div>
+                    <div className="text-xs text-slate-500">{t('meanCi.fpcDesc')}</div>
                   </div>
                 </div>
 
@@ -694,12 +701,12 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       2
                     </div>
-                    Méthodes de calcul
+                    {t('meanCi.methodsTitle')}
                   </h4>
                   <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                    <p><strong className="text-slate-900 dark:text-white">Intervalle Z</strong> – IC = x̄ ± z·σ/√n, où z est la quantile de la loi normale. Utilisable pour n ≥ 30 ou σ connu.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Intervalle t</strong> – IC = x̄ ± t·s/√n, avec t quantile de Student à (n‑1) ddl. Recommandé en pratique.</p>
-                    <p><strong className="text-slate-900 dark:text-white">Correction de population finie (FPC)</strong> – L'erreur-type est multipliée par √((N‑n)/(N‑1)). Appliquée si N est saisi et N {'<'} 999 999 999.</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('meanCi.zMethod')}</strong> – {t('meanCi.zDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('meanCi.tMethod')}</strong> – {t('meanCi.tDesc')}</p>
+                    <p><strong className="text-slate-900 dark:text-white">{t('meanCi.fpc')}</strong> – {t('meanCi.fpcDesc')}</p>
                   </div>
                   <a
                     href="https://www.openepi.com/Mean/Mean.htm"
@@ -707,7 +714,7 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     rel="noopener noreferrer"
                     className="inline-flex items-center text-xs font-semibold text-blue-500 hover:text-blue-700 mt-4"
                   >
-                    Source : OpenEpi – MeanCI <ArrowRight className="w-3 h-3 ml-1" />
+                    {t('meanCi.sourceLink')} <ArrowRight className="w-3 h-3 ml-1" />
                   </a>
                 </section>
 
@@ -716,12 +723,12 @@ Interprétation : À ${results.conf}% de confiance, la vraie moyenne de la popul
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs">
                       3
                     </div>
-                    Ressources
+                    {t('meanCi.resourcesTitle')}
                   </h4>
                   <div className="space-y-2 text-sm">
                     <p>
                       <a href="https://www.openepi.com/PDFDocs/MeanDoc.pdf" target="_blank" className="text-blue-600 hover:underline">
-                        Documentation officielle OpenEpi (PDF)
+                        {t('meanCi.openEpiPdf')}
                       </a>
                     </p>
                     <p>
