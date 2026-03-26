@@ -1625,9 +1625,9 @@
   "helpOrderNote": "Ordre des niveaux",
   "helpOrderNoteText": "Les niveaux doivent être saisis du moins pathologique (première ligne) au plus pathologique (dernière ligne). C’est essentiel pour une courbe ROC correcte.",
   "helpSourceLink": "Source officielle : OpenEpi – Dépistage"
-}?
+},
 "oneRate": {
-  "title": "One Rate",
+  "title": "Taux 1",
   "description": "Analyse d'un taux et de son intervalle de confiance – PersonTime1",
   "parameters": "Paramètres",
   "eventsLabel": "Nombre de cas (numérateur)",
