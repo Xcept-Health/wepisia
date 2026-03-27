@@ -71,7 +71,6 @@ export default function TermsPage() {
         {/* DETAILED SECTIONS */}
         <div className="space-y-20 mb-20">
 
-          {/* 1. Acceptance of Terms */}
           <section className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -91,7 +90,6 @@ export default function TermsPage() {
             </div>
           </section>
 
-          {/* 2. Use of the Service */}
           <section className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -104,7 +102,7 @@ export default function TermsPage() {
                 <p className="text-slate-500">{t('terms.useDesc')}</p>
               </div>
             </div>
-            <div className="grid md:grid-cols-2 gap-8">
+            <div >
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
                 <h3 className="font-semibold text-lg mb-3">{t('terms.permitted')}</h3>
                 <ul className="list-disc list-inside space-y-2 text-sm text-slate-600 dark:text-slate-400">
@@ -113,18 +111,11 @@ export default function TermsPage() {
                   <li>{t('terms.permittedTeaching')}</li>
                 </ul>
               </div>
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-                <h3 className="font-semibold text-lg mb-3">{t('terms.prohibited')}</h3>
-                <ul className="list-disc list-inside space-y-2 text-sm text-slate-600 dark:text-slate-400">
-                  <li>{t('terms.prohibitedCommercial')}</li>
-                  <li>{t('terms.prohibitedMisuse')}</li>
-                  <li>{t('terms.prohibitedIllegal')}</li>
-                </ul>
-              </div>
+             
             </div>
           </section>
 
-          {/* 3. Intellectual Property */}
+
           <section className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -149,7 +140,7 @@ export default function TermsPage() {
             </div>
           </section>
 
-          {/* 4. Disclaimer of Warranties */}
+
           <section className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -175,7 +166,7 @@ export default function TermsPage() {
             </div>
           </section>
 
-          {/* 5. Limitation of Liability */}
+
           <section className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -195,7 +186,6 @@ export default function TermsPage() {
             </div>
           </section>
 
-          {/* 6. Changes to Terms */}
           <section className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -215,7 +205,7 @@ export default function TermsPage() {
             </div>
           </section>
 
-          {/* 7. Contact */}
+
           <section className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -228,6 +218,7 @@ export default function TermsPage() {
                 <p className="text-slate-500">{t('terms.contactDesc')}</p>
               </div>
             </div>
+            
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col sm:flex-row justify-between items-start gap-4">
               <div>
                 <p className="font-semibold">{t('terms.contactEmail')}</p>
@@ -236,20 +227,31 @@ export default function TermsPage() {
                 </a>
               </div>
               <div>
+      <p className="font-semibold">{t('terms.contactDirect')}</p>
+      <a href="mailto:arielshadrac@gmail.com" className="text-blue-600 hover:underline">
+        arielshadrac@gmail.com
+      </a>
+
+    </div>
+              
+              <div>
                 <p className="font-semibold">{t('terms.contactSite')}</p>
                 <a href="https://xcept-health.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                   xcept-health.com
                 </a>
               </div>
-              <div className="text-sm text-slate-500">
-                {t('terms.openSourceLink')}
+              <div>
+                <p className="font-semibold">{t('terms.openSourceLink')}</p>
+                <a href="https://github.com/Xcept-Health/wepisia" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                    https://github.com/Xcept-Health/wepisia
+                </a>
               </div>
             </div>
           </section>
         </div>
 
               {/* Footer */}
-              <footer className="w-full py-8 px-4 sm:px-6">
+              <footer className="w-full py-2 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto">
           <div className="flex flex-col items-center gap-8">
             {/* Social bar – responsive wrap */}
