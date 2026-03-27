@@ -57,18 +57,7 @@ import {
  * 
  * This component serves as the main entry point of the application. It provides:
  * - A hero section with a title and a search bar that opens a command palette (⌘K).
- * - A command palette listing all available modules with categories for quick navigation.
- * - A bento grid highlighting featured modules (Biostatistics, AI, Geospatial, Simulation).
- * - A comprehensive grid of all tools with FULLY RESPONSIVE card layout.
- * - An interactive 3D globe in the Geospatial card (responsive size).
- * - A floating navigation bar (desktop) and a mobile drawer menu.
- * - Dark mode support via Tailwind's dark: variants.
- * 
- * Corrections applied:
- * - Main tools grid: mobile-first (1 col → 2 cols on sm → 3 cols on lg)
- * - Large cards (col-span-2 / col-span-3) only grow on lg+ screens
- * - Globe size is now responsive (240px on mobile, 320px on desktop)
- * - No more horizontal scroll on mobile
+
  */
 
 export default function Home() {
@@ -76,7 +65,6 @@ export default function Home() {
 
   // --- State ---
   const [open, setOpen] = useState(false);               // Command palette
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [globeSize, setGlobeSize] = useState(320);       // Responsive globe size
 
   // Refs
@@ -84,7 +72,6 @@ export default function Home() {
 
   // --- Constants (with translations) ---
   const modules = [
-    { title: t('sidebar.home'), href: '/', category: t('sidebar.principal'), icon: 'Blocks' },
     { title: t('sidebar.stdMortalityRatio'), href: 'biostatistics/std_mortality_ratio', category: t('sidebar.numerotations'), icon: 'Blocks' },
     { title: t('sidebar.proportions'), href: '/biostatistics/proportions', category: t('sidebar.numerotations') },
     { title: t('sidebar.twoByTwo'), href: '/biostatistics/two_by_two', category: t('sidebar.numerotations') },
@@ -99,12 +86,10 @@ export default function Home() {
     { title: t('sidebar.anova'), href: '/biostatistics/anova', category: t('sidebar.variablesContinues') },
     { title: t('sidebar.proportionsSample'), href: '/biostatistics/sample-proportions', category: t('sidebar.tailleEchantillon') },
     { title: t('sidebar.cohortRCT'), href: '/biostatistics/cohort-rct', category: t('sidebar.tailleEchantillon') },
-    { title: t('sidebar.matchedCase'), href: '/biostatistics/matched_case', category: t('sidebar.tailleEchantillon') },
     { title: t('sidebar.meanDifference'), href: '/biostatistics/mean_difference_sample', category: t('sidebar.tailleEchantillon') },
     { title: t('sidebar.cohortRCT'), href: '/biostatistics/cohort_rct_power', category: t('sidebar.puissance') },
     { title: t('sidebar.clinicalTrial'), href: '/biostatistics/clinical_trial', category: t('sidebar.puissance') },
     { title: t('sidebar.caseControl'), href: '/biostatistics/case_control', category: t('sidebar.puissance') },
-    { title: t('sidebar.meanDifference'), href: '/biostatistics/mean_difference-power', category: t('sidebar.puissance') },
     { title: t('sidebar.matchedCaseControl'), href: '/biostatistics/matched_case_control', category: t('sidebar.puissance') },
     { title: t('sidebar.randomNumbers'), href: '/biostatistics/random_numbers', category: t('sidebar.autres') },
     { title: t('sidebar.geospatial'), href: '/geospatial/map', category: t('sidebar.geospatial') },
@@ -554,35 +539,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Mobile drawer */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setMobileMenuOpen(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110]"
-            />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 w-[80%] bg-white dark:bg-[#0A0A0A] z-[120] p-10 shadow-2xl"
-            >
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                className="mb-12 p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl"
-              >
-                <X size={24} />
-              </button>
-              {/* Tu peux remettre ici le contenu du menu mobile si tu veux */}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       {/* Main tools grid – FULLY RESPONSIVE */}
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-12">
