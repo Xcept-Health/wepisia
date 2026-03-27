@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useTranslation } from 'react-i18next'; 
+import packageJson from "@root/package.json"
 
 interface SidebarProps {
   isOpen: boolean;
@@ -328,7 +329,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
           <div className="px-4 py-4 animate-fade-in">
             <div className="flex items-center justify-between">
               <div className="text-xs text-gray-500 dark:text-gray-400">
-                0.1.0a1
+              <span>{packageJson.version}</span>
               </div>
               <div className="flex items-center space-x-2">
                 <select 
