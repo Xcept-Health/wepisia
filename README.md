@@ -9,7 +9,7 @@
  ╚══╝╚══╝ ╚══════╝╚═╝     ╚═╝╚══════╝╚═╝╚═╝  ╚═╝
 ```
 
-**Open Epidemiology Platform — Built for Africa**
+**Open Epidemiology Platform  Built for Africa**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange.svg)]()
@@ -53,7 +53,7 @@ Every statistical result in Wepisia is validated against OpenEpi v3. Where the t
 
 ---
 
-## What's New — Beyond OpenEpi
+## What's New  Beyond OpenEpi
 
 ```
 OpenEpi (2002)          Wepisia (2026)
@@ -77,19 +77,19 @@ No dark mode      →     System-adaptive dark/light theme
 
 ### Diagnostic & Screening
 Full replication of OpenEpi's Screening Test module:
-- Sensitivity, specificity, PPV, NPV, accuracy — Wilson CIs
-- LR+/LR− — Katz log method
+- Sensitivity, specificity, PPV, NPV, accuracy  Wilson CIs
+- LR+/LR−  Katz log method
 - Diagnostic odds ratio, Cohen's Kappa, Shannon entropy reduction, bias index
 - Cutoff-specific and level-specific analyses
 - ROC curve with AUC (Hanley–McNeil 1982 CI)
 
 ### Contingency Tables
-- **2×2** — Fisher exact, mid-P, Mantel–Haenszel, Yates correction, OR, RR, risk difference, attributable fractions (Woolf CI)
-- **R×C** — Pearson χ², degrees of freedom, p-value (jStat exact), Cramér's V, expected frequencies
+- **2×2**  Fisher exact, mid-P, Mantel–Haenszel, Yates correction, OR, RR, risk difference, attributable fractions (Woolf CI)
+- **R×C**  Pearson χ², degrees of freedom, p-value (jStat exact), Cramér's V, expected frequencies
 
 ### Rates & Person-Time
-- **One rate** — 5 CI methods: mid-P exact (Miettinen 1974), Fisher (Armitage 1971), Normal (Rosner), Byar (Rothman–Boice 1979), Rothman–Greenland
-- **Two rates** — Rate ratio, rate difference, Mantel–Haenszel χ², exact Poisson test
+- **One rate**  5 CI methods: mid-P exact (Miettinen 1974), Fisher (Armitage 1971), Normal (Rosner), Byar (Rothman–Boice 1979), Rothman–Greenland
+- **Two rates**  Rate ratio, rate difference, Mantel–Haenszel χ², exact Poisson test
 
 ### Dose-Response
 - Mantel linear trend test (χ² at 1 df)
@@ -105,7 +105,7 @@ Full replication of OpenEpi's Screening Test module:
 - Cohort/RCT, unmatched case-control, mean difference
 
 ### Mortality
-- SMR (Standardized Mortality Ratio) — 6 methods: Exact Poisson/χ², mid-P, Byar, Vandenbroucke, Rothman–Greenland, Pearson χ²
+- SMR (Standardized Mortality Ratio)  6 methods: Exact Poisson/χ², mid-P, Byar, Vandenbroucke, Rothman–Greenland, Pearson χ²
 
 </details>
 
@@ -245,7 +245,7 @@ Requires Node.js 18+. No backend needed.
 
 ## Contributing
 
-Contributions welcome — biostatisticians, developers, translators, public health practitioners.
+Contributions welcome,  biostatisticians, developers, translators, public health practitioners.
 
 ```
 contact@xcept-health.com
