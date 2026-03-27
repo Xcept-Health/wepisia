@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import {
   Shield, Database, Eye, Cookie, Lock, Globe, Mail, Calendar, 
   FileText, CheckCircle, XCircle, AlertTriangle, UserCheck, 
-  Server, Smartphone, Share2, Code, Settings,BookOpen, ExternalLink
+  Server, Smartphone, Share2, Code, Settings, BookOpen, ExternalLink
 } from "lucide-react";
 import { useTranslation } from 'react-i18next';
 import { FaLinkedin, FaGithub } from 'react-icons/fa';
@@ -20,16 +20,16 @@ export default function PrivacyPage() {
         {/* INTRODUCTION */}
         <section id="introduction" className="mb-20 scroll-mt-32">
           <h1 className="text-6xl font-black text-slate-900 dark:text-white mb-8 tracking-tight">
-            {t('privacy.title', 'Politique de confidentialité')} <br />
+            {t('privacy.title')} <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-400">
-              {t('privacy.subtitle', 'Wepisia')}
+              {t('privacy.subtitle')}
             </span>
           </h1>
           <p className="text-xl text-slate-500 leading-relaxed max-w-3xl">
-            {t('privacy.intro', "Dernière mise à jour : 25 mars 2026")}
+            {t('privacy.intro')}
           </p>
           <p className="text-slate-500 mt-4 max-w-3xl">
-            {t('privacy.summary', "Wepisia est un outil open‑source d'épidémiologie et de biostatistiques. Cette politique explique comment nous traitons vos données.")}
+            {t('privacy.summary')}
           </p>
         </section>
 
@@ -40,10 +40,10 @@ export default function PrivacyPage() {
               <Database size={24} />
             </div>
             <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-              {t('privacy.noDataCollection', 'Aucune collecte de données')}
+              {t('privacy.noDataCollection')}
             </h3>
             <p className="text-slate-500 text-sm">
-              {t('privacy.noDataDesc', "Wepisia ne collecte, ne stocke ni ne transmet aucune donnée personnelle. Tous les calculs sont effectués localement dans votre navigateur.")}
+              {t('privacy.noDataDesc')}
             </p>
           </div>
 
@@ -52,10 +52,10 @@ export default function PrivacyPage() {
               <Lock size={24} />
             </div>
             <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-              {t('privacy.localProcessing', 'Traitement local')}
+              {t('privacy.localProcessing')}
             </h3>
             <p className="text-slate-500 text-sm">
-              {t('privacy.localDesc', "Les données saisies (valeurs de tableaux, paramètres de simulation) restent sur votre appareil et sont effacées à la fermeture de l'onglet.")}
+              {t('privacy.localDesc')}
             </p>
           </div>
 
@@ -64,17 +64,17 @@ export default function PrivacyPage() {
               <Eye size={24} />
             </div>
             <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-              {t('privacy.noTracking', 'Pas de suivi')}
+              {t('privacy.noTracking')}
             </h3>
             <p className="text-slate-500 text-sm">
-              {t('privacy.noTrackingDesc', "Aucun cookie tiers, aucun script d'analyse, aucune publicité. Votre vie privée est entièrement respectée.")}
+              {t('privacy.noTrackingDesc')}
             </p>
           </div>
         </div>
 
         {/* DETAILED SECTIONS */}
         <div className="space-y-20 mb-20">
-          {/* 1. Données collectées */}
+
           <section id="data-collected" className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -82,9 +82,9 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-                  {t('privacy.dataCollectedTitle', 'Données collectées')}
+                  {t('privacy.dataCollectedTitle')}
                 </h2>
-                <p className="text-slate-500">{t('privacy.dataCollectedDesc', "Aucune donnée personnelle n'est collectée.")}</p>
+                <p className="text-slate-500">{t('privacy.dataCollectedDesc')}</p>
               </div>
             </div>
 
@@ -93,13 +93,13 @@ export default function PrivacyPage() {
                 <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
                   <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                     <CheckCircle size={20} className="text-green-500" />
-                    {t('privacy.neverCollected', 'Jamais collectées')}
+                    {t('privacy.neverCollected')}
                   </h3>
                   <ul className="list-disc list-inside space-y-2 text-sm text-slate-600 dark:text-slate-400">
-                    <li>{t('privacy.noName', 'Nom, adresse, email')}</li>
-                    <li>{t('privacy.noIp', 'Adresse IP')}</li>
-                    <li>{t('privacy.noTrackingData', 'Données de navigation ou cookies de suivi')}</li>
-                    <li>{t('privacy.noHealthData', 'Données de santé identifiables')}</li>
+                    <li>{t('privacy.noName')}</li>
+                    <li>{t('privacy.noIp')}</li>
+                    <li>{t('privacy.noTrackingData')}</li>
+                    <li>{t('privacy.noHealthData')}</li>
                   </ul>
                 </div>
               </div>
@@ -107,23 +107,23 @@ export default function PrivacyPage() {
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
                 <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                   <Server size={20} className="text-blue-500" />
-                  {t('privacy.localStorage', 'Stockage local (navigateur)')}
+                  {t('privacy.localStorage')}
                 </h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                  {t('privacy.localStorageDesc', "Certaines préférences sont enregistrées localement :")}
+                  {t('privacy.localStorageDesc')}
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-sm text-slate-500">
-                  <li>{t('privacy.langPref', 'Langue sélectionnée')}</li>
-                  <li>{t('privacy.uiState', 'État de l’interface (palette de commandes, thème)')}</li>
+                  <li>{t('privacy.langPref')}</li>
+                  <li>{t('privacy.uiState')}</li>
                 </ul>
                 <p className="text-xs text-slate-400 mt-3">
-                  {t('privacy.clearLocalStorage', "Vous pouvez effacer ces données à tout moment via les paramètres de votre navigateur.")}
+                  {t('privacy.clearLocalStorage')}
                 </p>
               </div>
             </div>
           </section>
 
-          {/* 2. Utilisation des données */}
+
           <section id="data-usage" className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -131,29 +131,29 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-                  {t('privacy.dataUsageTitle', 'Utilisation des données')}
+                  {t('privacy.dataUsageTitle')}
                 </h2>
-                <p className="text-slate-500">{t('privacy.dataUsageDesc', "Les seules données que vous saisissez sont utilisées pour les calculs.")}</p>
+                <p className="text-slate-500">{t('privacy.dataUsageDesc')}</p>
               </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-8">
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-                <h3 className="font-semibold text-lg mb-3">{t('privacy.calculations', 'Calculs')}</h3>
+                <h3 className="font-semibold text-lg mb-3">{t('privacy.calculations')}</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {t('privacy.calculationsDesc', "Les valeurs que vous entrez (ex. effectifs, paramètres) ne servent qu'à générer les résultats affichés. Elles ne sont jamais transmises à nos serveurs.")}
+                  {t('privacy.calculationsDesc')}
                 </p>
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-                <h3 className="font-semibold text-lg mb-3">{t('privacy.persistence', 'Persistance')}</h3>
+                <h3 className="font-semibold text-lg mb-3">{t('privacy.persistence')}</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {t('privacy.persistenceDesc', "Aucune donnée n'est conservée après la fermeture de l'onglet. Vous pouvez également effacer manuellement les préférences stockées.")}
+                  {t('privacy.persistenceDesc')}
                 </p>
               </div>
             </div>
           </section>
 
-          {/* 3. Cookies */}
+
           <section id="cookies" className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -161,20 +161,20 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-                  {t('privacy.cookiesTitle', 'Cookies')}
+                  {t('privacy.cookiesTitle')}
                 </h2>
-                <p className="text-slate-500">{t('privacy.cookiesDesc', "L'application n'utilise pas de cookies.")}</p>
+                <p className="text-slate-500">{t('privacy.cookiesDesc')}</p>
               </div>
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                {t('privacy.cookiesDetail', "Seul le stockage local (localStorage) peut être utilisé pour mémoriser vos préférences de langue et l'état de l'interface. Ces données ne sont pas des cookies et ne sont jamais partagées.")}
+                {t('privacy.cookiesDetail')}
               </p>
             </div>
           </section>
 
-          {/* 4. Tiers */}
+
           <section id="third-parties" className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -182,20 +182,20 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-                  {t('privacy.thirdPartiesTitle', 'Partage avec des tiers')}
+                  {t('privacy.thirdPartiesTitle')}
                 </h2>
-                <p className="text-slate-500">{t('privacy.thirdPartiesDesc', "Aucune information n'est partagée avec des tiers.")}</p>
+                <p className="text-slate-500">{t('privacy.thirdPartiesDesc')}</p>
               </div>
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                {t('privacy.thirdPartiesDetail', "L'application ne contient pas de scripts externes (analytiques, publicitaires) et ne transmet aucune donnée. Les seules requêtes réseau concernent le chargement des ressources nécessaires au fonctionnement (bibliothèques JavaScript, feuilles de style).")}
+                {t('privacy.thirdPartiesDetail')}
               </p>
             </div>
           </section>
 
-          {/* 5. Sécurité */}
+
           <section id="security" className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -203,29 +203,29 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-                  {t('privacy.securityTitle', 'Sécurité')}
+                  {t('privacy.securityTitle')}
                 </h2>
-                <p className="text-slate-500">{t('privacy.securityDesc', "Vos données restent sous votre contrôle.")}</p>
+                <p className="text-slate-500">{t('privacy.securityDesc')}</p>
               </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-8">
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-                <h3 className="font-semibold text-lg mb-3">{t('privacy.localComputation', 'Calcul local')}</h3>
+                <h3 className="font-semibold text-lg mb-3">{t('privacy.localComputation')}</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {t('privacy.localComputationDesc', "Tous les calculs s'effectuent sur votre machine. Aucune donnée ne quitte votre navigateur.")}
+                  {t('privacy.localComputationDesc')}
                 </p>
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-                <h3 className="font-semibold text-lg mb-3">{t('privacy.https', 'Transmission sécurisée')}</h3>
+                <h3 className="font-semibold text-lg mb-3">{t('privacy.https')}</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {t('privacy.httpsDesc', "Le site est servi en HTTPS, garantissant l'intégrité des fichiers téléchargés.")}
+                  {t('privacy.httpsDesc')}
                 </p>
               </div>
             </div>
           </section>
 
-          {/* 6. Modifications */}
+
           <section id="changes" className="scroll-mt-32">
             <div className="flex items-start gap-6 mb-8">
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
@@ -233,57 +233,66 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-                  {t('privacy.changesTitle', 'Modifications de la politique')}
+                  {t('privacy.changesTitle')}
                 </h2>
-                <p className="text-slate-500">{t('privacy.changesDesc', "Toute modification sera publiée sur cette page.")}</p>
+                <p className="text-slate-500">{t('privacy.changesDesc')}</p>
               </div>
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                {t('privacy.changesDetail', "Cette politique peut être mise à jour occasionnellement. La date de dernière mise à jour figure en haut de la page. Nous vous invitons à la consulter régulièrement.")}
+                {t('privacy.changesDetail')}
               </p>
             </div>
           </section>
 
-          {/* 7. Contact */}
-          <section id="contact" className="scroll-mt-32">
-            <div className="flex items-start gap-6 mb-8">
-              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
-                <Mail className="text-blue-600" size={28} />
-              </div>
-              <div>
-                <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-                  {t('privacy.contactTitle', 'Contact')}
-                </h2>
-                <p className="text-slate-500">{t('privacy.contactDesc', "Pour toute question concernant cette politique.")}</p>
-              </div>
-            </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col sm:flex-row justify-between items-start gap-4">
-              <div>
-                <p className="font-semibold">{t('privacy.contactEmail', 'Email')}</p>
-                <a href="mailto:contact@xcept-health.com" className="text-blue-600 hover:underline">
-                  contact@xcept-health.com
-                </a>
-              </div>
-              <div>
-                <p className="font-semibold">{t('privacy.contactSite', 'Site')}</p>
-                <a href="https://xcept-health.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                  xcept-health.com
-                </a>
-              </div>
-              <div>
-                <p className="font-semibold">{t('privacy.openSource')}</p>
-                <a href="https://github.com/Xcept-Health/wepisia" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    https://github.com/Xcept-Health/wepisia
-                </a>
-              </div>
-            </div>
-          </section>
+          <section id="contact" className="scroll-mt-32">
+  <div className="flex items-start gap-6 mb-8">
+    <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+      <Mail className="text-blue-600" size={28} />
+    </div>
+    <div>
+      <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
+        {t('privacy.contactTitle')}
+      </h2>
+      <p className="text-slate-500">{t('privacy.contactDesc')}</p>
+    </div>
+  </div>
+
+  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col sm:flex-row justify-between items-start gap-4">
+    <div>
+      <p className="font-semibold">{t('privacy.contactEmail')}</p>
+      <a href="mailto:contact@xcept-health.com" className="text-blue-600 hover:underline">
+        contact@xcept-health.com
+      </a>
+    </div>
+
+    <div>
+      <p className="font-semibold">{t('privacy.contactDirect')}</p>
+      <a href="mailto:arielshadrac@gmail.com" className="text-blue-600 hover:underline">
+        arielshadrac@gmail.com
+      </a>
+
+    </div>
+
+    <div>
+      <p className="font-semibold">{t('privacy.contactSite')}</p>
+      <a href="https://xcept-health.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+        xcept-health.com
+      </a>
+    </div>
+    <div>
+      <p className="font-semibold">{t('privacy.openSource')}</p>
+      <a href="https://github.com/Xcept-Health/wepisia" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+        https://github.com/Xcept-Health/wepisia
+      </a>
+    </div>
+  </div>
+</section>
         </div>
               {/* Footer */}
-      <footer className="w-full py-8 px-4 sm:px-6">
+      <footer className="w-full py-2 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto">
           <div className="flex flex-col items-center gap-8">
             {/* Social bar – responsive wrap */}
