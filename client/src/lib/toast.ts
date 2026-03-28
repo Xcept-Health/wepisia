@@ -1,13 +1,13 @@
 import { toast as sonnerToast } from "sonner";
 
-// ---------- TYPES ----------
+//  TYPES 
 type Settings = {
   notificationsEnabled: boolean;
   notificationDuration: number;
   soundNotifications: boolean;
   hapticFeedback: boolean;
-  // autres paramètres ignorés ici
 };
+
 
 const DEFAULT_SETTINGS: Settings = {
   notificationsEnabled: true,
@@ -16,11 +16,11 @@ const DEFAULT_SETTINGS: Settings = {
   hapticFeedback: false,
 };
 
-// ---------- UTILITAIRES ----------
+//  UTILITAIRES 
 function getSettings(): Settings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
-    const saved = localStorage.getItem("openepi-user-settings");
+    const saved = localStorage.getItem("wepisia-user-settings");
     if (!saved) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(saved);
     // Extraction des clés
@@ -35,14 +35,14 @@ function getSettings(): Settings {
   }
 }
 
-// Son simple (beep discret) via Web Audio API
+//  nofication sound using Web Audio API  
 let audioContext: AudioContext | null = null;
 function playNotificationSound() {
   if (typeof window === "undefined" || !window.AudioContext) return;
   try {
     if (!audioContext) audioContext = new AudioContext();
     if (audioContext.state === "suspended") {
-      audioContext.resume(); // nécessaire pour certains navigateurs
+      audioContext.resume(); // for autoplay policies in some browsers, will throw if user hasn't interacted yet
     }
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
@@ -54,20 +54,19 @@ function playNotificationSound() {
     oscillator.start();
     oscillator.stop(audioContext.currentTime + 0.1);
   } catch (e) {
-    // ignore silencieusement les erreurs audio
+
   }
 }
 
-// Vibration courte (50ms)
+// Short vibration (50ms)
 function triggerHapticFeedback() {
   if (typeof window !== "undefined" && window.navigator?.vibrate) {
     window.navigator.vibrate(50);
   }
 }
 
-// ---------- WRAPPER PERSONNALISÉ ----------
+//  Personlized Wrapper
 export const toast = {
-  // Messages standards
   success: (message: string, options?: Parameters<typeof sonnerToast.success>[1]) => {
     const settings = getSettings();
     if (!settings.notificationsEnabled) return;
@@ -120,7 +119,7 @@ export const toast = {
     });
   },
 
-  // Message générique (toast simple)
+
   message: (message: string, options?: Parameters<typeof sonnerToast.message>[1]) => {
     const settings = getSettings();
     if (!settings.notificationsEnabled) return;
@@ -134,23 +133,21 @@ export const toast = {
     });
   },
 
-  // Promise – utile pour les opérations asynchrones
+
   promise: <T>(
     promise: Promise<T> | (() => Promise<T>),
     data: Parameters<typeof sonnerToast.promise>[1],
     options?: Parameters<typeof sonnerToast.promise>[2]
   ) => {
     const settings = getSettings();
-    // On ne vérifie pas `notificationsEnabled` car les toasts de promise sont souvent critiques
-    // et l'utilisateur s'attend à voir le chargement/résultat. On peut toutefois appliquer
-    // la durée préférée.
+
     return sonnerToast.promise(promise, data, {
       duration: settings.notificationDuration * 1000,
       ...options,
     });
   },
 
-  // Chargement (toast persistant jusqu'à dismiss)
+
   loading: (message: string, options?: Parameters<typeof sonnerToast.loading>[1]) => {
     const settings = getSettings();
     if (!settings.notificationsEnabled) return;
@@ -164,12 +161,11 @@ export const toast = {
     });
   },
 
-  // Dissimulation programmée
+
   dismiss: (id?: string | number) => {
     return sonnerToast.dismiss(id);
   },
 
-  // Personnalisation avancée (permet de passer n'importe quel type)
   custom: (jsx: React.ReactNode, options?: Parameters<typeof sonnerToast.custom>[1]) => {
     const settings = getSettings();
     if (!settings.notificationsEnabled) return;
@@ -184,5 +180,4 @@ export const toast = {
   },
 };
 
-// Exporter également le toast original si besoin
 export { sonnerToast };
