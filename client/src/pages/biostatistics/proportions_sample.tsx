@@ -272,16 +272,21 @@ export default function SampleSizeProportion() {
   const { t, i18n } = useTranslation();
 
   // Input states (as strings for easy binding)
-  const [population, setPopulation] = useState('1000000');
-  const [p, setP] = useState('50');
-  const [d, setD] = useState('5');
-  const [deff, setDeff] = useState('1');
+  const [population, setPopulation] = useState('');
+  const [p, setP] = useState('');
+  const [d, setD] = useState('');
+  const [deff, setDeff] = useState('');
 
   const [results, setResults] = useState<SampleSizeResult[]>([]);
   const [showHelp, setShowHelp] = useState(false);
 
   // Recompute when any input changes
   useEffect(() => {
+    if (population === '' || p === '' || d === '' || deff === '') {
+      setResults([]);
+      return;
+    }
+
     const N = parseFloat(population);
     const prop = parseFloat(p);
     const prec = parseFloat(d);
