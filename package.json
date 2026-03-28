@@ -147,7 +147,7 @@
     "vaul": "^1.1.2",
     "webr": "^0.5.8",
     "wouter": "^3.9.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -163,7 +163,6 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/xlsx": "^0.0.36",
     "@vitejs/plugin-react": "^6.0.1",
     "add": "^2.0.6",
     "autoprefixer": "^10.4.27",
@@ -183,6 +182,9 @@
     "vite-plugin-sitemap": "^0.8.2",
     "vitest": "^4.1.1"
   },
+  "overrides": {
+  "dompurify": "^3.3.2"
+},
   "build": {
     "appId": "com.wepisia.desktop",
     "productName": "Wepisia",
