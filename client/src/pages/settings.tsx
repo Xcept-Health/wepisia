@@ -1,119 +1,253 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
-  Blocks, ChevronRight, Settings as SettingsIcon, Palette, Eye,
-  Volume2, Languages, Sun, Moon, Monitor, RotateCcw, ChevronDown,
-  Bell, BellOff, Vibrate, Clock, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight
+  ChevronRight, Settings as SettingsIcon, Palette, Eye,
+  Languages, RotateCcw, ChevronDown,
+  Bell, BellOff, Clock, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight, X
 } from "lucide-react";
 import { Link } from "wouter";
-import { toast } from "sonner";
+import { toast } from "@/lib/notifications";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSettings } from "@/contexts/SettingsContext";
+import type { ColorTheme } from "@/contexts/SettingsContext";
 
-// ---------- MAIN COMPONANT ----------
+//  Confirmation Modal 
+
+interface ConfirmationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+}
+
+function ConfirmationModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmText,
+  cancelText,
+}: ConfirmationModalProps) {
+  const { settings } = useSettings();
+
+  useState(() => {
+    if (isOpen) {
+      if (settings.soundNotifications) {
+        const audio = new Audio("/sounds/wepisia_sound0.mp3");
+        audio.play().catch(() => {});
+      }
+      if (settings.hapticFeedback && navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }
+  });
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-card text-card-foreground rounded-2xl shadow-xl max-w-md w-full border border-border animate-in zoom-in-95 duration-200">
+        <div className="flex justify-between items-center p-6 border-b border-border">
+          <h3 className="text-xl font-bold text-foreground">{title}</h3>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6">
+          <p className="text-muted-foreground">{message}</p>
+        </div>
+        <div className="flex gap-3 p-6 pt-0">
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-semibold rounded-xl transition-colors"
+          >
+            {confirmText}
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-muted-foreground font-semibold rounded-xl transition-colors"
+          >
+            {cancelText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+//  Settings Page 
+
 export default function SettingsPage() {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { settings, updateSetting, resetToDefault } = useSettings();
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Mapping for the labels of the floating button's positions
   const positionLabels = {
-    'top-left': t('settings.topLeft'),
-    'top-right': t('settings.topRight'),
-    'bottom-left': t('settings.bottomLeft'),
-    'bottom-right': t('settings.bottomRight'),
+    "top-left":     t("settings.topLeft"),
+    "top-right":    t("settings.topRight"),
+    "bottom-left":  t("settings.bottomLeft"),
+    "bottom-right": t("settings.bottomRight"),
+  };
+
+  const colorThemes: { id: ColorTheme; label: string; primary: string; accent: string }[] = [
+    { id: "default",     label: t("settings.themeDefault"),     primary: "#2563eb", accent: "#93c5fd" },
+    { id: "sahara",      label: t("settings.themeSahara"),      primary: "#b45309", accent: "#fcd34d" },
+    { id: "kilimanjaro", label: t("settings.themeKilimanjaro"), primary: "#1e5e3a", accent: "#c2410c" },
+    { id: "yennenga",    label: t("settings.themeYennenga"),    primary: "#b45309", accent: "#3730a3" },
+    { id: "behanzin",    label: t("settings.themeBehanzin"),    primary: "#92400e", accent: "#d97706" },
+  ];
+
+  const handleReset = () => {
+    resetToDefault();
+    toast.success(t("settings.settingsReset"));
+    setShowResetConfirm(false);
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] text-slate-600 dark:text-slate-300 font-sans selection:bg-blue-100 dark:selection:bg-blue-900">
+    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
-        {/* Breadcrumb trail */}
+
+        {/* Breadcrumb */}
         <nav className="flex mb-6 lg:mb-10 overflow-x-auto" aria-label="Breadcrumb">
-          <ol className="flex items-center space-x-2 text-xs font-medium text-slate-400">
-            <li><Link href="/" className="hover:text-blue-500 transition-colors">{t('settings.breadcrumbHome')}</Link></li>
+          <ol className="flex items-center space-x-2 text-xs font-medium text-muted-foreground">
+            <li>
+              <Link href="/" className="hover:text-primary transition-colors">
+                {t("settings.breadcrumbHome")}
+              </Link>
+            </li>
             <li><ChevronRight className="w-3 h-3" /></li>
-            <li><span className="text-slate-800 dark:text-slate-200 px-2 py-1 rounded-md">{t('settings.title')}</span></li>
+            <li>
+              <span className="text-foreground px-2 py-1 rounded-md">
+                {t("settings.title")}
+              </span>
+            </li>
           </ol>
         </nav>
 
-        {/* HEADER */}
+        {/* Header */}
         <div className="module-header flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
-            <div className="w-14 h-14 bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700 shrink-0">
-              <SettingsIcon className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+            <div className="w-14 h-14 bg-card rounded-2xl shadow-sm flex items-center justify-center border border-border shrink-0">
+              <SettingsIcon className="w-7 h-7 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {t('settings.title')}
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+                {t("settings.title")}
               </h1>
-              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                {t('settings.customizeApp')}
+              <p className="text-muted-foreground mt-1 text-sm">
+                {t("settings.customizeApp")}
               </p>
             </div>
           </div>
           <button
-            onClick={() => {
-              if (window.confirm(t('settings.resetConfirm'))) {
-                resetToDefault();
-                toast.success(t('settings.settingsReset'));
-              }
-            }}
-            className="flex items-center px-5 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-600 transition-all shadow-sm gap-2"
+            onClick={() => setShowResetConfirm(true)}
+            className="flex items-center px-5 py-3 text-sm font-semibold text-muted-foreground bg-card border border-border rounded-xl hover:bg-muted transition-all shadow-sm gap-2"
           >
             <RotateCcw className="w-4 h-4" />
-            {t('settings.reset')}
+            {t("settings.reset")}
           </button>
         </div>
 
-        {/* Map grid */}
+        {/* Cards */}
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {/* ---------- APPEARENCE ---------- */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+
+          {/*  Appearance  */}
+          <div className="bg-card text-card-foreground rounded-3xl shadow-sm border border-border overflow-hidden">
+            <div className="p-6 lg:p-8 border-b border-border bg-muted/30">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
-                  <Palette className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <Palette className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t('settings.appearance')}</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{t('settings.appearanceDescription')}</p>
+                  <h2 className="text-lg font-semibold text-foreground">{t("settings.appearance")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("settings.appearanceDescription")}</p>
                 </div>
               </div>
             </div>
+
             <div className="p-6 lg:p-8 space-y-6">
-              {/* Theme */}
+
+              {/* Light / Dark / System */}
               <div className="space-y-2">
-                <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase ml-1">
-                  {t('settings.interfaceTheme')}
-                </Label>
+                <FieldLabel>{t("settings.interfaceTheme")}</FieldLabel>
                 <div className="relative">
                   <select
                     value={theme}
                     onChange={(e) => setTheme(e.target.value as any)}
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 transition-all text-base font-medium cursor-pointer"
+                    className="w-full px-5 py-4 bg-muted border-none rounded-2xl text-foreground appearance-none focus:ring-2 focus:ring-ring/30 transition-all text-base font-medium cursor-pointer"
                   >
-                    <option value="light">{t('settings.light')}</option>
-                    <option value="dark">{t('settings.dark')}</option>
-                    <option value="system">{t('settings.system')}</option>
+                    <option value="light">{t("settings.light")}</option>
+                    <option value="dark">{t("settings.dark")}</option>
+                    <option value="system">{t("settings.system")}</option>
                   </select>
-                  <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" />
                 </div>
               </div>
 
               <Separator />
 
-              {/* Text size*/}
+              {/* Color theme swatches */}
+              <div className="space-y-3">
+                <FieldLabel>{t("settings.colorTheme")}</FieldLabel>
+                <div className="grid grid-cols-5 gap-2">
+                  {colorThemes.map((ct) => {
+                    const isActive = settings.colorTheme === ct.id;
+                    return (
+                      <button
+                        key={ct.id}
+                        onClick={() => updateSetting("colorTheme", ct.id)}
+                        title={ct.label}
+                        className={`
+                          flex flex-col items-center gap-2 p-2 rounded-2xl transition-all duration-200
+                          ${isActive
+                            ? "ring-2 ring-offset-2 ring-primary/60 bg-primary/5"
+                            : "hover:bg-muted"
+                          }
+                        `}
+                      >
+                        <div className="w-full aspect-square rounded-xl overflow-hidden shadow-sm relative">
+                          <div className="absolute inset-0" style={{ backgroundColor: ct.primary }} />
+                          <div
+                            className="absolute bottom-0 right-0 w-2/5 h-2/5 rounded-tl-lg"
+                            style={{ backgroundColor: ct.accent }}
+                          />
+                          {isActive && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="w-3 h-3 rounded-full bg-white/90 shadow" />
+                            </div>
+                          )}
+                        </div>
+                        <span className={`text-[10px] font-semibold text-center leading-tight truncate w-full ${
+                          isActive ? "text-foreground" : "text-muted-foreground"
+                        }`}>
+                          {ct.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Font size */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1">
-                    {t('settings.fontSize')}
-                  </Label>
-                  <span className="text-sm font-mono font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full">
+                  <FieldLabel>{t("settings.fontSize")}</FieldLabel>
+                  <span className="text-sm font-mono font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full">
                     {settings.fontSize}%
                   </span>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-xs text-slate-400">90%</span>
+                  <span className="text-xs text-muted-foreground">90%</span>
                   <input
                     type="range"
                     min="90"
@@ -121,132 +255,131 @@ export default function SettingsPage() {
                     step="5"
                     value={settings.fontSize}
                     onChange={(e) => updateSetting("fontSize", parseInt(e.target.value))}
-                    className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
+                    className="flex-1 h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
                   />
-                  <span className="text-xs text-slate-400">150%</span>
+                  <span className="text-xs text-muted-foreground">150%</span>
                 </div>
               </div>
 
-              {/* Position of the floating button (mobile menu) */}
               <Separator />
+
+              {/* Floating button position */}
               <div className="space-y-3">
-                <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase ml-1">
-                  {t('settings.mobileMenuButtonPosition')}
-                </Label>
-                <div className="grid grid-cols-2 gap-3 p-2 bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-slate-200/50 dark:border-white/5">
+                <FieldLabel>{t("settings.mobileMenuButtonPosition")}</FieldLabel>
+                <div className="grid grid-cols-2 gap-3 p-2 bg-muted/50 rounded-[2rem] border border-border/50">
                   {[
-                    { id: 'top-left', icon: <ArrowUpLeft size={20} /> },
-                    { id: 'top-right', icon: <ArrowUpRight size={20} /> },
-                    { id: 'bottom-left', icon: <ArrowDownLeft size={20} /> },
-                    { id: 'bottom-right', icon: <ArrowDownRight size={20} /> },
-                  ].map((pos) => (
-                    <button
-                      key={pos.id}
-                      onClick={() => updateSetting("floatingButtonPosition", pos.id)}
-                      className={`
-                        flex items-center justify-center gap-3 px-4 py-4 rounded-2xl transition-all duration-200
-                        ${settings.floatingButtonPosition === pos.id 
-                          ? "bg-white dark:bg-blue-600 text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-blue-500" 
-                          : "text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-600 dark:hover:text-slate-200"
-                        }
-                      `}
-                    >
-                      {pos.icon}
-                      <span className="text-xs font-semibold">{positionLabels[pos.id]}</span>
-                    </button>
-                  ))}
+                    { id: "top-left",     icon: <ArrowUpLeft size={20} /> },
+                    { id: "top-right",    icon: <ArrowUpRight size={20} /> },
+                    { id: "bottom-left",  icon: <ArrowDownLeft size={20} /> },
+                    { id: "bottom-right", icon: <ArrowDownRight size={20} /> },
+                  ].map((pos) => {
+                    const isActive = settings.floatingButtonPosition === pos.id;
+                    return (
+                      <button
+                        key={pos.id}
+                        onClick={() => updateSetting("floatingButtonPosition", pos.id as any)}
+                        className={`
+                          flex items-center justify-center gap-3 px-4 py-4 rounded-2xl transition-all duration-200
+                          ${isActive
+                            ? "bg-card text-primary shadow-sm ring-1 ring-border"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }
+                        `}
+                      >
+                        {pos.icon}
+                        <span className="text-xs font-semibold">
+                          {positionLabels[pos.id as keyof typeof positionLabels]}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ---------- CARTE : ACCESSIBILITY ---------- */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+          {/*  Accessibility  */}
+          <div className="bg-card text-card-foreground rounded-3xl shadow-sm border border-border overflow-hidden">
+            <div className="p-6 lg:p-8 border-b border-border bg-muted/30">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
-                  <Eye className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <div className="w-10 h-10 bg-accent/30 rounded-xl flex items-center justify-center">
+                  <Eye className="w-5 h-5 text-accent-foreground" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t('settings.accessibility')}</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{t('settings.accessibilityDescription')}</p>
+                  <h2 className="text-lg font-semibold text-foreground">{t("settings.accessibility")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("settings.accessibilityDescription")}</p>
                 </div>
               </div>
             </div>
             <div className="p-6 lg:p-8 space-y-6">
               <SwitchRow
                 id="reduced-motion"
-                label={t('settings.reducedMotion')}
-                description={t('settings.reduceAnimationsDescription')}
+                label={t("settings.reducedMotion")}
+                description={t("settings.reduceAnimationsDescription")}
                 checked={settings.reducedMotion}
-                onCheckedChange={(checked) => updateSetting("reducedMotion", checked)}
+                onCheckedChange={(v) => updateSetting("reducedMotion", v)}
               />
               <Separator />
               <SwitchRow
                 id="high-contrast"
-                label={t('settings.highContrast')}
-                description={t('settings.highContrastDescription')}
+                label={t("settings.highContrast")}
+                description={t("settings.highContrastDescription")}
                 checked={settings.highContrast}
-                onCheckedChange={(checked) => updateSetting("highContrast", checked)}
+                onCheckedChange={(v) => updateSetting("highContrast", v)}
               />
               <Separator />
               <SwitchRow
                 id="compact-mode"
-                label={t('settings.compactMode')}
-                description={t('settings.compactModeDescription')}
+                label={t("settings.compactMode")}
+                description={t("settings.compactModeDescription")}
                 checked={settings.compactMode}
-                onCheckedChange={(checked) => updateSetting("compactMode", checked)}
+                onCheckedChange={(v) => updateSetting("compactMode", v)}
               />
             </div>
           </div>
 
-          {/* ---------- CARD : NOTIFICATIONS ---------- */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+          {/*  Notifications  */}
+          <div className="bg-card text-card-foreground rounded-3xl shadow-sm border border-border overflow-hidden">
+            <div className="p-6 lg:p-8 border-b border-border bg-muted/30">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
-                  {settings.notificationsEnabled ? (
-                    <Bell className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  ) : (
-                    <BellOff className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  )}
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  {settings.notificationsEnabled
+                    ? <Bell className="w-5 h-5 text-primary" />
+                    : <BellOff className="w-5 h-5 text-primary" />
+                  }
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t('settings.notifications')}</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{t('settings.notificationsDescription')}</p>
+                  <h2 className="text-lg font-semibold text-foreground">{t("settings.notifications")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("settings.notificationsDescription")}</p>
                 </div>
               </div>
             </div>
             <div className="p-6 lg:p-8 space-y-6">
-              {/* Global activation */}
               <SwitchRow
                 id="notifications-enabled"
-                label={t('settings.notificationsEnabled')}
-                description={t('settings.enableNotificationsDescription')}
+                label={t("settings.notificationsEnabled")}
+                description={t("settings.enableNotificationsDescription")}
                 checked={settings.notificationsEnabled}
-                onCheckedChange={(checked) => updateSetting("notificationsEnabled", checked)}
+                onCheckedChange={(v) => updateSetting("notificationsEnabled", v)}
               />
 
-              {/* Conditional options */}
               {settings.notificationsEnabled && (
                 <>
                   <Separator />
-
-                  {/* Display duration */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                        <Label htmlFor="notification-duration" className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">
-                          {t('settings.notificationDuration')}
-                        </Label>
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <FieldLabel htmlFor="notification-duration">
+                          {t("settings.notificationDuration")}
+                        </FieldLabel>
                       </div>
-                      <span className="text-sm font-mono font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full">
+                      <span className="text-sm font-mono font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full">
                         {settings.notificationDuration} sec
                       </span>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className="text-xs text-slate-400">2s</span>
+                      <span className="text-xs text-muted-foreground">2s</span>
                       <input
                         id="notification-duration"
                         type="range"
@@ -255,81 +388,98 @@ export default function SettingsPage() {
                         step="1"
                         value={settings.notificationDuration}
                         onChange={(e) => updateSetting("notificationDuration", parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-600 dark:accent-emerald-400"
+                        className="flex-1 h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
                       />
-                      <span className="text-xs text-slate-400">10s</span>
+                      <span className="text-xs text-muted-foreground">10s</span>
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 italic">
-                      {t('settings.notificationDurationDescription')}
+                    <p className="text-xs text-muted-foreground italic">
+                      {t("settings.notificationDurationDescription")}
                     </p>
                   </div>
 
                   <Separator />
-
-                  {/* Sound */}
                   <SwitchRow
                     id="sound-notifications"
-                    label={t('settings.soundNotifications')}
-                    description={t('settings.soundNotificationsDescription')}
+                    label={t("settings.soundNotifications")}
+                    description={t("settings.soundNotificationsDescription")}
                     checked={settings.soundNotifications}
-                    onCheckedChange={(checked) => updateSetting("soundNotifications", checked)}
+                    onCheckedChange={(v) => updateSetting("soundNotifications", v)}
                   />
-
                 </>
               )}
             </div>
           </div>
 
-          {/* ---------- MAP: LANGUAGE ---------- */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="p-6 lg:p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+          {/*  Language  */}
+          <div className="bg-card text-card-foreground rounded-3xl shadow-sm border border-border overflow-hidden">
+            <div className="p-6 lg:p-8 border-b border-border bg-muted/30">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center">
-                  <Languages className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center">
+                  <Languages className="w-5 h-5 text-secondary-foreground" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t('settings.language')}</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{t('settings.chooseInterfaceLanguage')}</p>
+                  <h2 className="text-lg font-semibold text-foreground">{t("settings.language")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("settings.chooseInterfaceLanguage")}</p>
                 </div>
               </div>
             </div>
-            <div className="p-6 lg:p-8 space-y-4">
+            <div className="p-6 lg:p-8">
               <div className="relative">
                 <select
                   value={settings.language}
                   onChange={(e) => updateSetting("language", e.target.value as any)}
-                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-none rounded-2xl text-slate-900 dark:text-white appearance-none focus:ring-2 focus:ring-blue-500/20 transition-all text-base font-medium cursor-pointer"
+                  className="w-full px-5 py-4 bg-muted border-none rounded-2xl text-foreground appearance-none focus:ring-2 focus:ring-ring/30 transition-all text-base font-medium cursor-pointer"
                 >
-                  <option value="fr">{t('settings.french')}</option>
-                  <option value="en">{t('settings.english')}</option>
-                  <option value="mos">{t('settings.moore')}</option>
-                  <option value="wo">{t('settings.wolof')}</option>
-                  <option value="ha">{t('settings.haoussa')}</option>
-                  <option value="sw">{t('settings.swahili')}</option>
+                  <option value="fr">{t("settings.french")}</option>
+                  <option value="en">{t("settings.english")}</option>
+                  <option value="mos">{t("settings.moore")}</option>
+                  <option value="wo">{t("settings.wolof")}</option>
+                  <option value="ha">{t("settings.haoussa")}</option>
+                  <option value="sw">{t("settings.swahili")}</option>
                 </select>
-                <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" />
               </div>
             </div>
           </div>
         </div>
 
-        {/* footer */}
-        <div className="mt-12 text-center text-xs text-slate-400 dark:text-slate-500">
-          <p className="mt-1">{t('settings.settingsSaved')}</p>
+        {/* Footer */}
+        <div className="mt-12 text-center text-xs text-muted-foreground">
+          <p>{t("settings.settingsSaved")}</p>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={handleReset}
+        title={t("settings.resetConfirmTitle")}
+        message={t("settings.resetConfirmMessage")}
+        confirmText={t("settings.resetConfirmYes")}
+        cancelText={t("settings.resetConfirmNo")}
+      />
     </div>
   );
 }
 
-// ---------- HELP COMPONENTS ----------
+//  Helper components 
+
 function Separator() {
-  return <div className="border-t border-slate-100 dark:border-slate-700 my-4" />;
+  return <div className="border-t border-border my-4" />;
 }
 
-function Label({ children, className, htmlFor }: { children: React.ReactNode; className?: string; htmlFor?: string }) {
+function FieldLabel({
+  children,
+  htmlFor,
+}: {
+  children: React.ReactNode;
+  htmlFor?: string;
+}) {
   return (
-    <label htmlFor={htmlFor} className={`text-xs font-bold text-slate-500 dark:text-slate-400 uppercase ml-1 ${className || ''}`}>
+    <label
+      htmlFor={htmlFor}
+      className="text-xs font-bold text-muted-foreground uppercase tracking-wide ml-1"
+    >
       {children}
     </label>
   );
@@ -355,11 +505,9 @@ function SwitchRow({
       <div className="space-y-0.5 flex-1">
         <div className="flex items-center gap-2">
           {icon}
-          <Label htmlFor={id} className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
-            {label}
-          </Label>
+          <FieldLabel htmlFor={id}>{label}</FieldLabel>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <button
         id={id}
@@ -367,14 +515,15 @@ function SwitchRow({
         aria-checked={checked}
         onClick={() => onCheckedChange(!checked)}
         className={`
-          relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50 shrink-0
-          ${checked ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}
+          relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+          focus:outline-none focus:ring-2 focus:ring-ring/50 shrink-0
+          ${checked ? "bg-primary" : "bg-muted-foreground/30"}
         `}
       >
         <span
           className={`
             inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform
-            ${checked ? 'translate-x-5' : 'translate-x-0.5'}
+            ${checked ? "translate-x-5" : "translate-x-0.5"}
           `}
         />
       </button>
