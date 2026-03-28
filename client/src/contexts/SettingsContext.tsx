@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next'; // on importe useTranslation
+import { useTranslation } from 'react-i18next';
 
-// Type des paramètres
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export type ColorTheme = 'default' | 'sahara' | 'kilimanjaro' | 'yennenga' | 'behanzin';
+
 export type Settings = {
   fontSize: number;
   reducedMotion: boolean;
@@ -13,6 +16,8 @@ export type Settings = {
   soundNotifications: boolean;
   hapticFeedback: boolean;
   floatingButtonPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  // African color theme — 'default' keeps existing light/dark behavior untouched
+  colorTheme: ColorTheme;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -26,9 +31,12 @@ const DEFAULT_SETTINGS: Settings = {
   soundNotifications: false,
   hapticFeedback: false,
   floatingButtonPosition: 'top-left',
+  colorTheme: 'default',
 };
 
-const SETTINGS_KEY = 'openepi-user-settings';
+const SETTINGS_KEY = 'wepisia-user-settings';
+
+// ─── Context ─────────────────────────────────────────────────────────────────
 
 interface SettingsContextType {
   settings: Settings;
@@ -38,8 +46,10 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
+// ─── Provider ────────────────────────────────────────────────────────────────
+
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const { i18n } = useTranslation(); // on récupère i18n depuis le hook
+  const { i18n } = useTranslation();
 
   const [settings, setSettings] = useState<Settings>(() => {
     try {
@@ -50,7 +60,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
-  // Sauvegarde dans localStorage et application des classes CSS globales
+  // Persist settings and apply DOM-level side effects
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 
@@ -58,13 +68,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
     document.documentElement.classList.toggle('high-contrast', settings.highContrast);
     document.documentElement.classList.toggle('compact', settings.compactMode);
+
+    // Apply the African color theme via data-color-theme attribute.
+    // ThemeContext still manages the dark/light class independently — no conflict.
+    if (settings.colorTheme === 'default') {
+      document.documentElement.removeAttribute('data-color-theme');
+    } else {
+      document.documentElement.setAttribute('data-color-theme', settings.colorTheme);
+    }
   }, [settings]);
 
-  // Synchronisation avec i18n lorsque la langue change
+  // Sync i18n language
   useEffect(() => {
     if (i18n && settings.language) {
-      i18n.changeLanguage(settings.language).catch(err => 
-        console.error('Erreur lors du changement de langue:', err)
+      i18n.changeLanguage(settings.language).catch((err) =>
+        console.error('Language change failed:', err)
       );
     }
   }, [i18n, settings.language]);
@@ -85,10 +103,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export function useSettings() {
   const context = useContext(SettingsContext);
   if (context === undefined) {
     throw new Error('useSettings must be used within a SettingsProvider');
   }
   return context;
-}
+} 
