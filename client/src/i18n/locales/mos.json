@@ -160,7 +160,18 @@
     "moore": "Mooré",
     "wolof": "Wolof",
     "swahili": "Swahili",
-    "settingsSaved": "Toabdo-rã fãa sãvgda a browser-ẽ."
+    "haoussa": "Haoussa",
+    "settingsSaved": "Toabdo-rã fãa sãvgda a browser-ẽ.",
+    "resetConfirmTitle": "Yaa wakat n dat n lebs n na n wa?",
+    "resetConfirmMessage": "Foo sẽn yãk foom sẽn dat n lebs n na n wa, bãmb na n loogame. Yaa wakat n dat n wa?",
+    "resetConfirmYes": "Ɛɛ, lebs n na n wa",
+    "resetConfirmNo": "Yãk ye",
+    "colorTheme": "Thème",
+    "themeDefault": "system",
+    "themeSahara": "Sahara",
+    "themeKilimanjaro": "Kilimanjaro",
+    "themeYennenga": "Yennenga",
+    "themeBehanzin": "Béhanzin"
   },
   "biostatistics": {
     "stdMortalityRatio": "Kũumdã tõogo ratio standardisé",

@@ -160,7 +160,18 @@
     "moore": "Mooré",
     "wolof": "Wolof",
     "swahili": "Swahili",
-    "settingsSaved": "Seet-seet yi bëkëri na ci navigateur bi bu yëgël."
+    "haoussa": "Lakkou Hausa",
+    "settingsSaved": "Seet-seet yi bëkëri na ci navigateur bi bu yëgël.",
+    "resetConfirmTitle": "Déggalu jëfandikoo yi?",
+    "resetConfirmMessage": "Bépp li nga def ci jëfandikoo yi dafa koy bañ. Lii du ko defara.",
+    "resetConfirmYes": "Waaw, déggal",
+    "resetConfirmNo": "Déggalu",
+    "colorTheme": "Tëkki bët bi",
+    "themeDefault": "System",
+    "themeSahara": "Sahara",
+    "themeKilimanjaro": "Kilimanjaro",
+    "themeYennenga": "Yennenga",
+    "themeBehanzin": "Béhanzin"
   },
   "biostatistics": {
     "stdMortalityRatio": "Rapport de mortalité standardisé",

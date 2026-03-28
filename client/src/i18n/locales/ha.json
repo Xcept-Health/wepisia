@@ -160,7 +160,18 @@
     "moore": "Mooré",
     "wolof": "Wolof",
     "swahili": "Swahili",
-    "settingsSaved": "Ana adana saitunan ta atomatik a cikin mashigar bincikenka."
+    "haoussa": "Harsen Hausa",
+    "settingsSaved": "Ana adana saitunan ta atomatik a cikin mashigar bincikenka.",
+    "resetConfirmTitle": "Sake saitin?",
+    "resetConfirmMessage": "Duk saitinnun da ka yi za su ɓace. Wannan aiki ba za a iya soke shi ba.",
+    "resetConfirmYes": "Ee, sake saitin",
+    "resetConfirmNo": "Sokewa",
+    "colorTheme": "Jigo launi",
+    "themeDefault": "Asali",
+    "themeSahara": "Sahara",
+    "themeKilimanjaro": "Kilimanjaro",
+    "themeYennenga": "Yennenga",
+    "themeBehanzin": "Béhanzin"
   },
   "biostatistics": {
     "stdMortalityRatio": "Matsakaicin rabon mutuwa",

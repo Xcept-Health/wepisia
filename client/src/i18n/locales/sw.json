@@ -160,7 +160,18 @@
     "moore": "Kimooré",
     "wolof": "Kiwolofu",
     "swahili": "Kiswahili",
-    "settingsSaved": "Mipangilio inahifadhiwa kiotomatiki kwenye kivinjari chako."
+    "haoussa": "Kihausa",
+    "settingsSaved": "Mipangilio inahifadhiwa kiotomatiki kwenye kivinjari chako.",
+    "resetConfirmTitle": "Weka upya mipangilio?",
+    "resetConfirmMessage": "Mipangilio yako yote ya kibinafsi itapotea. Kitendo hiki hakiwezi kubatilishwa.",
+    "resetConfirmYes": "Ndiyo, weka upya",
+    "resetConfirmNo": "Ghairi",
+    "colorTheme": "Mandhari ya rangi",
+    "themeDefault": "Chaguo-msingi",
+    "themeSahara": "Sahara",
+    "themeKilimanjaro": "Kilimanjaro",
+    "themeYennenga": "Yennenga",
+    "themeBehanzin": "Béhanzin"
   },
   "biostatistics": {
     "stdMortalityRatio": "Uwiano Sanifu wa Vifo",

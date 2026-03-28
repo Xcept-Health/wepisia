@@ -160,7 +160,18 @@
     "moore": "Mooré",
     "wolof": "Wolof",
     "swahili": "Swahili",
-    "settingsSaved": "Settings are automatically saved in your browser."
+    "haoussa": "Haousa",
+    "settingsSaved": "Settings are automatically saved in your browser.",
+    "resetConfirmTitle": "Reset settings?",
+    "resetConfirmMessage": "All your custom settings will be lost. This action cannot be undone.",
+    "resetConfirmYes": "Yes, reset",
+    "resetConfirmNo": "Cancel",
+    "colorTheme": "Color theme",
+    "themeDefault": "Default",
+    "themeSahara": "Sahara",
+    "themeKilimanjaro": "Kilimanjaro",
+    "themeYennenga": "Yennenga",
+    "themeBehanzin": "Béhanzin"
   },
   "biostatistics": {
     "stdMortalityRatio": "Standardized Mortality Ratio",

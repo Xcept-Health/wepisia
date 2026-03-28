@@ -160,7 +160,18 @@
     "moore": "Mooré",
     "wolof": "Wolof",
     "swahili": "Swahili",
-    "settingsSaved": "Les paramètres sont sauvegardés automatiquement dans votre navigateur."
+    "haoussa": "Haoussa",
+    "settingsSaved": "Les paramètres sont sauvegardés automatiquement dans votre navigateur.",
+    "resetConfirmTitle": "Réinitialiser les réglages ?",
+    "resetConfirmMessage": "Tous vos paramètres personnalisés seront perdus. Cette action est irréversible.",
+    "resetConfirmYes": "Oui, réinitialiser",
+    "resetConfirmNo": "Annuler",
+    "colorTheme": "Thème de couleur",
+    "themeDefault": "Défaut",
+    "themeSahara": "Sahara",
+    "themeKilimanjaro": "Kilimanjaro",
+    "themeYennenga": "Yennenga",
+    "themeBehanzin": "Béhanzin"
   },
   "biostatistics": {
     "stdMortalityRatio": "Rapport de mortalité standardisé",
