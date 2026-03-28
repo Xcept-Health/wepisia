@@ -44,13 +44,12 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* ────────────────────────────────────────────────
-   Variables racine + support des préférences utilisateur
-───────────────────────────────────────────────── */
+/*
+   Variables racine
+ */
 :root {
-  --font-scale: 100%;           /* contrôlé dynamiquement par JS (Settings) */
+  --font-scale: 100%;
   --font-size-base: calc(1rem * var(--font-scale) / 100);
-
   --radius: 0.65rem;
 
   --background: oklch(1 0 0);
@@ -133,9 +132,362 @@
   --chart-5: var(--color-blue-800);
 }
 
-/* ────────────────────────────────────────────────
-   Application des réglages utilisateur (Settings)
-───────────────────────────────────────────────── */
+
+/*
+ * ─── African Color Themes ────
+ *
+ * Applied via  data-color-theme="<name>"  on <html>.
+ * Works on top of the existing .dark class — no conflict.
+ *
+ * Revised palette philosophy: all hues are desaturated 30–40% vs v1,
+ * lightness is tightened to reduce eye strain. Think "museum print"
+ * not "festival poster".
+ * ────────────────────────────
+ */
+
+/* ── SAHARA ─────────────────
+   Sable doux, ocre pâle, ciel laiteux.
+   Moins jaune, plus pierre calcaire.
+*/
+[data-color-theme="sahara"] {
+  --background:           oklch(0.975 0.010 82);   /* lin clair              */
+  --foreground:           oklch(0.22  0.018 55);   /* brun tabac             */
+  --card:                 oklch(0.960 0.012 80);
+  --card-foreground:      oklch(0.22  0.018 55);
+  --popover:              oklch(0.960 0.012 80);
+  --popover-foreground:   oklch(0.22  0.018 55);
+
+  --primary:              oklch(0.52  0.09  60);   /* ocre terre de Sienne   */
+  --primary-foreground:   oklch(0.97  0.006 80);
+  --secondary:            oklch(0.90  0.022 78);
+  --secondary-foreground: oklch(0.28  0.018 55);
+  --muted:                oklch(0.93  0.014 80);
+  --muted-foreground:     oklch(0.48  0.020 65);
+  --accent:               oklch(0.60  0.055 210);  /* bleu ciel Sahel, doux  */
+  --accent-foreground:    oklch(0.15  0.012 210);
+
+  --border:               oklch(0.85  0.018 78);
+  --input:                oklch(0.85  0.018 78);
+  --ring:                 oklch(0.52  0.09  60);
+
+  --sidebar:              oklch(0.955 0.014 80);
+  --sidebar-foreground:   oklch(0.22  0.018 55);
+  --sidebar-primary:      oklch(0.52  0.09  60);
+  --sidebar-primary-foreground: oklch(0.97 0.006 80);
+  --sidebar-accent:       oklch(0.90  0.022 78);
+  --sidebar-accent-foreground: oklch(0.22 0.018 55);
+  --sidebar-border:       oklch(0.85  0.018 78);
+  --sidebar-ring:         oklch(0.52  0.09  60);
+}
+
+[data-color-theme="sahara"].dark {
+  --background:           oklch(0.155 0.014 48);   /* nuit du désert         */
+  --foreground:           oklch(0.87  0.014 75);
+  --card:                 oklch(0.195 0.016 50);
+  --card-foreground:      oklch(0.87  0.014 75);
+  --popover:              oklch(0.195 0.016 50);
+  --popover-foreground:   oklch(0.87  0.014 75);
+
+  --primary:              oklch(0.66  0.10  60);   /* braise douce           */
+  --primary-foreground:   oklch(0.12  0.010 48);
+  --secondary:            oklch(0.23  0.016 50);
+  --secondary-foreground: oklch(0.78  0.014 75);
+  --muted:                oklch(0.235 0.014 50);
+  --muted-foreground:     oklch(0.58  0.018 65);
+  --accent:               oklch(0.45  0.055 210);  /* ciel nocturne          */
+  --accent-foreground:    oklch(0.92  0.008 210);
+
+  --border:               oklch(1 0 0 / 0.09);
+  --input:                oklch(1 0 0 / 0.12);
+  --ring:                 oklch(0.66  0.10  60);
+
+  --sidebar:              oklch(0.195 0.016 50);
+  --sidebar-foreground:   oklch(0.87  0.014 75);
+  --sidebar-primary:      oklch(0.66  0.10  60);
+  --sidebar-primary-foreground: oklch(0.12 0.010 48);
+  --sidebar-accent:       oklch(0.23  0.016 50);
+  --sidebar-accent-foreground: oklch(0.87 0.014 75);
+  --sidebar-border:       oklch(1 0 0 / 0.09);
+  --sidebar-ring:         oklch(0.66  0.10  60);
+}
+
+/* ── KILIMANJARO ────────────
+   Brume alpine, mousse, basalte gris-vert.
+   Moins saturé, plus brumeux.
+*/
+[data-color-theme="kilimanjaro"] {
+  --background:           oklch(0.965 0.006 120);  /* brume alpine           */
+  --foreground:           oklch(0.18  0.010 105);  /* basalte sombre         */
+  --card:                 oklch(0.948 0.007 115);
+  --card-foreground:      oklch(0.18  0.010 105);
+  --popover:              oklch(0.948 0.007 115);
+  --popover-foreground:   oklch(0.18  0.010 105);
+
+  --primary:              oklch(0.40  0.045 148);  /* mousse profonde        */
+  --primary-foreground:   oklch(0.96  0.004 115);
+  --secondary:            oklch(0.88  0.012 112);
+  --secondary-foreground: oklch(0.22  0.010 105);
+  --muted:                oklch(0.915 0.008 112);
+  --muted-foreground:     oklch(0.46  0.014 112);
+  --accent:               oklch(0.56  0.055 38);   /* terre volcanique atténuée */
+  --accent-foreground:    oklch(0.12  0.008 35);
+
+  --border:               oklch(0.82  0.010 112);
+  --input:                oklch(0.82  0.010 112);
+  --ring:                 oklch(0.40  0.045 148);
+
+  --sidebar:              oklch(0.940 0.008 115);
+  --sidebar-foreground:   oklch(0.18  0.010 105);
+  --sidebar-primary:      oklch(0.40  0.045 148);
+  --sidebar-primary-foreground: oklch(0.96 0.004 115);
+  --sidebar-accent:       oklch(0.88  0.012 112);
+  --sidebar-accent-foreground: oklch(0.18 0.010 105);
+  --sidebar-border:       oklch(0.82  0.010 112);
+  --sidebar-ring:         oklch(0.40  0.045 148);
+}
+
+[data-color-theme="kilimanjaro"].dark {
+  --background:           oklch(0.125 0.010 105);  /* cratère                */
+  --foreground:           oklch(0.88  0.008 112);
+  --card:                 oklch(0.168 0.012 108);
+  --card-foreground:      oklch(0.88  0.008 112);
+  --popover:              oklch(0.168 0.012 108);
+  --popover-foreground:   oklch(0.88  0.008 112);
+
+  --primary:              oklch(0.55  0.055 142);  /* lueur forêt            */
+  --primary-foreground:   oklch(0.09  0.008 105);
+  --secondary:            oklch(0.21  0.012 108);
+  --secondary-foreground: oklch(0.80  0.008 112);
+  --muted:                oklch(0.215 0.010 108);
+  --muted-foreground:     oklch(0.56  0.012 112);
+  --accent:               oklch(0.62  0.075 36);   /* lave douce             */
+  --accent-foreground:    oklch(0.09  0.008 35);
+
+  --border:               oklch(1 0 0 / 0.08);
+  --input:                oklch(1 0 0 / 0.12);
+  --ring:                 oklch(0.55  0.055 142);
+
+  --sidebar:              oklch(0.168 0.012 108);
+  --sidebar-foreground:   oklch(0.88  0.008 112);
+  --sidebar-primary:      oklch(0.55  0.055 142);
+  --sidebar-primary-foreground: oklch(0.09 0.008 105);
+  --sidebar-accent:       oklch(0.21  0.012 108);
+  --sidebar-accent-foreground: oklch(0.88 0.008 112);
+  --sidebar-border:       oklch(1 0 0 / 0.08);
+  --sidebar-ring:         oklch(0.55  0.055 142);
+}
+
+/* ── YENNENGA ───────────────
+   Or Mossi assourdi, ivoire chaud, indigo koko-dunda profond.
+   Moins saturé, plus textile traditionnel que bijou.
+*/
+[data-color-theme="yennenga"] {
+  --background:           oklch(0.972 0.010 72);   /* ivoire clair           */
+  --foreground:           oklch(0.20  0.022 52);   /* latérite sombre        */
+  --card:                 oklch(0.955 0.012 70);
+  --card-foreground:      oklch(0.20  0.022 52);
+  --popover:              oklch(0.955 0.012 70);
+  --popover-foreground:   oklch(0.20  0.022 52);
+
+  --primary:              oklch(0.55  0.10  68);   /* or Mossi mat           */
+  --primary-foreground:   oklch(0.12  0.012 52);
+  --secondary:            oklch(0.88  0.025 70);
+  --secondary-foreground: oklch(0.24  0.018 52);
+  --muted:                oklch(0.915 0.015 70);
+  --muted-foreground:     oklch(0.48  0.018 62);
+  --accent:               oklch(0.32  0.080 272);  /* indigo tissé, profond  */
+  --accent-foreground:    oklch(0.92  0.008 272);
+
+  --border:               oklch(0.84  0.016 70);
+  --input:                oklch(0.84  0.016 70);
+  --ring:                 oklch(0.55  0.10  68);
+
+  --sidebar:              oklch(0.948 0.014 70);
+  --sidebar-foreground:   oklch(0.20  0.022 52);
+  --sidebar-primary:      oklch(0.55  0.10  68);
+  --sidebar-primary-foreground: oklch(0.12 0.012 52);
+  --sidebar-accent:       oklch(0.88  0.025 70);
+  --sidebar-accent-foreground: oklch(0.20 0.022 52);
+  --sidebar-border:       oklch(0.84  0.016 70);
+  --sidebar-ring:         oklch(0.55  0.10  68);
+}
+
+[data-color-theme="yennenga"].dark {
+  --background:           oklch(0.135 0.016 52);   /* nuit Sahel             */
+  --foreground:           oklch(0.88  0.012 72);
+  --card:                 oklch(0.178 0.018 54);
+  --card-foreground:      oklch(0.88  0.012 72);
+  --popover:              oklch(0.178 0.018 54);
+  --popover-foreground:   oklch(0.88  0.012 72);
+
+  --primary:              oklch(0.68  0.10  68);   /* or feu de camp         */
+  --primary-foreground:   oklch(0.09  0.010 52);
+  --secondary:            oklch(0.22  0.018 54);
+  --secondary-foreground: oklch(0.80  0.012 72);
+  --muted:                oklch(0.228 0.016 54);
+  --muted-foreground:     oklch(0.58  0.016 64);
+  --accent:               oklch(0.44  0.090 272);  /* indigo nuit            */
+  --accent-foreground:    oklch(0.93  0.008 272);
+
+  --border:               oklch(1 0 0 / 0.09);
+  --input:                oklch(1 0 0 / 0.13);
+  --ring:                 oklch(0.68  0.10  68);
+
+  --sidebar:              oklch(0.178 0.018 54);
+  --sidebar-foreground:   oklch(0.88  0.012 72);
+  --sidebar-primary:      oklch(0.68  0.10  68);
+  --sidebar-primary-foreground: oklch(0.09 0.010 52);
+  --sidebar-accent:       oklch(0.22  0.018 54);
+  --sidebar-accent-foreground: oklch(0.88 0.012 72);
+  --sidebar-border:       oklch(1 0 0 / 0.09);
+  --sidebar-ring:         oklch(0.68  0.10  68);
+}
+
+/* ── BEHANZIN ───────────────
+   Argile Abomey, ivoire, bronze patiné.
+   Tons chauds mais éteints — bois sculpté, pas métal poli.
+*/
+[data-color-theme="behanzin"] {
+  --background:           oklch(0.968 0.008 62);   /* ivoire argile          */
+  --foreground:           oklch(0.17  0.014 42);   /* ébène chaud            */
+  --card:                 oklch(0.950 0.010 60);
+  --card-foreground:      oklch(0.17  0.014 42);
+  --popover:              oklch(0.950 0.010 60);
+  --popover-foreground:   oklch(0.17  0.014 42);
+
+  --primary:              oklch(0.48  0.065 48);   /* argile Abomey          */
+  --primary-foreground:   oklch(0.96  0.006 62);
+  --secondary:            oklch(0.88  0.015 60);
+  --secondary-foreground: oklch(0.22  0.012 42);
+  --muted:                oklch(0.918 0.010 60);
+  --muted-foreground:     oklch(0.48  0.016 52);
+  --accent:               oklch(0.52  0.050 57);   /* bronze patiné          */
+  --accent-foreground:    oklch(0.12  0.008 42);
+
+  --border:               oklch(0.83  0.012 60);
+  --input:                oklch(0.83  0.012 60);
+  --ring:                 oklch(0.48  0.065 48);
+
+  --sidebar:              oklch(0.945 0.012 60);
+  --sidebar-foreground:   oklch(0.17  0.014 42);
+  --sidebar-primary:      oklch(0.48  0.065 48);
+  --sidebar-primary-foreground: oklch(0.96 0.006 62);
+  --sidebar-accent:       oklch(0.88  0.015 60);
+  --sidebar-accent-foreground: oklch(0.17 0.014 42);
+  --sidebar-border:       oklch(0.83  0.012 60);
+  --sidebar-ring:         oklch(0.48  0.065 48);
+}
+
+[data-color-theme="behanzin"].dark {
+  --background:           oklch(0.105 0.012 42);   /* Dahomey nuit royale    */
+  --foreground:           oklch(0.87  0.010 62);
+  --card:                 oklch(0.148 0.014 44);
+  --card-foreground:      oklch(0.87  0.010 62);
+  --popover:              oklch(0.148 0.014 44);
+  --popover-foreground:   oklch(0.87  0.010 62);
+
+  --primary:              oklch(0.60  0.075 50);   /* bronze luisant         */
+  --primary-foreground:   oklch(0.08  0.008 42);
+  --secondary:            oklch(0.19  0.014 44);
+  --secondary-foreground: oklch(0.78  0.010 62);
+  --muted:                oklch(0.205 0.012 44);
+  --muted-foreground:     oklch(0.56  0.014 54);
+  --accent:               oklch(0.65  0.065 57);   /* ambre profond          */
+  --accent-foreground:    oklch(0.08  0.008 42);
+
+  --border:               oklch(1 0 0 / 0.08);
+  --input:                oklch(1 0 0 / 0.12);
+  --ring:                 oklch(0.60  0.075 50);
+
+  --sidebar:              oklch(0.148 0.014 44);
+  --sidebar-foreground:   oklch(0.87  0.010 62);
+  --sidebar-primary:      oklch(0.60  0.075 50);
+  --sidebar-primary-foreground: oklch(0.08 0.008 42);
+  --sidebar-accent:       oklch(0.19  0.014 44);
+  --sidebar-accent-foreground: oklch(0.87 0.010 62);
+  --sidebar-border:       oklch(1 0 0 / 0.08);
+  --sidebar-ring:         oklch(0.60  0.075 50);
+}
+
+
+/* ────────────────────────────
+   OPTION B — Force theme tokens onto hardcoded Tailwind utility classes.
+   Applies only when a color theme is active (data-color-theme present).
+   Uses !important to beat Tailwind's specificity.
+   This covers the most frequent hardcoded patterns found across the codebase.
+──────────────────────────── */
+
+/* Backgrounds */
+[data-color-theme] .bg-white                            { background-color: var(--card)       !important; }
+[data-color-theme] .bg-\[\#F8FAFC\]                    { background-color: var(--background)  !important; }
+[data-color-theme] .bg-slate-50                        { background-color: var(--muted)       !important; }
+[data-color-theme] .bg-slate-100                       { background-color: var(--muted)       !important; }
+[data-color-theme] .bg-slate-50\/50                    { background-color: color-mix(in oklch, var(--muted) 50%, transparent) !important; }
+[data-color-theme] .bg-blue-600                        { background-color: var(--primary)     !important; }
+[data-color-theme] .bg-blue-100                        { background-color: color-mix(in oklch, var(--primary) 15%, transparent) !important; }
+[data-color-theme] .bg-indigo-100                      { background-color: color-mix(in oklch, var(--accent) 15%, transparent) !important; }
+[data-color-theme] .bg-emerald-100                     { background-color: color-mix(in oklch, var(--primary) 12%, transparent) !important; }
+[data-color-theme] .bg-purple-100                      { background-color: color-mix(in oklch, var(--secondary) 60%, transparent) !important; }
+
+/* Dark mode backgrounds — même traitement */
+[data-color-theme].dark .dark\:bg-slate-800            { background-color: var(--card)        !important; }
+[data-color-theme].dark .dark\:bg-slate-700            { background-color: var(--muted)       !important; }
+[data-color-theme].dark .dark\:bg-slate-900\/50        { background-color: color-mix(in oklch, var(--background) 50%, transparent) !important; }
+[data-color-theme].dark .dark\:bg-slate-800\/50        { background-color: color-mix(in oklch, var(--card) 50%, transparent) !important; }
+[data-color-theme].dark .dark\:bg-blue-600             { background-color: var(--primary)     !important; }
+[data-color-theme].dark .dark\:bg-blue-900\/30         { background-color: color-mix(in oklch, var(--primary) 18%, transparent) !important; }
+[data-color-theme].dark .dark\:bg-indigo-900\/30       { background-color: color-mix(in oklch, var(--accent) 18%, transparent) !important; }
+[data-color-theme].dark .dark\:bg-emerald-900\/20      { background-color: color-mix(in oklch, var(--primary) 12%, transparent) !important; }
+[data-color-theme].dark .dark\:bg-purple-900\/30       { background-color: color-mix(in oklch, var(--secondary) 30%, transparent) !important; }
+[data-color-theme].dark .dark\:bg-\[#0F172A\]          { background-color: var(--background)  !important; }
+
+/* Text colors */
+[data-color-theme] .text-slate-900                     { color: var(--foreground)        !important; }
+[data-color-theme] .text-slate-800                     { color: var(--foreground)        !important; }
+[data-color-theme] .text-slate-700                     { color: var(--foreground)        !important; }
+[data-color-theme] .text-slate-600                     { color: var(--muted-foreground)  !important; }
+[data-color-theme] .text-slate-500                     { color: var(--muted-foreground)  !important; }
+[data-color-theme] .text-slate-400                     { color: var(--muted-foreground)  !important; }
+[data-color-theme] .text-blue-600                      { color: var(--primary)           !important; }
+[data-color-theme] .text-blue-500                      { color: var(--primary)           !important; }
+[data-color-theme] .text-indigo-600                    { color: var(--accent-foreground) !important; }
+[data-color-theme] .text-emerald-600                   { color: var(--primary)           !important; }
+[data-color-theme] .text-purple-600                    { color: var(--primary)           !important; }
+
+[data-color-theme].dark .dark\:text-white              { color: var(--foreground)        !important; }
+[data-color-theme].dark .dark\:text-slate-200          { color: var(--foreground)        !important; }
+[data-color-theme].dark .dark\:text-slate-300          { color: var(--muted-foreground)  !important; }
+[data-color-theme].dark .dark\:text-slate-400          { color: var(--muted-foreground)  !important; }
+[data-color-theme].dark .dark\:text-blue-400           { color: var(--primary)           !important; }
+[data-color-theme].dark .dark\:text-indigo-400         { color: var(--accent-foreground) !important; }
+[data-color-theme].dark .dark\:text-emerald-400        { color: var(--primary)           !important; }
+[data-color-theme].dark .dark\:text-purple-400         { color: var(--primary)           !important; }
+
+/* Borders */
+[data-color-theme] .border-slate-100                   { border-color: var(--border) !important; }
+[data-color-theme] .border-slate-200                   { border-color: var(--border) !important; }
+[data-color-theme] .border-slate-200\/50               { border-color: color-mix(in oklch, var(--border) 50%, transparent) !important; }
+[data-color-theme].dark .dark\:border-slate-700        { border-color: var(--border) !important; }
+[data-color-theme].dark .dark\:border-slate-600        { border-color: var(--border) !important; }
+
+/* Hover states */
+[data-color-theme] .hover\:bg-slate-50:hover           { background-color: var(--muted) !important; }
+[data-color-theme] .hover\:bg-slate-100:hover          { background-color: var(--muted) !important; }
+[data-color-theme] .hover\:bg-slate-200:hover          { background-color: var(--secondary) !important; }
+[data-color-theme].dark .dark\:hover\:bg-slate-600:hover { background-color: var(--secondary) !important; }
+
+/* Focus rings */
+[data-color-theme] .focus\:ring-blue-500\/20:focus     { --tw-ring-color: color-mix(in oklch, var(--ring) 20%, transparent) !important; }
+[data-color-theme] .focus\:ring-blue-500\/50:focus     { --tw-ring-color: color-mix(in oklch, var(--ring) 50%, transparent) !important; }
+
+/* Accent color (input range, checkbox) */
+[data-color-theme] .accent-blue-600                    { accent-color: var(--primary) !important; }
+[data-color-theme] .accent-emerald-600                 { accent-color: var(--primary) !important; }
+
+
+/*
+   Réglages utilisateur (Settings)
+ */
 .reduced-motion * {
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
@@ -154,10 +506,7 @@
   filter: contrast(1.18) brightness(0.97);
 }
 
-.compact {
-  --radius: 0.5rem;
-}
-
+.compact { --radius: 0.5rem; }
 .compact .p-3 { padding: 0.5rem; }
 .compact .p-4 { padding: 0.75rem; }
 .compact .p-6 { padding: 1rem; }
@@ -166,9 +515,10 @@
 .compact .gap-4 { gap: 0.75rem; }
 .compact .gap-6 { gap: 1rem; }
 
-/* ────────────────────────────────────────────────
+
+/*
    Styles de base
-───────────────────────────────────────────────── */
+ */
 @layer base {
   * {
     @apply border-border;
@@ -177,7 +527,7 @@
 
   html {
     scroll-behavior: smooth;
-    font-size: var(--font-scale);           /* ← point clé : contrôlé par JS */
+    font-size: var(--font-scale);
   }
 
   body {
@@ -196,30 +546,21 @@
     @apply cursor-pointer;
   }
 
-  /* Scrollbar fine et discrète */
-  ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.68 0.02 260 / 0.45);
+    background: oklch(0.68 0.02 260 / 0.40);
     border-radius: 10px;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.58 0.02 260 / 0.65);
-  }
-  .dark ::-webkit-scrollbar-thumb {
-    background: oklch(0.48 0.02 260 / 0.45);
-  }
-  .dark ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.38 0.02 260 / 0.65);
-  }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.58 0.02 260 / 0.60); }
+  .dark ::-webkit-scrollbar-thumb { background: oklch(0.48 0.02 260 / 0.40); }
+  .dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.02 260 / 0.60); }
 }
 
 
+/*
+   Components
+ */
 @layer components {
   .container {
     @apply mx-auto w-full px-4 sm:px-6 lg:px-8;
@@ -240,21 +581,14 @@
     @apply transition-all duration-300 ease-in-out;
     will-change: transform, width;
   }
-
-  .sidebar-collapsed {
-    width: 5rem !important;           /* ≈ 80px */
-  }
-
+  .sidebar-collapsed { width: 5rem !important; }
   .sidebar-collapsed .sidebar-text,
   .sidebar-collapsed .sidebar-logo-text {
     opacity: 0;
     transform: translateX(-12px);
     pointer-events: none;
   }
-
-  .sidebar-closed {
-    transform: translateX(-100%) !important;
-  }
+  .sidebar-closed { transform: translateX(-100%) !important; }
 
   @media (max-width: 1023px) {
     .sidebar {
@@ -262,15 +596,8 @@
       width: 20rem !important;
       max-width: 85vw;
     }
-
-    .sidebar.sidebar-open {
-      transform: translateX(0) !important;
-    }
-
-    .sidebar-collapsed {
-      width: 20rem !important;
-    }
-
+    .sidebar.sidebar-open { transform: translateX(0) !important; }
+    .sidebar-collapsed { width: 20rem !important; }
     .sidebar-collapsed .sidebar-text,
     .sidebar-collapsed .sidebar-logo-text {
       opacity: 1 !important;
@@ -280,306 +607,173 @@
   }
 }
 
+.dark { color-scheme: dark; }
 
+
+/*
+   Animations
+ */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes slideInFromLeft {
   from { transform: translateX(-100%); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
 }
-
 @keyframes slideInFromRight {
   from { transform: translateX(100%); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
 }
-
 @keyframes scaleIn {
   from { transform: scale(0.95); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
 }
-
-.fade-in         { animation: fadeIn         0.3s ease-out; }
-.slide-in-left   { animation: slideInFromLeft 0.3s ease-out; }
-.slide-in-right  { animation: slideInFromRight 0.3s ease-out; }
-.scale-in        { animation: scaleIn        0.2s ease-out; }
-
-/* Animations pour le chatbot */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes bounce-in {
-  0% {
-    opacity: 0;
-    transform: translateY(10px) scale(0.95);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(-5px) scale(1.05);
-  }
-  100% {
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out forwards;
-}
-
-.animate-bounce-in {
-  animation: bounce-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
-}
-
-.animate-shimmer {
-  animation: shimmer 2s infinite;
-}
-
-/* Scrollbar personnalisée pour le chatbot */
-.chat-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.5);
-  border-radius: 3px;
-}
-
-.chat-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.7);
-}
-
-.dark .chat-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(75, 85, 99, 0.5);
-}
-
-.dark .chat-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(75, 85, 99, 0.7);
-}
-
-/* Transitions fluides */
-.transition-all {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 300ms;
-}
-
-
-
-
-.dark {
-  color-scheme: dark;
-}
-
-/* Scrollbar personnalisé */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.5);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.7);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: rgba(75, 85, 99, 0.5);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(75, 85, 99, 0.7);
-}
-
-/* Effet glassmorphism */
-.glass {
-  backdrop-filter: blur(16px);
-  background: rgba(255, 255, 255, 0.8);
-}
-
-.dark .glass {
-  background: rgba(15, 23, 42, 0.8);
-}
-
-/* Animations */
-@keyframes slideIn {
-  0% { transform: translateX(-100%); opacity: 0; }
-  100% { transform: translateX(0); opacity: 1; }
-}
-
-@keyframes fadeIn {
-  0% { opacity: 0; transform: translateY(10px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes scaleIn {
-  0% { transform: scale(0.95); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
 @keyframes bounceGentle {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
+  50%       { transform: translateY(-5px); }
 }
-
 @keyframes legendPulse {
-  0%, 100% { background: rgba(255, 255, 255, 0.9); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
-  50% { background: rgba(255, 255, 255, 1); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); }
+  0%, 100% { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  50%       { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
 }
-
 @keyframes sidebarSlide {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(0); }
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
 }
-
-.animate-slide-in {
-  animation: slideIn 0.3s ease-out;
+@keyframes fade-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
-
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
+@keyframes bounce-in {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.95); }
+  50%  { opacity: 1; transform: translateY(-5px) scale(1.05); }
+  100% { transform: translateY(0) scale(1); }
 }
-
-.animate-scale-in {
-  animation: scaleIn 0.2s ease-out;
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.animate-bounce-gentle {
-  animation: bounceGentle 2s infinite;
-}
+.fade-in              { animation: fadeIn          0.3s ease-out; }
+.slide-in-left        { animation: slideInFromLeft 0.3s ease-out; }
+.slide-in-right       { animation: slideInFromRight 0.3s ease-out; }
+.scale-in             { animation: scaleIn         0.2s ease-out; }
+.animate-fade-in      { animation: fade-in         0.2s ease-out forwards; }
+.animate-bounce-in    { animation: bounce-in       0.5s cubic-bezier(0.68,-0.55,0.265,1.55) forwards; }
+.animate-shimmer      { animation: shimmer         2s infinite; }
+.animate-slide-in     { animation: slideInFromLeft 0.3s ease-out; }
+.animate-scale-in     { animation: scaleIn         0.2s ease-out; }
+.animate-bounce-gentle { animation: bounceGentle   2s infinite; }
+.animate-legend-pulse { animation: legendPulse     3s ease-in-out infinite; }
+.animate-sidebar-slide { animation: sidebarSlide   0.3s ease-out; }
 
-.animate-legend-pulse {
-  animation: legendPulse 3s ease-in-out infinite;
-}
 
-.animate-sidebar-slide {
-  animation: sidebarSlide 0.3s ease-out;
-}
+/*
+   Scrollbars
+ */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(156,163,175,0.5); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(156,163,175,0.7); }
+.dark ::-webkit-scrollbar-thumb { background: rgba(75,85,99,0.5); }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(75,85,99,0.7); }
 
-/* Styles pour les tooltips personnalisés */
+.chat-scrollbar::-webkit-scrollbar { width: 6px; }
+.chat-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.chat-scrollbar::-webkit-scrollbar-thumb { background: rgba(156,163,175,0.5); border-radius: 3px; }
+.chat-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(156,163,175,0.7); }
+.dark .chat-scrollbar::-webkit-scrollbar-thumb { background: rgba(75,85,99,0.5); }
+.dark .chat-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(75,85,99,0.7); }
+
+
+/*
+   Glassmorphism
+ */
+.glass { backdrop-filter: blur(16px); background: rgba(255,255,255,0.8); }
+.dark .glass { background: rgba(15,23,42,0.8); }
+
+
+/*
+   Tooltips & Légendes
+ */
 .custom-tooltip {
-  background: rgba(255, 255, 255, 0.95);
-  border: none;
+  background: rgba(255,255,255,0.95);
   border-radius: 8px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
   padding: 12px;
   font-size: 14px;
   line-height: 1.4;
 }
+.dark .custom-tooltip { background: rgba(30,41,59,0.95); color: white; }
 
-.dark .custom-tooltip {
-  background: rgba(30, 41, 59, 0.95);
-  color: white;
-}
-
-/* Styles pour les légendes */
 .legend {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255,255,255,0.9);
   border-radius: 8px;
   padding: 12px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.dark .legend { background: rgba(30,41,59,0.9); color: white; }
+
+
+/*
+   Contrôles généraux
+ */
+.control-button { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); }
+.control-button:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+
+.drop-zone { border: 2px dashed #d1d5db; transition: all 0.3s ease; }
+.drop-zone.dragover { border-color: #3b82f6; background-color: rgba(59,130,246,0.05); }
+.dark .drop-zone { border-color: #4b5563; }
+.dark .drop-zone.dragover { border-color: #60a5fa; background-color: rgba(96,165,250,0.05); }
+
+.tab-button {
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.tab-button.active { background: white; color: #1f2937; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.dark .tab-button.active { background: #334155; color: #f1f5f9; }
+
+.ai-loading {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s ease-in-out infinite;
 }
 
-.dark .legend {
-  background: rgba(30, 41, 59, 0.9);
-  color: white;
-}
 
-/* Boutons de contrôle */
-.control-button {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.control-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-/* Zone de drag and drop */
-.drop-zone {
-  border: 2px dashed #d1d5db;
-  transition: all 0.3s ease;
-}
-
-.drop-zone.dragover {
-  border-color: #3b82f6;
-  background-color: rgba(59, 130, 246, 0.05);
-}
-
-.dark .drop-zone {
-  border-color: #4b5563;
-}
-
-.dark .drop-zone.dragover {
-  border-color: #60a5fa;
-  background-color: rgba(96, 165, 250, 0.05);
-}
-
-/* Barre latérale géospatiale */
+/*
+   Sidebar géospatiale
+ */
 .geo-sidebar {
   width: 320px;
   overflow-y: auto;
   transform: translateX(0);
   transition: transform 0.3s ease-out, top 0.3s ease-out, bottom 0.3s ease-out;
-  z-index: 1000;
+  z-index: 100 !important;
   overscroll-behavior: contain;
   touch-action: pan-y;
   position: fixed;
-  right: 0;
-  top: 0;
+  right: 0; top: 0;
   height: 100vh;
   cursor: default;
 }
-
-.geo-sidebar.hidden {
-  transform: translateX(100%);
-}
-
-.geo-sidebar.position-top {
-  top: 0;
-  bottom: auto;
-  height: 50vh;
-}
-
-.geo-sidebar.position-bottom {
-  top: auto;
-  bottom: 0;
-  height: 50vh;
-}
-
-.geo-sidebar.position-right {
-  top: 0;
-  bottom: auto;
-  height: 100vh;
-}
+.geo-sidebar.hidden { transform: translateX(100%); }
+.geo-sidebar.position-top    { top: 0; bottom: auto; height: 50vh; }
+.geo-sidebar.position-bottom { top: auto; bottom: 0; height: 50vh; }
+.geo-sidebar.position-right  { top: 0; bottom: auto; height: 100vh; }
 
 .geo-sidebar-header {
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
@@ -591,262 +785,79 @@
   justify-content: space-between;
   align-items: center;
   position: sticky;
-  top: 0;
-  z-index: 10;
+  top: 0; z-index: 10;
 }
+.dark .geo-sidebar-header { background: linear-gradient(135deg,#1e293b 0%,#334155 100%); border-bottom-color: #334155; }
+.geo-sidebar-header:hover { background: linear-gradient(135deg,#e2e8f0 0%,#cbd5e1 100%); }
+.dark .geo-sidebar-header:hover { background: linear-gradient(135deg,#334155 0%,#475569 100%); }
+.geo-sidebar-header.dragging { cursor: grabbing; background: linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%); color: white; }
 
-.dark .geo-sidebar-header {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-  border-bottom-color: #334155;
-}
+.geo-sidebar-title { font-weight: 600; font-size: 0.875rem; color: #374151; display: flex; align-items: center; gap: 0.5rem; }
+.dark .geo-sidebar-title { color: #f1f5f9; }
+.geo-sidebar-header.dragging .geo-sidebar-title { color: white; }
 
-.geo-sidebar-header:hover {
-  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
-}
-
-.dark .geo-sidebar-header:hover {
-  background: linear-gradient(135deg, #334155 0%, #475569 100%);
-}
-
-.geo-sidebar-header.dragging {
-  cursor: grabbing;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: white;
-}
-
-.geo-sidebar-title {
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #374151;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.dark .geo-sidebar-title {
-  color: #f1f5f9;
-}
-
-.geo-sidebar-header.dragging .geo-sidebar-title {
-  color: white;
-}
-
-.geo-sidebar-controls {
-  display: flex;
-  gap: 0.25rem;
-  align-items: center;
-}
-
+.geo-sidebar-controls { display: flex; gap: 0.25rem; align-items: center; }
 .geo-sidebar-control-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  border: none;
-  background: rgba(0, 0, 0, 0.1);
-  color: #6b7280;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  font-size: 12px;
+  width: 24px; height: 24px;
+  border-radius: 4px; border: none;
+  background: rgba(0,0,0,0.1); color: #6b7280;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease; font-size: 12px;
 }
+.geo-sidebar-control-btn:hover { background: rgba(0,0,0,0.2); color: #374151; transform: scale(1.1); }
+.dark .geo-sidebar-control-btn { background: rgba(255,255,255,0.1); color: #9ca3af; }
+.dark .geo-sidebar-control-btn:hover { background: rgba(255,255,255,0.2); color: #f1f5f9; }
+.geo-sidebar-header.dragging .geo-sidebar-control-btn { background: rgba(255,255,255,0.2); color: white; }
 
-.geo-sidebar-control-btn:hover {
-  background: rgba(0, 0, 0, 0.2);
-  color: #374151;
-  transform: scale(1.1);
-}
-
-.dark .geo-sidebar-control-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: #9ca3af;
-}
-
-.dark .geo-sidebar-control-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: #f1f5f9;
-}
-
-.geo-sidebar-header.dragging .geo-sidebar-control-btn {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-}
-
-/* Bouton toggle sidebar */
 .geo-sidebar-toggle {
-  position: fixed;
-  top: 100px;
-  right: 10px;
-  z-index: 60;
-  background: #3b82f6;
-  color: white;
-  padding: 12px;
-  border-radius: 8px;
+  position: fixed; top: 100px; right: 10px;
+  z-index: 1000 !important;
+  background: #3b82f6; color: white;
+  padding: 12px; border-radius: 8px;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
 }
+.geo-sidebar-toggle.sidebar-open { right: 330px; }
+.geo-sidebar-toggle:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 6px 8px -1px rgba(0,0,0,0.15); }
 
-.geo-sidebar-toggle.sidebar-open {
-  right: 330px;
-}
 
-.geo-sidebar-toggle:hover {
-  background: #2563eb;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 8px -1px rgba(0, 0, 0, 0.15);
-}
-
-/* Container de la carte */
+/*
+   Carte Leaflet
+ */
+.leaflet-container { z-index: 1 !important; position: relative !important; }
 .map-container {
-  position: relative;
-  overflow: hidden;
-  border-radius: 12px;
+  position: relative; z-index: 1;
+  overflow: hidden; border-radius: 12px;
+  isolation: isolate;
 }
+.leaflet-top.leaflet-left  { z-index: 1000 !important; }
+.leaflet-control-container { z-index: 1000 !important; }
 
-/* Styles pour les onglets */
-.tab-button {
-  background: transparent;
-  color: #6b7280;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  transition: all 0.2s ease;
-  font-size: 0.875rem;
-  font-weight: 500;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
 
-.tab-button.active {
-  background: white;
-  color: #1f2937;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-}
-
-.dark .tab-button.active {
-  background: #334155;
-  color: #f1f5f9;
-}
-
-/* Loading IA */
-.ai-loading {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #ffffff;
-  border-radius: 50%;
-  border-top-color: transparent;
-  animation: spin 1s ease-in-out infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Responsive */
-@media (max-width: 1023px) {
-  .geo-sidebar {
-    width: 100vw;
-    max-width: 90vw;
-  }
-  
-  .geo-sidebar-toggle {
-    top: 80px;
-  }
-  
-  .geo-sidebar-toggle.sidebar-open {
-    right: 10px;
-    opacity: 0.7;
-  }
-  
-  #map {
-    height: 400px;
-  }
-}
-
-@media (max-width: 640px) {
-  .geo-sidebar {
-    width: 100vw;
-    max-width: 95vw;
-  }
-  
-  #map {
-    height: 300px;
-    border-radius: 8px;
-  }
-}
-
-/* Styles spécifiques pour la carte Leaflet */
-.leaflet-container {
-  z-index: 1 !important; /* Forcer un z-index bas */
-  position: relative !important;
-}
-
-/* Container de la carte avec isolation */
-.map-container {
-  position: relative;
-  z-index: 1;
-  overflow: hidden;
-  border-radius: 12px;
-  isolation: isolate; /* Crée un nouveau contexte d'empilement */
-}
-
-/* Ajuster les contrôles de la carte */
-.leaflet-top.leaflet-left {
-  z-index: 1000 !important;
-}
-
-.leaflet-control-container {
-  z-index: 1000 !important;
-}
-
-/* S'assurer que la sidebar est au-dessus */
-.geo-sidebar {
-  z-index: 100 !important;
-}
-
-/* Le bouton toggle doit être au-dessus de tout */
-.geo-sidebar-toggle {
-  z-index: 1000 !important;
-}
-
-/* Header de module — compact sur mobile */
+/*
+   Module header responsive
+ */
 @media (max-width: 768px) {
-  /* Icône plus petite */
-  .module-header .w-14 {
-    width: 2.5rem;
-    height: 2.5rem;
-  }
-  
-  .module-header .w-7 {
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-
-  /* Titre plus petit */
-  .module-header h1 {
-    font-size: 1.25rem;
-    line-height: 1.75rem;
-  }
-
-  /* Description cachée */
-  .module-header p {
-    display: none;
-  }
-
-  /* Bouton aide toujours visible */
-  .module-header button {
-    display: flex !important;
-  }
-
-  /* Layout en ligne */
+  .module-header .w-14   { width: 2.5rem; height: 2.5rem; }
+  .module-header .w-7    { width: 1.25rem; height: 1.25rem; }
+  .module-header h1      { font-size: 1.25rem; line-height: 1.75rem; }
+  .module-header p       { display: none; }
+  .module-header button  { display: flex !important; }
   .module-header {
     flex-direction: row !important;
     align-items: center !important;
     gap: 0.75rem !important;
     margin-bottom: 1.5rem !important;
   }
+}
+
+@media (max-width: 1023px) {
+  .geo-sidebar { width: 100vw; max-width: 90vw; }
+  .geo-sidebar-toggle { top: 80px; }
+  .geo-sidebar-toggle.sidebar-open { right: 10px; opacity: 0.7; }
+  #map { height: 400px; }
+}
+@media (max-width: 640px) {
+  .geo-sidebar { max-width: 95vw; }
+  #map { height: 300px; border-radius: 8px; }
 }
