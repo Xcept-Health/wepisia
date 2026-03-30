@@ -25,10 +25,10 @@ import { useTranslation } from 'react-i18next';
 import {
   Play, Pause, RotateCcw, ChevronRight,
   Map as MapIcon, BarChart2, Network, Table2,
-  Download, Upload, Info, Plus, X, Settings,Database,
+  Download, Upload, Info, Plus, X, Settings, Database,
   Activity, TrendingUp, Users, Sun, Moon, Sliders,
-  AlertTriangle, SkipBack, SkipForward, ChevronDown, 
-  Beaker, Globe2, Wind, Droplets, Zap, ChartScatter
+  AlertTriangle, SkipBack, SkipForward, ChevronDown,
+  Beaker, Globe2, Wind, Droplets, Zap, ChartScatter,
 } from 'lucide-react';
 
 ChartJS.register(
@@ -37,10 +37,10 @@ ChartJS.register(
 );
 
 // Types
-type ModelType   = 'SIR' | 'SEIR' | 'SEIRD' | 'SEIQRD';
-type MapType     = '2d' | '3d';
-type ActiveView  = 'map' | 'charts' | 'table' | 'network';
-type MobileTab   = 'map' | 'charts' | 'regions' | 'controls';
+type ModelType  = 'SIR' | 'SEIR' | 'SEIRD' | 'SEIQRD';
+type MapType    = '2d' | '3d';
+type ActiveView = 'map' | 'charts' | 'table' | 'network';
+type MobileTab  = 'map' | 'charts' | 'regions' | 'controls';
 
 interface Region {
   id: string; name: string; population: number;
@@ -175,8 +175,6 @@ const SCENARIOS: Scenario[] = [
   },
 ];
 
-
-// Disease examples - real-world inspired initial conditions and parameters
 interface DiseaseExample {
   id: string;
   name: string;
@@ -281,7 +279,7 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
     params: { model: 'SEIR', beta: 1.40, sigma: 0.25, gamma: 0.10, mu: 0.002, delta: 0.05, theta: 0.1, mobility: 0.08 },
     initialRegions: INITIAL_REGIONS.map(r => ({
       ...r,
-      S: Math.round(r.population * 0.10),   // 90% immune via vaccination
+      S: Math.round(r.population * 0.10),
       E: Math.round(r.population * 0.001),
       I: Math.round(r.population * 0.0005),
       R: Math.round(r.population * 0.8985),
@@ -340,14 +338,11 @@ const DISEASE_EXAMPLES: DiseaseExample[] = [
   },
 ];
 
-// Indicator accent colors matched to the array position
 const INDICATOR_ACCENTS = [
   'bg-indigo-500', 'bg-rose-500', 'bg-amber-500',
   'bg-emerald-500', 'bg-violet-500',
 ];
 
-// Pure simulation - runs in ~5ms for 365 days × 9 regions
-// Accepts optional custom initial regions (for disease examples)
 function computeTrajectory(
   params: SimParams,
   interventions: Intervention[],
@@ -411,7 +406,6 @@ function fmt(n: number): string {
   return Math.round(n).toString();
 }
 
-// Chart.js base options using CSS variables
 const chartBase = (isDark: boolean) => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -443,56 +437,49 @@ const chartBase = (isDark: boolean) => ({
   interaction: { intersect: false, mode: 'index' as const },
 });
 
-// Main component
 export default function EpidemiologicalSimulation() {
   const { theme, toggleTheme, switchable } = useTheme();
   const isDark = theme === 'dark';
   const { t } = useTranslation();
 
-  // Simulation state - starts neutral (no auto-run)
-  const [params, setParams]             = useState<SimParams>(DEFAULT_PARAMS);
-  const [activeModel, setActiveModel]   = useState<ModelType>('SEIRD');
+  const [params, setParams]               = useState<SimParams>(DEFAULT_PARAMS);
+  const [activeModel, setActiveModel]     = useState<ModelType>('SEIRD');
   const [interventions, setInterventions] = useState<Intervention[]>([]);
-  const [simHistory, setSimHistory]     = useState<HistoryFrame[]>([]);
-  const [simRunId, setSimRunId]         = useState(0);
-  const [playbackDay, setPlaybackDay]   = useState(0);
-  const [isPlaying, setIsPlaying]       = useState(false);
-  const [speed, setSpeed]               = useState(3);
-  const [simDays, setSimDays]           = useState(365);
-  const simDaysRef                      = useRef(365);
+  const [simHistory, setSimHistory]       = useState<HistoryFrame[]>([]);
+  const [simRunId, setSimRunId]           = useState(0);
+  const [playbackDay, setPlaybackDay]     = useState(0);
+  const [isPlaying, setIsPlaying]         = useState(false);
+  const [speed, setSpeed]                 = useState(3);
+  const [simDays, setSimDays]             = useState(365);
+  const simDaysRef                        = useRef(365);
   const [loadedExample, setLoadedExample] = useState<string | null>(null);
-  const activeRegions                   = useRef<Region[]>(INITIAL_REGIONS);
+  const activeRegions                     = useRef<Region[]>(INITIAL_REGIONS);
 
-  // UI state
-  const [activeView, setActiveView]     = useState<ActiveView>('map');
-  const [mobileTab, setMobileTab]       = useState<MobileTab>('map');
-  const [mapType, setMapType]           = useState<MapType>('3d');
+  const [activeView, setActiveView]       = useState<ActiveView>('map');
+  const [mobileTab, setMobileTab]         = useState<MobileTab>('map');
+  const [mapType, setMapType]             = useState<MapType>('3d');
   const [selectedScenario, setSelectedScenario] = useState('Base');
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
-  const [isComputing, setIsComputing]   = useState(false);
+  const [isComputing, setIsComputing]     = useState(false);
 
-  // Region customization (local, does not affect sim)
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
   const [regionNames, setRegionNames]   = useState<Record<string, string>>({});
 
-  // Modal state - controlled (no getElementById)
-  const [showParamsModal, setShowParamsModal]           = useState(false);
+  const [showParamsModal, setShowParamsModal]             = useState(false);
   const [showInterventionModal, setShowInterventionModal] = useState(false);
-  const [showDataModal, setShowDataModal]               = useState(false);
-  const [showExplanationModal, setShowExplanationModal] = useState(false);
-  const [showExamplesModal, setShowExamplesModal]       = useState(false);
-  const [isComparisonParams, setIsComparisonParams]     = useState(false);
-  const [compHistory, setCompHistory]                   = useState<HistoryFrame[]>([]);
-  const [isComparing, setIsComparing]                   = useState(false);
-  const [editParams, setEditParams]                     = useState<SimParams>(DEFAULT_PARAMS);
+  const [showDataModal, setShowDataModal]                 = useState(false);
+  const [showExplanationModal, setShowExplanationModal]   = useState(false);
+  const [showExamplesModal, setShowExamplesModal]         = useState(false);
+  const [isComparisonParams, setIsComparisonParams]       = useState(false);
+  const [compHistory, setCompHistory]                     = useState<HistoryFrame[]>([]);
+  const [isComparing, setIsComparing]                     = useState(false);
+  const [editParams, setEditParams]                       = useState<SimParams>(DEFAULT_PARAMS);
 
-  // Intervention form state
   const [newIntervention, setNewIntervention] = useState({
     type: 'Confinement', effectiveness: 50, startDay: 0,
   });
 
-  // Map settings
   const [mapSettings, setMapSettings] = useState<MapSettings>({
     markerOpacity: 0.85, tileTheme: 'light', showLabels: true,
   });
@@ -500,15 +487,13 @@ export default function EpidemiologicalSimulation() {
     chargeStrength: -200, linkDistance: 100, enableClustering: false, nodeShape: 'circle',
   });
 
-  // DOM refs
-  const mapRef      = useRef<HTMLDivElement>(null);
-  const svgRef      = useRef<SVGSVGElement>(null);
-  const leafletRef  = useRef<L.Map | null>(null);
-  const leafletMarkers = useRef<Map<string, L.CircleMarker>>(new Map());
-  const globeRef    = useRef<any>(null);
-  const globeContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef              = useRef<HTMLDivElement>(null);
+  const svgRef              = useRef<SVGSVGElement>(null);
+  const leafletRef          = useRef<L.Map | null>(null);
+  const leafletMarkers      = useRef<Map<string, L.CircleMarker>>(new Map());
+  const globeRef            = useRef<any>(null);
+  const globeContainerRef   = useRef<HTMLDivElement | null>(null);
 
-  // Display regions - derived from history[playbackDay]
   const displayRegions: Region[] = useMemo(() => {
     const frame = simHistory[playbackDay];
     if (!frame) return [];
@@ -547,7 +532,6 @@ export default function EpidemiologicalSimulation() {
     }, 50);
   }, []);
 
-  // Playback animation
   useEffect(() => {
     if (!isPlaying || simHistory.length === 0) return;
     const interval = setInterval(() => {
@@ -560,7 +544,6 @@ export default function EpidemiologicalSimulation() {
     return () => clearInterval(interval);
   }, [isPlaying, speed, simHistory.length]);
 
-  // Apply scenario
   const applyScenario = useCallback((name: string) => {
     const sc = SCENARIOS.find(s => s.name === name);
     if (!sc) return;
@@ -574,7 +557,6 @@ export default function EpidemiologicalSimulation() {
     runSimulation(p, ints, INITIAL_REGIONS);
   }, [activeModel, runSimulation]);
 
-  // Load a disease example
   const loadExample = useCallback((ex: DiseaseExample) => {
     const p = { ...ex.params, model: ex.model };
     setParams(p);
@@ -663,7 +645,7 @@ export default function EpidemiologicalSimulation() {
     });
   }, [displayRegions, mapType, mapSettings.markerOpacity]);
 
-  // Globe init
+  // Globe init 
   useEffect(() => {
     if (activeView !== 'map' || mapType !== '3d' || !mapRef.current) return;
 
@@ -685,7 +667,7 @@ export default function EpidemiologicalSimulation() {
 
     cleanupGlobe();
 
-    const container = document.createElement('simulation.div');
+    const container = document.createElement('div');
     container.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0;';
     mapRef.current.appendChild(container);
     globeContainerRef.current = container;
@@ -875,50 +857,54 @@ export default function EpidemiologicalSimulation() {
     }],
   }), [displayRegions, regionNames, regionColors, t]);
 
-  // Export helpers
+  
   const exportCSV = useCallback(() => {
     const rows = simHistory.map(f => ({ day: f.day, ...f.totals, Rt: f.Rt.toFixed(3), newCases: f.newCases }));
     const blob = new Blob([Papa.unparse(rows)], { type: 'text/csv' });
-    const a = document.createElement('simulation.a'); a.href = URL.createObjectURL(blob); a.download = 'simulation.csv'; a.click();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'simulation.csv'; a.click();
   }, [simHistory]);
 
   const exportJSON = useCallback(() => {
     const state = { params, activeModel, interventions, simHistory };
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const a = document.createElement('simulation.a'); a.href = URL.createObjectURL(blob); a.download = 'simulation.json'; a.click();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'simulation.json'; a.click();
   }, [params, activeModel, interventions, simHistory]);
 
-  // Derived display values for indicators
   const indicatorItems = [
-    { label: t('simulation.indicators.day'),            value: String(playbackDay),                          accent: INDICATOR_ACCENTS[0] },
-    { label: t('simulation.indicators.active_infected'), value: fmt(indicators.infections),                  accent: INDICATOR_ACCENTS[1] },
-    { label: t('simulation.indicators.rt'),              value: indicators.Rt.toFixed(2),                    accent: INDICATOR_ACCENTS[2] },
-    { label: t('simulation.indicators.attack_rate'),     value: `${indicators.attackRate.toFixed(1)}%`,      accent: INDICATOR_ACCENTS[3] },
-    { label: t('simulation.indicators.peak_day'),        value: String(indicators.peakDay),                  accent: INDICATOR_ACCENTS[4] },
+    { label: t('simulation.indicators.day'),             value: String(playbackDay),                    accent: INDICATOR_ACCENTS[0] },
+    { label: t('simulation.indicators.active_infected'), value: fmt(indicators.infections),             accent: INDICATOR_ACCENTS[1] },
+    { label: t('simulation.indicators.rt'),              value: indicators.Rt.toFixed(2),               accent: INDICATOR_ACCENTS[2] },
+    { label: t('simulation.indicators.attack_rate'),     value: `${indicators.attackRate.toFixed(1)}%`, accent: INDICATOR_ACCENTS[3] },
+    { label: t('simulation.indicators.peak_day'),        value: String(indicators.peakDay),             accent: INDICATOR_ACCENTS[4] },
   ];
 
-  // UI theme tokens
   const UI = {
-    bg:      'bg-[#F8FAFC] dark:bg-[#0F172A]',
-    card:    'bg-white dark:bg-slate-800/60 border border-border',
-    text:    'text-foreground',
-    muted:   'text-muted-foreground',
-    input:   'bg-background border border-input text-foreground',
-    hover:   isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50',
-    active:  'bg-primary/10 text-primary border-primary',
+    bg:     'bg-[#F8FAFC] dark:bg-[#0F172A]',
+    card:   'bg-[#F8FAFC] dark:bg-[#0F172A] border border-border',
+    text:   'text-foreground',
+    muted:  'text-muted-foreground',
+    input:  'bg-background border border-input text-foreground',
+    hover:  isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50',
+    active: 'bg-primary/10 text-primary border-primary',
   };
 
-  // Shared timeline slider
   const TimelineSlider = () => (
-    <div className={`flex items-center gap-3 px-4 py-2 border-t border-border bg-card`}>
-      <button onClick={() => setPlaybackDay(0)} className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`} title={t('simulation.timeline.start_title')}>
+    <div className="flex items-center gap-3 px-4 py-2 border-t border-border bg-[#F8FAFC] dark:bg-[#0F172A]">
+      <button onClick={() => setPlaybackDay(0)}
+        className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`}
+        title={t('simulation.timeline.start_title')}>
         <SkipBack size={14} />
       </button>
-      <button onClick={() => setIsPlaying(v => !v)} disabled={isComputing || simHistory.length === 0}
+      <button onClick={() => setIsPlaying(v => !v)}
+        disabled={isComputing || simHistory.length === 0}
         className="p-1.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition disabled:opacity-40">
         {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
       </button>
-      <button onClick={() => setPlaybackDay(simHistory.length - 1)} className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`} title={t('simulation.timeline.end_title')}>
+      <button onClick={() => setPlaybackDay(simHistory.length - 1)}
+        className={`${UI.muted} ${UI.hover} p-1 rounded-lg transition-colors`}
+        title={t('simulation.timeline.end_title')}>
         <SkipForward size={14} />
       </button>
       <div className="flex-1 flex items-center gap-2 min-w-0">
@@ -938,7 +924,6 @@ export default function EpidemiologicalSimulation() {
           className="w-16 h-1 accent-blue-600 cursor-pointer" />
         <span className={`text-[10px] font-mono ${UI.muted}`}>{speed}</span>
       </div>
-      {/* Simulation duration selector */}
       <div className="hidden md:flex items-center gap-1.5 border-l border-border pl-3">
         <span className={`text-[9px] uppercase tracking-wider ${UI.muted} flex-shrink-0`}>{t('simulation.timeline.days_label')}</span>
         <div className="flex bg-muted rounded-lg p-0.5 gap-0.5">
@@ -956,10 +941,8 @@ export default function EpidemiologicalSimulation() {
     </div>
   );
 
-  // Base chart options
   const chartOpts = useMemo(() => chartBase(isDark), [isDark]);
 
-  // Rt chart options
   const rtOpts = useMemo(() => ({
     ...chartBase(isDark),
     plugins: {
@@ -980,7 +963,6 @@ export default function EpidemiologicalSimulation() {
     },
   }), [isDark, t]);
 
-  // Memoized bar options
   const barOpts = useMemo(() => ({
     ...chartOpts,
     plugins: { ...chartOpts.plugins, legend: { display: false } },
@@ -990,7 +972,6 @@ export default function EpidemiologicalSimulation() {
     },
   }), [chartOpts]);
 
-  // Memoized scatter options
   const phaseOpts = useMemo(() => ({
     ...chartOpts,
     scales: {
@@ -999,7 +980,6 @@ export default function EpidemiologicalSimulation() {
     },
   }), [chartOpts, isDark, t]);
 
-  // ChartsPanel
   const ChartsPanelContent = () => {
     if (!hasSimulation) return (
       <div className="flex-1 flex items-center justify-center p-8 text-center">
@@ -1048,11 +1028,10 @@ export default function EpidemiologicalSimulation() {
   };
   const ChartsPanel = ChartsPanelContent;
 
-  // Table panel
   const TablePanel = () => (
     <div className="flex-1 overflow-auto">
       <table className="w-full text-xs">
-        <thead className={`sticky top-0 bg-muted`}>
+        <thead className="sticky top-0 bg-muted">
           <tr>
             {[t('simulation.table.col_region'), 'S', 'E', 'I', 'R', 'D', t('simulation.table.col_rate')].map(h => (
               <th key={h} className={`px-3 py-2 text-left font-bold ${UI.muted} uppercase tracking-wider text-[9px]`}>{h}</th>
@@ -1080,9 +1059,9 @@ export default function EpidemiologicalSimulation() {
     </div>
   );
 
-  // Regions side panel
+
   const RegionsPanel = () => (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
       <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-4`}>{t('simulation.regions.title')}</p>
       {displayRegions.map(region => (
         <div key={region.id} className={`${UI.card} rounded-2xl p-3`}>
@@ -1090,7 +1069,7 @@ export default function EpidemiologicalSimulation() {
             <input
               value={regionNames[region.id] ?? region.name}
               onChange={e => setRegionNames(prev => ({ ...prev, [region.id]: e.target.value }))}
-              className=" text-sm font-semibold outline-none flex-1 mr-2"
+              className="text-sm font-semibold outline-none flex-1 mr-2"
             />
             <div className="w-3 h-3 rounded-full flex-shrink-0 shadow-inner"
               style={{ backgroundColor: regionColors[region.id] ?? region.color }} />
@@ -1101,7 +1080,7 @@ export default function EpidemiologicalSimulation() {
           </div>
           <button
             onClick={() => setSelectedRegionId(selectedRegionId === region.id ? null : region.id)}
-            className={`text-[10px] font-bold text-primary hover:underline`}>
+            className="text-[10px] font-bold text-primary hover:underline">
             {selectedRegionId === region.id ? t('simulation.actions.close_color') : t('simulation.actions.color')}
           </button>
           {selectedRegionId === region.id && (
@@ -1116,9 +1095,9 @@ export default function EpidemiologicalSimulation() {
     </div>
   );
 
-  // Controls panel (mobile)
+
   const ControlsPanel = () => (
-    <div className="flex-1 overflow-y-auto p-4 space-y-5">
+    <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-5">
       {/* Model selector */}
       <div>
         <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>{t('simulation.controls.model')}</p>
@@ -1157,10 +1136,10 @@ export default function EpidemiologicalSimulation() {
         </div>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: 'β', value: params.beta, color: 'text-amber-500' },
+            { label: 'β', value: params.beta,  color: 'text-amber-500' },
             { label: 'γ', value: params.gamma, color: 'text-emerald-500' },
             { label: 'σ', value: params.sigma, color: 'text-blue-500' },
-            { label: 'μ', value: params.mu, color: 'text-rose-500' },
+            { label: 'μ', value: params.mu,    color: 'text-rose-500' },
           ].map(p => (
             <div key={p.label} className={`${UI.card} rounded-xl p-2.5`}>
               <span className={`text-[10px] ${UI.muted}`}>{p.label}</span>
@@ -1209,9 +1188,12 @@ export default function EpidemiologicalSimulation() {
     </div>
   );
 
-  // Mobile bottom navigation
+
   const MobileNav = () => (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 py-1 z-50">
+    <nav
+      className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#F8FAFC] dark:bg-[#0F172A] border-t border-border flex items-center justify-around px-2 z-[9999]"
+      style={{ paddingTop: '6px', paddingBottom: 'calc(6px + env(safe-area-inset-bottom, 0px))' }}
+    >
       {([
         { id: 'map',      icon: MapIcon,   label: t('simulation.mobile_nav.map')      },
         { id: 'charts',   icon: BarChart2, label: t('simulation.mobile_nav.charts')   },
@@ -1219,7 +1201,7 @@ export default function EpidemiologicalSimulation() {
         { id: 'controls', icon: Sliders,   label: t('simulation.mobile_nav.controls') },
       ] as const).map(tab => (
         <button key={tab.id} onClick={() => setMobileTab(tab.id)}
-          className={`flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-[10px] transition-all
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 rounded-xl text-[10px] transition-all
             ${mobileTab === tab.id ? 'text-primary bg-primary/10' : `${UI.muted} ${UI.hover}`}`}>
           <tab.icon size={18} />
           <span>{tab.label}</span>
@@ -1228,10 +1210,9 @@ export default function EpidemiologicalSimulation() {
     </nav>
   );
 
-  // Empty state
   const EmptyState = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center select-none">
-      <div className={`w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center mb-5`}>
+      <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center mb-5">
         <ChartScatter size={28} className="text-primary" />
       </div>
       <h2 className="text-xl font-black mb-2">{t('simulation.empty_state.title')}</h2>
@@ -1250,7 +1231,6 @@ export default function EpidemiologicalSimulation() {
           <Play size={14} fill="currentColor" /> {t('simulation.empty_state.default_scenario')}
         </button>
       </div>
-      {/* Quick example chips */}
       <div className="flex flex-wrap justify-center gap-2 mt-8">
         {DISEASE_EXAMPLES.map(ex => (
           <button key={ex.id} onClick={() => loadExample(ex)}
@@ -1267,9 +1247,8 @@ export default function EpidemiologicalSimulation() {
     <div className={`flex flex-col h-[100dvh] ${UI.bg} ${UI.text} font-sans overflow-hidden`}>
 
       {/* Header */}
-      <header className={`${UI.card.replace('border', '')} border-b border-border px-4 py-3 flex-shrink-0 z-10`}>
+      <header className="bg-[#F8FAFC] dark:bg-[#0F172A] border-b border-border px-4 py-3 flex-shrink-0 z-10">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-xs">
             <Link href="/" className={`${UI.muted} hover:text-primary transition-colors`}>{t('simulation.nav.home')}</Link>
             <ChevronRight size={12} className={UI.muted} />
@@ -1278,7 +1257,6 @@ export default function EpidemiologicalSimulation() {
             <span className="font-semibold">{t('simulation.nav.simulation')}</span>
           </nav>
 
-          {/* Desktop model selector */}
           <div className="hidden lg:flex items-center gap-2 bg-muted p-1 rounded-xl">
             {(['SIR', 'SEIR', 'SEIRD', 'SEIQRD'] as ModelType[]).map(m => (
               <button key={m} onClick={() => {
@@ -1291,14 +1269,12 @@ export default function EpidemiologicalSimulation() {
             ))}
           </div>
 
-          {/* Actions */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Scenario selector */}
-            <div className="relative flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-1.5">
+            <div className="relative flex items-center gap-2 bg-[#F8FAFC] dark:bg-[#0F172A] border border-border rounded-xl px-3 py-1.5">
               <span className={`text-[9px] font-bold uppercase tracking-wider ${UI.muted} border-r border-border pr-2`}>{t('simulation.header.scenario_label')}</span>
               <select value={selectedScenario}
                 onChange={e => { setSelectedScenario(e.target.value); applyScenario(e.target.value); }}
-                className="appearance-none  text-xs font-semibold pr-6 outline-none cursor-pointer">
+                className="appearance-none text-xs font-semibold pr-6 outline-none cursor-pointer bg-transparent">
                 {SCENARIOS.map(s => <option key={s.name} value={s.name}>{t(`scenario.${s.name}`)}</option>)}
               </select>
               <ChevronDown size={12} className={`absolute right-2 pointer-events-none ${UI.muted}`} />
@@ -1345,9 +1321,8 @@ export default function EpidemiologicalSimulation() {
       </div>
 
       {/* Desktop view tabs + controls bar */}
-      <div className={`hidden lg:flex items-center justify-between gap-4 px-4 pb-3 flex-shrink-0`}>
-        {/* View tabs */}
-        <div className="flex bg-muted p-1 rounded-xl">
+      <div className="hidden lg:flex  items-center justify-between gap-4 px-4 pb-3 flex-shrink-0">
+        <div className="flex bg-[#F8FAFC] dark:bg-background  p-1 rounded-xl">
           {([
             { id: 'map',     icon: MapIcon,   label: t('simulation.views.map')     },
             { id: 'charts',  icon: BarChart2, label: t('simulation.views.charts')  },
@@ -1355,13 +1330,12 @@ export default function EpidemiologicalSimulation() {
             { id: 'network', icon: Network,   label: t('simulation.views.network') },
           ] as const).map(v => (
             <button key={v.id} onClick={() => setActiveView(v.id)}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${activeView === v.id ? 'bg-background text-foreground shadow-sm' : UI.muted}`}>
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${activeView === v.id ? ' dark:bg-[#0F172A] text-foreground shadow-sm' : UI.muted}`}>
               <v.icon size={13} /> {v.label}
             </button>
           ))}
         </div>
 
-        {/* Export + comparison */}
         <div className="flex items-center gap-2">
           {isComputing && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
           <button onClick={exportCSV} className={`flex items-center gap-1.5 px-3 py-1.5 ${UI.card} rounded-xl text-xs ${UI.muted} ${UI.hover} transition-all`}>
@@ -1384,9 +1358,8 @@ export default function EpidemiologicalSimulation() {
       {/* Main content area */}
       <div className="flex-1 flex flex-col lg:flex-row gap-0 overflow-hidden min-h-0">
 
-        {/* Desktop: main panel (2/3) */}
+        {/* Desktop: main panel */}
         <div className="hidden lg:flex flex-col flex-1 min-w-0 overflow-hidden">
-          {/* Map view */}
           {activeView === 'map' && !hasSimulation && (
             <div className="flex-1 mx-3 mb-3 rounded-3xl border border-border overflow-hidden">
               {EmptyState()}
@@ -1394,8 +1367,7 @@ export default function EpidemiologicalSimulation() {
           )}
           {activeView === 'map' && hasSimulation && (
             <div className="flex-1 relative overflow-hidden mx-3 mb-3 rounded-3xl border border-border">
-              {/* Map type toggle */}
-              <div className="absolute top-3 left-3 z-20 flex bg-card/90 backdrop-blur-sm border border-border rounded-xl p-0.5">
+              <div className="absolute top-3 left-3 z-20 flex bg-[#F8FAFC] dark:bg-[#0F172A] backdrop-blur-sm border border-border rounded-xl p-0.5">
                 {(['2d', '3d'] as MapType[]).map(tp => (
                   <button key={tp} onClick={() => setMapType(tp)}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${mapType === tp ? 'bg-primary text-primary-foreground shadow-sm' : UI.muted}`}>
@@ -1403,13 +1375,11 @@ export default function EpidemiologicalSimulation() {
                   </button>
                 ))}
               </div>
-              {/* Settings panel toggle */}
               <button onClick={() => setShowSidePanel(v => !v)}
-                className={`absolute top-3 right-3 z-20 p-2.5 rounded-2xl backdrop-blur-sm border border-border shadow-lg transition-all ${showSidePanel ? 'bg-slate-900 text-white' : 'bg-card/90 text-foreground hover:text-primary'}`}>
+                className={`absolute top-3 right-3 z-20 p-2.5 rounded-2xl backdrop-blur-sm border border-border shadow-lg transition-all ${showSidePanel ? 'bg-slate-900 text-white' : 'bg-[#F8FAFC] dark:bg-[#0F172A] text-foreground hover:text-primary'}`}>
                 <Settings size={16} />
               </button>
-              {/* Settings side panel */}
-              <div className={`absolute top-0 right-0 h-full w-72 bg-card/95 backdrop-blur-2xl border-l border-border z-10 transform transition-transform duration-300 shadow-2xl ${showSidePanel ? 'translate-x-0' : 'translate-x-full'}`}>
+              <div className={`absolute top-0 right-0 h-full w-72 bg-[#F8FAFC] dark:bg-[#0F172A] backdrop-blur-2xl border-l border-border z-10 transform transition-transform duration-300 shadow-2xl ${showSidePanel ? 'translate-x-0' : 'translate-x-full'}`}>
                 <div className="p-6 pt-16 h-full overflow-y-auto space-y-6">
                   <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>{t('simulation.map.view_label')}</p>
                   <div>
@@ -1449,29 +1419,25 @@ export default function EpidemiologicalSimulation() {
                   </div>
                 </div>
               </div>
-              {/* Map container */}
               <div ref={mapRef} className="w-full h-full" />
             </div>
           )}
 
-          {/* Charts view */}
           {activeView === 'charts' && (
             <div className="flex-1 overflow-y-auto px-3 pb-3">
               {ChartsPanel()}
             </div>
           )}
 
-          {/* Table view */}
           {activeView === 'table' && (
             <div className="flex-1 mx-3 mb-3 rounded-3xl border border-border overflow-hidden">
-              <div className={`px-4 py-3 border-b border-border`}>
+              <div className="px-4 py-3 border-b border-border">
                 <p className="text-sm font-bold">{t('simulation.table.title', { day: playbackDay })}</p>
               </div>
               {TablePanel()}
             </div>
           )}
 
-          {/* Network view */}
           {activeView === 'network' && (
             <div className="flex-1 mx-3 mb-3 rounded-3xl border border-border overflow-hidden relative">
               <svg ref={svgRef} className="w-full h-full" />
@@ -1483,7 +1449,6 @@ export default function EpidemiologicalSimulation() {
                   </div>
                 ))}
               </div>
-              {/* Network settings */}
               <div className="absolute top-4 left-4 flex flex-col gap-2">
                 {(['circle','square','triangle'] as const).map(shape => (
                   <button key={shape} onClick={() => setNetworkSettings(p => ({ ...p, nodeShape: shape }))}
@@ -1495,15 +1460,13 @@ export default function EpidemiologicalSimulation() {
             </div>
           )}
 
-          {/* Timeline slider */}
           <div className="mx-3 mb-3 rounded-2xl border border-border overflow-hidden">
             {TimelineSlider()}
           </div>
         </div>
 
-        {/* Desktop: right side panel (1/3) */}
+        {/* Desktop: right side panel */}
         <div className="hidden lg:flex flex-col w-72 xl:w-80 flex-shrink-0 mr-3 mb-3 space-y-3 overflow-y-auto">
-          {/* Params card */}
           <div className={`${UI.card} rounded-3xl p-5 flex-shrink-0`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-black tracking-tight">{t('simulation.params_card.title', { model: activeModel })}</h2>
@@ -1525,13 +1488,11 @@ export default function EpidemiologicalSimulation() {
                 </div>
               ))}
             </div>
-
-            {/* Active interventions */}
             {interventions.length > 0 && (
               <div>
                 <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted} mb-2`}>{t('simulation.controls.interventions')}</p>
                 {interventions.map(i => (
-                  <div key={i.id} className={`flex items-center justify-between p-2 bg-muted rounded-xl mb-1.5`}>
+                  <div key={i.id} className="flex items-center justify-between p-2 bg-muted rounded-xl mb-1.5">
                     <div>
                       <p className="text-xs font-semibold">{t(`intervention_modal.types.${i.type}`)}</p>
                       <p className={`text-[10px] ${UI.muted}`}>{t('simulation.intervention_modal.intervention_day', { day: i.startDay, pct: i.effectiveness })}</p>
@@ -1544,18 +1505,17 @@ export default function EpidemiologicalSimulation() {
             )}
           </div>
 
-          {/* Regions card */}
           <div className={`${UI.card} rounded-3xl flex-1 overflow-hidden`}>
             <div className="px-5 pt-5 pb-2">
               <p className={`text-[9px] font-bold uppercase tracking-widest ${UI.muted}`}>{t('simulation.regions.title')}</p>
             </div>
             <div className="overflow-y-auto px-4 pb-4 space-y-2" style={{ maxHeight: '360px' }}>
               {displayRegions.map(region => (
-                <div key={region.id} className={`p-3 bg-muted rounded-2xl`}>
+                <div key={region.id} className="p-3 bg-muted rounded-2xl">
                   <div className="flex items-center justify-between mb-1">
                     <input value={regionNames[region.id] ?? region.name}
                       onChange={e => setRegionNames(p => ({ ...p, [region.id]: e.target.value }))}
-                      className=" text-xs font-semibold outline-none flex-1 mr-1.5" />
+                      className="text-xs font-semibold outline-none flex-1 mr-1.5 bg-transparent" />
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                       style={{ backgroundColor: regionColors[region.id] ?? region.color }} />
                   </div>
@@ -1576,17 +1536,19 @@ export default function EpidemiologicalSimulation() {
           </div>
         </div>
 
-        {/* Mobile: full-screen panels */}
-        <div className="lg:hidden flex-1 flex flex-col overflow-hidden min-h-0 pb-14">
+        {/*  MOBILE  */}
+        <div className="lg:hidden flex-1 flex flex-col overflow-hidden min-h-0 pb-16">
+
+          {/* Map */}
           {mobileTab === 'map' && !hasSimulation && (
-            <div className="flex-1 border-b border-border overflow-hidden">
+            <div className="flex-1 overflow-hidden">
               {EmptyState()}
             </div>
           )}
           {mobileTab === 'map' && hasSimulation && (
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
               <div className="flex-1 relative overflow-hidden mx-2 mt-1 rounded-2xl border border-border">
-                <div className="absolute top-2 left-2 z-20 flex bg-card/90 backdrop-blur-sm border border-border rounded-xl p-0.5">
+                <div className="absolute top-2 left-2 z-20 flex bg-[#F8FAFC] dark:bg-[#0F172A] backdrop-blur-sm border border-border rounded-xl p-0.5">
                   {(['2d', '3d'] as MapType[]).map(tp => (
                     <button key={tp} onClick={() => setMapType(tp)}
                       className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${mapType === tp ? 'bg-primary text-primary-foreground' : UI.muted}`}>
@@ -1596,14 +1558,16 @@ export default function EpidemiologicalSimulation() {
                 </div>
                 <div ref={mapRef} className="w-full h-full" />
               </div>
-              <div className="mx-2 my-1 rounded-2xl border border-border overflow-hidden">
+              <div className="mx-2 my-1 rounded-2xl border border-border overflow-hidden flex-shrink-0">
                 {TimelineSlider()}
               </div>
             </div>
           )}
+
+          {/* Charts */}
           {mobileTab === 'charts' && (
-            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-              <div className="flex-1 overflow-hidden min-h-0">
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+              <div className="flex-1 overflow-y-auto min-h-0">
                 {ChartsPanel()}
               </div>
               <div className="flex-shrink-0 border-t border-border overflow-hidden">
@@ -1611,30 +1575,34 @@ export default function EpidemiologicalSimulation() {
               </div>
             </div>
           )}
+
+          {/* Regions */}
           {mobileTab === 'regions' && (
-            <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex-1 flex flex-col min-h-0">
               {RegionsPanel()}
             </div>
           )}
+
+          {/* Controls */}
           {mobileTab === 'controls' && (
-            <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex-1 flex flex-col min-h-0">
               {ControlsPanel()}
             </div>
           )}
         </div>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* MobileNav */}
       {MobileNav()}
 
       {/* Modal - Params */}
       <AnimatePresence>
         {showParamsModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60  flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
             onClick={() => setShowParamsModal(false)}>
             <motion.div initial={{ scale: 0.92, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 16 }}
-              className={`${UI.card} rounded-3xl bg-white dark:bg-slate-900 w-full max-w-xl shadow-2xl`}
+              className={`${UI.card} rounded-3xl bg-[#F8FAFC] dark:bg-[#0F172A] w-full max-w-xl shadow-2xl`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
@@ -1799,8 +1767,8 @@ export default function EpidemiologicalSimulation() {
                       reader.onload = ev => {
                         try {
                           const state = JSON.parse(ev.target?.result as string);
-                          if (state.params)      setParams(state.params);
-                          if (state.activeModel) setActiveModel(state.activeModel);
+                          if (state.params)        setParams(state.params);
+                          if (state.activeModel)   setActiveModel(state.activeModel);
                           if (state.interventions) setInterventions(state.interventions);
                         } catch {}
                         setShowDataModal(false);
@@ -1826,7 +1794,7 @@ export default function EpidemiologicalSimulation() {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
             onClick={() => setShowExplanationModal(false)}>
             <motion.div initial={{ scale: 0.92 }} animate={{ scale: 1 }} exit={{ scale: 0.92 }}
-              className={`${UI.card} rounded-3xl w-full bg-white dark:bg-slate-900 max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto`}
+              className={`${UI.card} rounded-3xl w-full bg-[#F8FAFC] dark:bg-[#0F172A] max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <h2 className="text-lg font-black">{t('simulation.explanation_modal.title')}</h2>
@@ -1865,7 +1833,7 @@ export default function EpidemiologicalSimulation() {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
             onClick={() => setShowExamplesModal(false)}>
             <motion.div initial={{ scale: 0.92, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 16 }}
-              className={`${UI.card} rounded-3xl w-full max-w-2xl bg-white dark:bg-slate-900  max-h-[85vh] overflow-y-auto`}
+              className={`${UI.card} rounded-3xl w-full max-w-2xl bg-[#F8FAFC] dark:bg-[#0F172A] max-h-[85vh] overflow-y-auto`}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
@@ -1878,9 +1846,7 @@ export default function EpidemiologicalSimulation() {
                 {DISEASE_EXAMPLES.map(ex => (
                   <button key={ex.id} onClick={() => loadExample(ex)}
                     className={`text-left p-4 rounded-2xl border-2 transition-all ${UI.hover} ${
-                      loadedExample === ex.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border'
+                      loadedExample === ex.id ? 'border-primary bg-primary/5' : 'border-border'
                     }`}>
                     <div className="flex items-start justify-between mb-2 gap-2">
                       <div className="flex items-center gap-2">
@@ -1893,9 +1859,9 @@ export default function EpidemiologicalSimulation() {
                     </div>
                     <p className={`text-[10px] ${UI.muted} mb-2 leading-relaxed`}>{t(`simulation.disease.${ex.id}.description`)}</p>
                     <div className="flex flex-wrap gap-2 text-[9px]">
-                      <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono font-bold`}>{t('simulation.examples_modal.r0_label', { value: ex.R0 })}</span>
-                      <span className={`px-1.5 py-0.5 rounded-md bg-muted font-mono`}>{ex.model}</span>
-                      <span className={`px-1.5 py-0.5 rounded-md bg-muted`}>{ex.pathogen}</span>
+                      <span className="px-1.5 py-0.5 rounded-md bg-muted font-mono font-bold">{t('simulation.examples_modal.r0_label', { value: ex.R0 })}</span>
+                      <span className="px-1.5 py-0.5 rounded-md bg-muted font-mono">{ex.model}</span>
+                      <span className="px-1.5 py-0.5 rounded-md bg-muted">{ex.pathogen}</span>
                     </div>
                     <p className={`text-[9px] ${UI.muted} mt-2 italic`}>{t('simulation.examples_modal.source_prefix')} {ex.source}</p>
                     {loadedExample === ex.id && (
