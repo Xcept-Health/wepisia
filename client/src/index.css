@@ -764,3 +764,89 @@
   .geo-sidebar { max-width:95vw; }
   #map { height:300px; border-radius:8px; }
 }
+
+
+.xp, .xp * {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  box-sizing: border-box;
+}
+.xp-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace !important; }
+
+/* Aliases vers les tokens de l'application — pas de redéfinition de --border ou --primary */
+.xp {
+  --bg:        #F8FAFC;
+  --surface:   var(--card);
+  --surface2:  var(--secondary);
+  --border2:   color-mix(in srgb, var(--border) 55%, var(--card));
+  --primary-h: var(--primary);
+  --primary-s: color-mix(in srgb, var(--primary) 10%, transparent);
+  --primary-r: color-mix(in srgb, var(--primary) 18%, transparent);
+  --text:      var(--foreground);
+  --text2:     var(--muted-foreground);
+  --muted:     var(--muted-foreground);
+  --success:   #0D9488;
+  --warn:      #D97706;
+  --danger:    #DC2626;
+  --radius:    14px;
+  --radius-sm: 9px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 8px 24px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg: 0 20px 48px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.05);
+  --shadow-xl: 0 32px 64px rgba(0,0,0,.16), 0 8px 16px rgba(0,0,0,.06);
+}
+
+/* Ajustement des ombres en mode sombre */
+.dark .xp {
+  --bg: #0F172A;
+  --surface:    var(--card) ;
+  --surface2:  var(--secondary);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.22);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,.28);
+  --shadow-md: 0 8px 24px rgba(0,0,0,.34);
+  --shadow-lg: 0 20px 48px rgba(0,0,0,.44);
+  --shadow-xl: 0 32px 64px rgba(0,0,0,.54);
+}
+
+@media (max-width: 768px) {
+  .xp {
+    --radius: 12px;
+    --radius-sm: 7px;
+    --radius-lg: 18px;
+    --radius-xl: 24px;
+  }
+}
+
+@keyframes xp-up    { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes xp-in    { from { opacity:0; transform:scale(.97); }      to { opacity:1; transform:scale(1); }     }
+@keyframes xp-right { from { transform:translateX(100%); }           to { transform:translateX(0); }           }
+@keyframes xp-sheet { from { transform:translateY(100%); }           to { transform:translateY(0); }           }
+@keyframes xp-toast { from { opacity:0; transform:translateY(6px) scale(.96); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes xp-pulse { 0%,100% { opacity:.35; } 50% { opacity:.65; } }
+@keyframes xp-spin  { to { transform:rotate(360deg); } }
+
+.xp-anim-up    { animation: xp-up    .22s cubic-bezier(.22,1,.36,1) both; }
+.xp-anim-in    { animation: xp-in    .2s  cubic-bezier(.22,1,.36,1) both; }
+.xp-anim-right { animation: xp-right .3s  cubic-bezier(.22,1,.36,1); }
+.xp-anim-sheet { animation: xp-sheet .3s  cubic-bezier(.22,1,.36,1); }
+.xp-anim-toast { animation: xp-toast .28s cubic-bezier(.22,1,.36,1); }
+.xp-skeleton   { animation: xp-pulse 1.8s ease-in-out infinite; }
+
+.xp-scroll::-webkit-scrollbar { width: 3px; }
+.xp-scroll::-webkit-scrollbar-track { background: transparent; }
+.xp-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+.xp input, .xp textarea, .xp select {
+  font-family: inherit; background: none; border: none; outline: none;
+  color: var(--text); width: 100%;
+}
+.xp input::placeholder, .xp textarea::placeholder { color: var(--muted); }
+.xp textarea { resize: none; }
+.xp select { appearance: none; cursor: pointer; }
+
+.xp mark {
+  background: rgba(251,191,36,.22); color: inherit;
+  border-radius: 3px; padding: 0 2px;
+}
