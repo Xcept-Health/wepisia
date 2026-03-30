@@ -208,10 +208,7 @@ export function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }: Side
                 <div className="animate-fade-in">
                       <div className="hidden md:flex items-center gap-2">
     <div className="flex justify-center ">
-          <svg width="20" height="25" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="  opacity-100">
-            <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-          </svg>
+    < img  width="25" height="25" src="/logo.png" alt="" />
         </div>
       <span className="font-bold tracking-tighter text-lg">
        Wepisia
