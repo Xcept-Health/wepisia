@@ -365,10 +365,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto text-center relative">
           {/* Tribal Identity Symbol */}
           <div className="flex justify-center mb-8">
-            <svg width="40" height="60" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-80">
-              <path d="M20 5V55M5 15C5 15 10 10 20 10C30 10 35 15 35 15M5 45C5 45 10 50 20 50C30 50 35 45 35 45" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <rect x="15" y="25" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-            </svg>
+            <img  width="100" height="100" src="/logo.png" alt="" />
           </div>
 
           <h1 className="text-6xl md:text-8xl font-black tracking-tight text-gray-900 dark:text-white mb-8">
