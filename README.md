@@ -1,8 +1,8 @@
 <div align="center">
 
-```
+
 ![wepisiabanner](banner.jpg)
-```
+
 
 **Open Epidemiology Platform  Built for Africa**
 
