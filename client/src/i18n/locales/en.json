@@ -1070,7 +1070,7 @@
       "json_label": "JSON — exported full state"
     },
     "explanation_modal": {
-      "title": "Documentation",
+      "title": "Guide",
       "slider_title": "Time slider",
       "slider_body": "Drag the slider from day 0 to day 365 to visualize the epidemic state at any day. The map and dashboard update instantly. Use Play to animate progression.",
       "models_title": "Available models",

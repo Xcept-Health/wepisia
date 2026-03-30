@@ -1070,7 +1070,7 @@
       "json_label": "JSON — état complet exporté"
     },
     "explanation_modal": {
-      "title": "Documentation",
+      "title": "Guide",
       "slider_title": "Slider temporel",
       "slider_body": "Faites glisser le slider J0-J365 pour visualiser l'état épidémique à n'importe quel jour. La carte et le tableau de bord se mettent à jour instantanément. Utilisez Play pour animer la progression.",
       "models_title": "Modèles disponibles",
