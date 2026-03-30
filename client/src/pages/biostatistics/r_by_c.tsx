@@ -712,37 +712,37 @@ export default function RxcTable() {
                 ) : (
                   <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {/* Main results card */}
-                    <div className="bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30 p-6 rounded-3xl border">
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        {t('rByC.statisticalResults')}
-                      </p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
-                            {results.chiSquare.toFixed(4)}
-                          </div>
-                          <span className="text-xs">{t('rByC.chiSquare')}</span>
-                        </div>
-                        <div>
-                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
-                            {results.pValue.toExponential(6)}
-                          </div>
-                          <span className="text-xs">{t('rByC.pValue')}</span>
-                        </div>
-                        <div>
-                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
-                            {results.degreesOfFreedom}
-                          </div>
-                          <span className="text-xs">{t('rByC.df')}</span>
-                        </div>
-                        <div>
-                          <div className="text-4xl font-bold tracking-tight mb-2 text-orange-600">
-                            {results.cramersV.toFixed(4)}
-                          </div>
-                          <span className="text-xs">{t('rByC.cramersV')}</span>
-                        </div>
-                      </div>
-                    </div>
+                    <div className="bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30 p-4 sm:p-6 rounded-3xl border">
+  <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 sm:mb-2">
+    {t('rByC.statisticalResults')}
+  </p>
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="flex flex-col items-center py-2">
+      <div className="text-2xl sm:text-4xl font-bold tracking-tight mb-1 sm:mb-2 text-orange-600">
+        {results.chiSquare.toFixed(4)}
+      </div>
+      <span className="text-xs text-center">{t('rByC.chiSquare')}</span>
+    </div>
+    <div className="flex flex-col items-center py-2">
+      <div className="text-2xl sm:text-4xl font-bold tracking-tight mb-1 sm:mb-2 text-orange-600">
+        {results.pValue.toExponential(6)}
+      </div>
+      <span className="text-xs text-center">{t('rByC.pValue')}</span>
+    </div>
+    <div className="flex flex-col items-center py-2">
+      <div className="text-2xl sm:text-4xl font-bold tracking-tight mb-1 sm:mb-2 text-orange-600">
+        {results.degreesOfFreedom}
+      </div>
+      <span className="text-xs text-center">{t('rByC.df')}</span>
+    </div>
+    <div className="flex flex-col items-center py-2">
+      <div className="text-2xl sm:text-4xl font-bold tracking-tight mb-1 sm:mb-2 text-orange-600">
+        {results.cramersV.toFixed(4)}
+      </div>
+      <span className="text-xs text-center">{t('rByC.cramersV')}</span>
+    </div>
+  </div>
+</div>
 
                     {/* Expected frequencies table */}
                     <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
