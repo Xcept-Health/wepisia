@@ -625,36 +625,44 @@ export default function DoseResponse() {
                   <div ref={resultsRef} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {/* Trend test card */}
                     <div
-                      className={`p-8 rounded-3xl text-center border ${
-                        results.pValue < 0.05
-                          ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
-                          : 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
-                      }`}
-                    >
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                        {t('doseResponse.trendTestTitle')}
-                      </p>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <div className={`text-3xl font-bold tracking-tight mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
-                            {results.chiSquare.toFixed(5)}
+                        className={`p-6 sm:p-8 rounded-3xl text-center border ${
+                          results.pValue < 0.05
+                            ? 'bg-orange-50/50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-800/30'
+                            : 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/30'
+                        }`}
+                      >
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 sm:mb-2">
+                          {t('doseResponse.trendTestTitle')}
+                        </p>
+                        
+                        {/* Mobile: 1 colonm, Desktop: 3 colonms */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-4">
+                          <div>
+                            <div className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 sm:mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                              {results.chiSquare.toFixed(5)}
+                            </div>
+                            <span className="text-xs sm:text-xs">{t('doseResponse.chiSquare')}</span>
                           </div>
-                          <span className="text-xs">{t('doseResponse.chiSquare')}</span>
-                        </div>
-                        <div>
-                          <div className={`text-3xl font-bold tracking-tight mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
-                            {results.pValue.toFixed(8)}
+                          
+                          <div >
+                            <div className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 sm:mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                              {results.pValue.toFixed(8)}
+                            </div>
+                            <span className="text-xs sm:text-xs">p-value</span>
                           </div>
-                          <span className="text-xs">p-value</span>
-                        </div>
-                        <div>
-                          <div className={`text-3xl font-bold tracking-tight mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
-                            {results.trendDirection === 'positive' ? t('doseResponse.positive') : results.trendDirection === 'negative' ? t('doseResponse.negative') : t('doseResponse.none')}
-                          </div>
-                          <span className="text-xs">{t('doseResponse.direction')}</span>
-                        </div>
-                      </div>
-                    </div>
+    
+    <div className="mt-4 sm:mt-0">
+      <div className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 sm:mb-2 ${results.pValue < 0.05 ? 'text-orange-600' : 'text-emerald-600'}`}>
+        {results.trendDirection === 'positive' 
+          ? t('doseResponse.positive') 
+          : results.trendDirection === 'negative' 
+            ? t('doseResponse.negative') 
+            : t('doseResponse.none')}
+      </div>
+      <span className="text-xs sm:text-xs">{t('doseResponse.direction')}</span>
+    </div>
+  </div>
+</div>
 
                     {/* Results per level table */}
                     <div className="p-6 rounded-3xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
