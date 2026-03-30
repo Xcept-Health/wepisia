@@ -1,9 +1,6 @@
 <div align="center">
 
-```
-
-https://github.com/Xcept-Health/wepisia/blob/main/banner.jpg
-```
+![wepisiabanner](public/banner.jpg)
 
 **Open Epidemiology Platform  Built for Africa**
 
