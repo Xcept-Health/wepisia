@@ -126,6 +126,7 @@ function AppContent() {
           </main>
         </div>
       </div>
+      <Analytics />
     </TooltipProvider>
   );
 }
