@@ -41,7 +41,7 @@ import TermsPage from "./pages/Terms";
 import AboutPage from "./pages/About";
 import { useSettings } from "@/contexts/SettingsContext";
 import { setSoundEnabled } from "@/lib/notifications";
-import { Analytics } from "@vercel/analytics/next"
+import { Analytics } from "@vercel/analytics/react"
 
 function Router() {
   return (
