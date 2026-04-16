@@ -1,0 +1,55 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Ouedraogo"
+    given-names: "Fildouindé Ariel Shadrac"
+    affiliation: "Xcept-Health"
+    orcid: "https://orcid.org/0009-0003-3419-5985"
+title: "Wepisia: Open Epidemiology Platform Built for Africa"
+version: 0.1.0-beta
+date-released: 2026-04-01
+url: "https://github.com/Xcept-Health/wepisia"
+license: MIT
+keywords:
+  - epidemiology
+  - biostatistics
+  - public-health
+  - africa
+  - epidemic-simulation
+  - geospatial
+  - openepi
+  - multilingual
+references:
+  - type: software
+    title: "OpenEpi: Open Source Epidemiologic Statistics for Public Health"
+    version: "3.01"
+    date-released: "2013-04-06"
+    url: "https://www.openepi.com"
+    license: MIT
+    authors:
+      - family-names: "Dean"
+        given-names: "Andrew G."
+      - family-names: "Sullivan"
+        given-names: "Kevin M."
+      - family-names: "Mir"
+        given-names: "Soe MM."
+    notes: >
+      Wepisia is a full rewrite of OpenEpi. All statistical methods are
+      validated against OpenEpi v3. This project would not exist without
+      the foundational work of the OpenEpi team.
+  - type: article
+    title: "OpenEpi: A Web-based Epidemiologic and Statistical Calculator for Public Health"
+    journal: "Public Health Reports"
+    year: 2009
+    volume: 124
+    issue: 3
+    start: 471
+    end: 474
+    doi: 10.1177/003335490912400320
+    authors:
+      - family-names: "Sullivan"
+        given-names: "Kevin M."
+      - family-names: "Dean"
+        given-names: "Andrew G."
+      - family-names: "Mir"
+        given-names: "Roger"
