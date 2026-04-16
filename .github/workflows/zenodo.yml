@@ -48,7 +48,7 @@ jobs:
           import os, requests, json, tempfile, sys
 
           TOKEN    = os.environ["ZENODO_TOKEN"]
-          DEP_ID   = os.environ.get("ZENODO_DEPOSITION_ID", "").strip()
+          DEP_ID = os.environ.get("ZENODO_DEPOSITION_ID", "").strip().lstrip("0") or ""
           TAG      = os.environ["RELEASE_TAG"]
           TARBALL  = os.environ["TARBALL_URL"]
           HEADERS  = {"Authorization": f"Bearer {TOKEN}"}
