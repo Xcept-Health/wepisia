@@ -1,23 +1,30 @@
 {
-    "title": "Episia: Open-source epidemiology and biostatistics for Python",
-    "upload_type": "software",
-    "description": "Open-source Python epidemiology and biostatistics toolbox. Based on OpenEpi algorithms; risk ratios, odds ratios, sample size, diagnostic test evaluation, compartmental epidemic models (SIR/SEIR/SEIRD), Monte Carlo sensitivity analysis, surveillance data tools, and automated report generation. Built for the francophone African public health context.",
-    "creators": [
-      {
-        "name": "Ouedraogo, Fildouindé Ariel Shadrac",
-        "affiliation": "Xcept-Health, Université Joseph Ki-Zerbo"
-      }
-    ],
-    "license": "MIT",
-    "keywords": [
-      "epidemiology", "biostatistics", "public health",
-      "SIR model", "SEIR model", "Africa", "Python"
-    ],
-    "related_identifiers": [
-      {
-        "identifier": "https://github.com/Xcept-Health/episia",
-        "relation": "isSupplementTo",
-        "scheme": "url"
-      }
-    ]
-  }
+  "title": "Wepisia: Open Epidemiology Platform Built for Africa",
+  "upload_type": "software",
+  "description": "A complete architectural rewrite of OpenEpi built with React 18, TypeScript, and Vite. Features 19 OpenEpi-validated biostatistics modules, multi-region epidemic simulation (SIR/SEIR/SEIRD/SEIQRD), interactive geospatial mapping, an in-browser R IDE via WebAssembly, PubMed explorer, and multilingual support including Mooré, Wolof, Swahili, and Haoussa. Fully client-side — no server, no data collection. Built for public health practitioners in Africa.",
+  "creators": [
+    {
+      "name": "Ouedraogo, Fildouindé Ariel Shadrac",
+      "affiliation": "Xcept-Health, Université Joseph Ki-Zerbo",
+      "orcid": "0009-0003-3419-5985"
+    }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "epidemiology", "biostatistics", "public health",
+    "SIR model", "SEIR model", "Africa", "React",
+    "WebAssembly", "OpenEpi", "geospatial"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/Xcept-Health/wepisia",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://github.com/Xcept-Health/episia",
+      "relation": "isDerivedFrom",
+      "scheme": "url"
+    }
+  ]
+}
