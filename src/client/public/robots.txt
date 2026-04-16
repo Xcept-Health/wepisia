@@ -1,0 +1,27 @@
+User-agent: *
+Allow: /
+ 
+# Bloquer les pages sans valeur SEO
+Disallow: /api/
+Disallow: /_next/
+Disallow: /static/chunks/
+Disallow: /*?*print=
+ 
+# Autoriser explicitement les assets importants
+Allow: /og/
+Allow: /logo.png
+Allow: /favicon.ico
+ 
+# Sitemaps
+Sitemap: https://wepisia.com/sitemap.xml
+ 
+# Crawl-delay pour les bots moins prioritaires
+User-agent: AhrefsBot
+Crawl-delay: 10
+ 
+User-agent: SemrushBot
+Crawl-delay: 10
+ 
+User-agent: DotBot
+Disallow: /
+ 
