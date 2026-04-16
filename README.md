@@ -12,6 +12,7 @@
 [![Built with React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)](https://www.typescriptlang.org)
 [![OpenEpi Validated](https://img.shields.io/badge/OpenEpi-validated-green.svg)]()
+[![DOI](https://zenodo.org/badge/1149246949.svg)](https://doi.org/10.5281/zenodo.19600988)
 
 *« La connaissance est comme un baobab : une seule personne ne peut l'embrasser. »*
 
