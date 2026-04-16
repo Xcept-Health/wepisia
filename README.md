@@ -277,7 +277,7 @@ Full license text in [LICENSE](./LICENSE).
 
 <div align="center">
 
-*Wepisia v0.1.0-alpha · March 2026 · Made in Burkina Faso 🇧🇫*
+*Wepisia v0.1.0-beta · April 2026 · Made in Burkina Faso 🇧🇫*
 
 **"Without OpenEpi, no Wepisia. Without Wepisia, fewer tools for Africa."**
 
