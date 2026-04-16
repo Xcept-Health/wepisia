@@ -230,7 +230,7 @@ client/
 
 ```bash
 git clone https://github.com/Xcept-Health/wepisia.git
-cd wepisia/client
+cd wepisia/src/client
 npm install
 npm run dev
 ```
