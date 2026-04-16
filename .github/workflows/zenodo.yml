@@ -1,0 +1,157 @@
+# Zenodo Release Workflow  Wepisia / Xcept-Health
+# Triggered automatically when a GitHub Release is published.
+# Uploads the release tarball to Zenodo and publishes a new versioned record.
+
+name: Zenodo
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  zenodo-upload:
+    name: Publish to Zenodo
+    runs-on: ubuntu-latest
+
+    steps:
+      #  1. Checkout 
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      #  2. Python setup 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      #  3. Install dependencies 
+      # --break-system-packages is required on Ubuntu 24.04 (PEP 668)
+      - name: Install Python dependencies
+        run: pip install requests --break-system-packages
+
+      #  4. Upload & publish 
+      - name: Upload release to Zenodo
+        env:
+          ZENODO_TOKEN: ${{ secrets.ZENODO_TOKEN }}
+          # Concept record ID  links all versions under the same DOI root.
+          # Empty on first run; fill the secret after the first successful publish.
+          ZENODO_DEPOSITION_ID: ${{ secrets.ZENODO_DEPOSITION_ID }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          TARBALL_URL: ${{ github.event.release.tarball_url }}
+        run: |
+          python - <<'PYEOF'
+          import os, requests, json, tempfile, sys
+
+          TOKEN    = os.environ["ZENODO_TOKEN"]
+          DEP_ID   = os.environ.get("ZENODO_DEPOSITION_ID", "").strip()
+          TAG      = os.environ["RELEASE_TAG"]
+          TARBALL  = os.environ["TARBALL_URL"]
+          HEADERS  = {"Authorization": f"Bearer {TOKEN}"}
+          BASE     = "https://zenodo.org/api"
+
+          #  Step A: Get or create a draft deposition 
+          if DEP_ID:
+              # Create a new version draft from the existing concept record
+              print(f"Creating new version from concept record {DEP_ID} ...")
+              r = requests.post(
+                  f"{BASE}/deposit/depositions/{DEP_ID}/actions/newversion",
+                  headers=HEADERS
+              )
+              r.raise_for_status()
+
+              # The response points to the new draft URL
+              new_url = r.json()["links"]["latest_draft"]
+              r2 = requests.get(new_url, headers=HEADERS)
+              r2.raise_for_status()
+              dep = r2.json()
+              dep_id_new = dep["id"]
+          else:
+              # Very first deposit  creates a brand-new record
+              print("No concept ID found. Creating first deposition ...")
+              r = requests.post(
+                  f"{BASE}/deposit/depositions",
+                  headers=HEADERS,
+                  json={}
+              )
+              r.raise_for_status()
+              dep = r.json()
+              dep_id_new = dep["id"]
+
+          print(f"Draft deposition ID: {dep_id_new}")
+
+          #  Step B: Remove stale files from the previous version 
+          # Zenodo copies files from the parent version into the draft;
+          # we delete them before uploading the new tarball.
+          for f in dep.get("files", []):
+              requests.delete(
+                  f"{BASE}/deposit/depositions/{dep_id_new}/files/{f['id']}",
+                  headers=HEADERS
+              )
+          print("Old files removed.")
+
+          #  Step C: Download the GitHub release tarball 
+          # For public repos this works without auth.
+          # For private repos, add: headers={"Authorization": f"token {GH_TOKEN}"}
+          print(f"Downloading tarball: {TARBALL}")
+          r_tar = requests.get(TARBALL, allow_redirects=True)
+          r_tar.raise_for_status()
+
+          filename = f"wepisia-{TAG}.tar.gz"
+          with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+              tmp.write(r_tar.content)
+              tmp_path = tmp.name
+          print(f"Tarball saved locally as: {filename}")
+
+          #  Step D: Upload the tarball to the Zenodo bucket 
+          bucket_url = dep["links"]["bucket"]
+          with open(tmp_path, "rb") as fh:
+              r_up = requests.put(
+                  f"{bucket_url}/{filename}",
+                  headers=HEADERS,
+                  data=fh
+              )
+          r_up.raise_for_status()
+          print(f"File uploaded to Zenodo: {filename}")
+
+          #  Step E: Update metadata from .zenodo.json + inject release version 
+          # .zenodo.json must exist at the root of the repository.
+          with open(".zenodo.json") as mf:
+              meta = json.load(mf)
+
+          meta["version"] = TAG   # Override version field with the git tag
+
+          r_meta = requests.put(
+              f"{BASE}/deposit/depositions/{dep_id_new}",
+              headers=HEADERS,
+              json={"metadata": meta}
+          )
+          r_meta.raise_for_status()
+          print("Metadata updated.")
+
+          #  Step F: Publish 
+          r_pub = requests.post(
+              f"{BASE}/deposit/depositions/{dep_id_new}/actions/publish",
+              headers=HEADERS
+          )
+          r_pub.raise_for_status()
+
+          result = r_pub.json()
+          doi = result["doi"]
+          concept_doi = result.get("conceptdoi", "N/A")
+
+          print()
+          print("Published on Zenodo successfully!")
+          print(f"  Version DOI : {doi}")
+          print(f"  Concept DOI : {concept_doi}")
+          print(f"  Record URL  : https://zenodo.org/record/{dep_id_new}")
+
+          # Remind the user to set the secret if this was the first run
+          if not DEP_ID:
+              print()
+              print(" First run detected.")
+              print(f"   Set the ZENODO_DEPOSITION_ID secret to: {dep_id_new}")
+              print("   This links future releases to the same concept record.")
+          PYEOF
