@@ -16,7 +16,7 @@
 
 *« La connaissance est comme un baobab : une seule personne ne peut l'embrasser. »*
 
-[**Live Demo**](https://wepisia.xcept-health.com) · [**Documentation**](https://wepisia.xcept-health.com/docs) · [**Report a Bug**](https://github.com/Xcept-Health/wepisia/issues) · [**Contact**](mailto:contact@xcept-health.com)
+[**Live Demo**](https://wepisia.vercel.app) · [**Documentation**](https://wepisia.xcept-health.com/docs) · [**Report a Bug**](https://github.com/Xcept-Health/wepisia/issues) · [**Contact**](mailto:contact@xcept-health.com)
 
 </div>
 
