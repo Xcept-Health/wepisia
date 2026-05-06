@@ -37,4 +37,16 @@ export default defineConfig({
       deny: ["**/.*"],
     },
   },
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['src/calculators/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/calculators/**/*.ts'],
+      exclude: ['srccalculators/**/*.test.ts'],
+      thresholds: { lines: 100, functions: 100, branches: 90 },
+      reporter: ['text', 'html', 'lcov'],
+    },
+  },
 });
