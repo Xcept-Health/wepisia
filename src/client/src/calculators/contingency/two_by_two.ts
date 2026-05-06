@@ -44,11 +44,9 @@ export interface ContingencyTable {
     fracPop: number | null
     fracPopCI: ConfidenceInterval | null
   }
-  
-  // ----------------------------------------------------------------
+
   // Helpers
-  // ----------------------------------------------------------------
-  
+
   export function computeTotals(t: ContingencyTable): TableTotals {
     return {
       totalExposed:   t.a + t.b,
@@ -76,12 +74,10 @@ export interface ContingencyTable {
     if (k < Math.max(0, n + K - N) || k > Math.min(n, K)) return 0
     return (combination(K, k) * combination(N - K, n - k)) / combination(N, n)
   }
-  
-  // ----------------------------------------------------------------
+
   // Odds Ratio (Woolf / Taylor series)
   // Reference: OpenEpi TwobyTwo - https://www.openepi.com/TwobyTwo/TwobyTwo.htm
-  // ----------------------------------------------------------------
-  
+
   export function computeOddsRatio(t: ContingencyTable): MeasureWithCI | null {
     const { a, b, c, d } = t
     if (b === 0 || c === 0) return null
@@ -96,11 +92,9 @@ export interface ContingencyTable {
       },
     }
   }
-  
-  // ----------------------------------------------------------------
+
   // Relative Risk (Taylor series)
-  // ----------------------------------------------------------------
-  
+
   export function computeRelativeRisk(t: ContingencyTable): MeasureWithCI | null {
     const { a, b, c, d } = t
     const r1 = a + b
@@ -120,12 +114,10 @@ export interface ContingencyTable {
       },
     }
   }
-  
-  // ----------------------------------------------------------------
+
   // Chi-square statistics (valeurs brutes, sans p-value)
   // Les p-values sont calculées dans le composant via jStat
-  // ----------------------------------------------------------------
-  
+
   export function computeChiSquares(t: ContingencyTable): ChiSquareResults | null {
     const { a, b, c, d } = t
     const n = a + b + c + d
@@ -145,11 +137,9 @@ export interface ContingencyTable {
   
     return { uncorrected, mantelHaenszel, yates }
   }
-  
-  // ----------------------------------------------------------------
+
   // Fisher's exact test (purement mathématique via hypergeometricPdf)
-  // ----------------------------------------------------------------
-  
+
   export function computeFisher(t: ContingencyTable): FisherResults | null {
     const { a, b, c, d } = t
     const n  = a + b + c + d
@@ -178,11 +168,9 @@ export interface ContingencyTable {
       midPTwoTail: Math.max(0, twoTail - observedProb),
     }
   }
-  
-  // ----------------------------------------------------------------
+
   // Risk Difference
-  // ----------------------------------------------------------------
-  
+
   export function computeRiskDifference(t: ContingencyTable): MeasureWithCI | null {
     const { a, b, c, d } = t
     const r1 = a + b
@@ -201,11 +189,9 @@ export interface ContingencyTable {
       ci95: { lower: rd - 1.96 * se, upper: rd + 1.96 * se },
     }
   }
-  
-  // ----------------------------------------------------------------
+
   // Proportion CI (Taylor) — pour les risques individuels
-  // ----------------------------------------------------------------
-  
+
   export function computeProportionCI(
     prop: number, total: number
   ): ConfidenceInterval {
@@ -215,11 +201,9 @@ export interface ContingencyTable {
       upper: Math.min(1, prop + 1.96 * se),
     }
   }
-  
-  // ----------------------------------------------------------------
+
   // Fractions attribuables basées sur le RR
-  // ----------------------------------------------------------------
-  
+
   export function computeAttributableFractionsRR(
     rr: MeasureWithCI,
     proportionExposed: number
